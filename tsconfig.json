@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [
+    "contracts/test/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "scripts/**/*.ts",
+    "vitest.config.ts",
+    "contracts/managed/otc-protocol/contract/**/*.d.ts"
+  ],
+  "exclude": ["node_modules", "**/dist"]
+}

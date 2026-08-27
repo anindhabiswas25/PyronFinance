@@ -10,18 +10,34 @@ import "schnorr" prefix Schnorr_;
 // Slashing distribution — basis points, must sum to 10_000.
 // 60% compensation to the wronged taker, 10% bounty to the fraud prover,
 // 30% burned (retained forever, no withdrawal path — see slashBond below).
-// SLASH_TAKER_BPS = 6000, SLASH_PROVER_BPS = 1000, SLASH_BURN_BPS = 3000 (implicit remainder)
+// NOTE: Compact has no module-scope `const` (parse error: "found keyword const looking for a
+// program element"). Constants are therefore exposed as nullary pure circuits, which gives a
+// single source of truth without scattering magic numbers across call sites.
+// See compact-contracts SKILL.md §4.
+pure circuit SLASH_TAKER_BPS(): Uint<16> { return 6000; }
+pure circuit SLASH_PROVER_BPS(): Uint<16> { return 1000; }
+pure circuit BPS_DENOMINATOR(): Uint<16> { return 10000; }
 
 // Timing (seconds).
-// MAX_QUOTE_VALIDITY = 900 (15 min), CHALLENGE_WINDOW = 600 (10 min),
-// PROOF_GRACE_PERIOD = 3600 (1 h), BOND_WITHDRAW_DELAY = 86400 (24 h).
 // Inequality: BOND_WITHDRAW_DELAY > MAX_QUOTE_VALIDITY + CHALLENGE_WINDOW + PROOF_GRACE_PERIOD
 //             86400 > 900 + 600 + 3600 = 5100  ✓ (large margin, deliberate — see CONTRACTS.md §6)
+//
+// PROOF_GRACE_PERIOD is load-bearing, not decorative: releaseExpiredQuote is gated on
+// validUntil + PROOF_GRACE_PERIOD so a dealer cannot release their own expired quote and
+// thereby dodge a Class-A fraud proof (submitFraudProofMismatch asserts !q.resolved).
+// It also exceeds CHALLENGE_WINDOW, which guarantees any Class-B timeout proof can land
+// before release becomes possible. Do not shrink it below CHALLENGE_WINDOW.
+pure circuit MAX_QUOTE_VALIDITY(): Uint<64> { return 900; }
+pure circuit CHALLENGE_WINDOW(): Uint<64> { return 600; }
+pure circuit PROOF_GRACE_PERIOD(): Uint<64> { return 3600; }
+pure circuit BOND_WITHDRAW_DELAY(): Uint<64> { return 86400; }
+pure circuit TIME_SLACK(): Uint<64> { return 300; }
 
 // MIN_BOND / MIN_CHALLENGE_BOND are deliberately unset in the spec (CONTRACTS.md §7) —
-// they need M2 Preprod data. This is a placeholder, not a real value; do not use in
+// they need M2 Preprod data. These are placeholders, not real values; do not use in
 // any deployment beyond internal Preprod testing.
-// PLACEHOLDER_MIN_BOND = 1  (smallest possible nonzero bond, for testability only)
+pure circuit PLACEHOLDER_MIN_BOND(): Uint<128> { return 1; }
+pure circuit PLACEHOLDER_MIN_CHALLENGE_BOND(): Uint<128> { return 1; }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Ledger structs
@@ -109,7 +125,7 @@ pure circuit deriveChallengeId(quoteId: Bytes<32>, taker: Bytes<32>): Bytes<32> 
 export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   assert(!bonds.member(cmt), "Dealer already bonded; use topUpBond");
-  assert(disclose(amount) >= 1, "Bond below minimum"); // PLACEHOLDER_MIN_BOND — see docs/CONTRACTS.md §7
+  assert(disclose(amount) >= PLACEHOLDER_MIN_BOND(), "Bond below minimum"); // see docs/CONTRACTS.md §7
   receiveUnshielded(default<Bytes<32>>, disclose(amount));
   bonds.insert(cmt, Bond {
     amount: disclose(amount),
@@ -119,11 +135,8 @@ export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
     openChallenges: 0,
     active: true,
   });
-  // settled/slashed need no explicit init — Map<K, Counter> auto-vivifies a
-  // zero Counter for any key on first .lookup() (verified against the
-  // compiler; default<Counter>() itself does not parse, Counter is a
-  // ledger-only ADT, not a constructible value — see compact-contracts
-  // SKILL.md).
+  settled.insertDefault(cmt);
+  slashed.insertDefault(cmt);
 }
 
 export circuit topUpBond(amount: Uint<128>): [] {
@@ -147,7 +160,7 @@ export circuit requestBondWithdrawal(now: Uint<64>): [] {
   const b = bonds.lookup(cmt);
   const claimedNow = disclose(now);
   assert(blockTimeGte(claimedNow), "claimed time is in the future");
-  assert(!blockTimeGte((claimedNow + 300) as Uint<64>), "claimed time too far in the past"); // TIME_SLACK
+  assert(!blockTimeGte((claimedNow + TIME_SLACK()) as Uint<64>), "claimed time too far in the past");
   bonds.insert(cmt, Bond { ...b, withdrawRequested: claimedNow, active: false });
   // active=false => commitQuote now rejects. A withdrawing dealer cannot take on new obligations.
 }
@@ -157,7 +170,7 @@ export circuit withdrawBond(recipient: Bytes<32>): [] {
   assert(bonds.member(cmt), "Not a dealer");
   const b = bonds.lookup(cmt);
   assert(b.withdrawRequested > 0, "No withdrawal requested");
-  assert(blockTimeGte((b.withdrawRequested + 86400) as Uint<64>), "Timelock not elapsed");
+  assert(blockTimeGte((b.withdrawRequested + BOND_WITHDRAW_DELAY()) as Uint<64>), "Timelock not elapsed");
   assert(b.openChallenges == 0, "Unresolved challenges outstanding");
   assert(b.liveQuotes == 0, "Live quote commitments outstanding");
   sendUnshielded(default<Bytes<32>>, b.amount,
@@ -174,13 +187,23 @@ export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: 
   assert(bonds.member(cmt), "Not a dealer");
   const b = bonds.lookup(cmt);
   assert(b.active, "Dealer not active (withdrawing or unbonded)");
-  assert(b.amount >= 1, "Bond fell below minimum after slashing"); // PLACEHOLDER_MIN_BOND
+  assert(b.amount >= PLACEHOLDER_MIN_BOND(), "Bond fell below minimum after slashing");
   // Validity window must be in the future and capped — an unbounded window would let a
   // dealer sit on a free option indefinitely, and would force BOND_WITHDRAW_DELAY to be
   // unbounded too. `!blockTimeGte(t)` is the clean "block time < t" idiom (no separate
   // blockTimeLt needed — see compact-contracts SKILL.md §4).
-  assert(!blockTimeGte(disclose(validUntil)), "validUntil already past");
-  assert(!blockTimeGte((disclose(validUntil) - 900) as Uint<64>), "Validity window too long"); // MAX_QUOTE_VALIDITY
+  const validUntilPub = disclose(validUntil);
+  assert(!blockTimeGte(validUntilPub), "validUntil already past");
+  // Cap the window at MAX_QUOTE_VALIDITY, i.e. require validUntil <= now + MAX_QUOTE_VALIDITY.
+  // Equivalently now >= validUntil - MAX_QUOTE_VALIDITY, which is blockTimeGte (NOT its negation).
+  //
+  // POLARITY WARNING: the negated form `!blockTimeGte(validUntil - MAX)` type-checks and compiles
+  // identically but means the opposite — it requires the window to be LONGER than the cap and
+  // rejects every compliant quote. That inversion shipped once and was invisible to both the
+  // compiler and tsc; only executing the circuit caught it. Do not "simplify" this back.
+  // Guard the subtraction first: validUntil < MAX_QUOTE_VALIDITY would underflow Uint<64>.
+  assert(validUntilPub >= MAX_QUOTE_VALIDITY(), "validUntil implausibly small");
+  assert(blockTimeGte((validUntilPub - MAX_QUOTE_VALIDITY()) as Uint<64>), "Validity window too long");
   const qid = deriveQuoteId(cmt, disclose(rfqId), disclose(commitment));
   assert(!quotes.member(qid), "Duplicate quote");
   quotes.insert(qid, Quote {
@@ -201,11 +224,11 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
   const q = quotes.lookup(qidPub);
   assert(!q.resolved, "Quote already resolved");
   assert(!blockTimeGte(q.validUntil), "Quote expired — nothing to honor");
-  assert(disclose(bondAmount) >= 1, "Challenge bond too small"); // PLACEHOLDER_MIN_CHALLENGE_BOND
+  assert(disclose(bondAmount) >= PLACEHOLDER_MIN_CHALLENGE_BOND(), "Challenge bond too small");
   receiveUnshielded(default<Bytes<32>>, disclose(bondAmount));
   const claimedNow = disclose(now);
   assert(blockTimeGte(claimedNow), "claimed time is in the future");
-  assert(!blockTimeGte((claimedNow + 300) as Uint<64>), "claimed time too far in the past"); // TIME_SLACK
+  assert(!blockTimeGte((claimedNow + TIME_SLACK()) as Uint<64>), "claimed time too far in the past");
   const taker = disclose(takerAddress());
   const cid = deriveChallengeId(qidPub, taker);
   assert(!challenges.member(cid), "Challenge already open for this taker");
@@ -213,7 +236,7 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
     quoteId: qidPub,
     takerAddr: taker,
     bondAmount: disclose(bondAmount),
-    respondBy: (claimedNow + 600) as Uint<64>, // CHALLENGE_WINDOW
+    respondBy: (claimedNow + CHALLENGE_WINDOW()) as Uint<64>,
     resolved: false,
   });
   const dealerBond = bonds.lookup(q.dealerCmt);
@@ -320,10 +343,10 @@ circuit slashBond(dealerCmt: Bytes<32>, beneficiary: Bytes<32>): [] {
   // sides so a dishonest witness can't round in its own favor. amount*bps note:
   // amount is Uint<128> and bps <= 6000; this can only overflow Uint<128> for bond
   // sizes far beyond any realistic token supply, acceptable for the M1 prototype.
-  assert(takerCut * 10000 <= b.amount * 6000, "taker cut too high");
-  assert((takerCut + 1) * 10000 > b.amount * 6000, "taker cut not maximal");
-  assert(proverCut * 10000 <= b.amount * 1000, "prover cut too high");
-  assert((proverCut + 1) * 10000 > b.amount * 1000, "prover cut not maximal");
+  assert(takerCut * BPS_DENOMINATOR() <= b.amount * SLASH_TAKER_BPS(), "taker cut too high");
+  assert((takerCut + 1) * BPS_DENOMINATOR() > b.amount * SLASH_TAKER_BPS(), "taker cut not maximal");
+  assert(proverCut * BPS_DENOMINATOR() <= b.amount * SLASH_PROVER_BPS(), "prover cut too high");
+  assert((proverCut + 1) * BPS_DENOMINATOR() > b.amount * SLASH_PROVER_BPS(), "prover cut not maximal");
   const burnCut = (b.amount - takerCut - proverCut) as Uint<128>; // remainder — no rounding leak
   sendUnshielded(default<Bytes<32>>, takerCut, right<ContractAddress, UserAddress>(UserAddress { bytes: beneficiary }));
   const prover = disclose(takerAddress());
