@@ -65,7 +65,14 @@ The only thing relays are trusted for is **liveness**, and the only defense need
 ws://<host>:<port>/gossip     peer-to-peer and client connections (same endpoint)
 GET  http://<host>:<port>/health    -> { ok, peers, version, uptimeSec }
 GET  http://<host>:<port>/rfqs?pair=&since=   -> recent RFQs (for clients that prefer polling)
+POST http://<host>:<port>/mailbox/:takerEncPk -> store one opaque reveal blob (§4); 202 on accept
+GET  http://<host>:<port>/mailbox/:takerEncPk -> fetch and clear pending blobs for a recipient (§4)
 ```
+
+The mailbox routes only exist when a node runs with `RELAY_ENABLE_MAILBOX=true` (§7) — a node with
+it disabled 404s them. They are deliberately HTTP, not WebSocket gossip: reveal messages must never
+enter the gossip layer (§4), so they are never dedup'd, TTL-forwarded, or broadcast the way
+`rfq`/`quote_ref`/`cancel`/`peer_announce` are.
 
 ---
 
@@ -85,10 +92,43 @@ Every gossip message shares one envelope:
 }
 ```
 
-**`id` is content-addressed**, not random: `id = blake2b256(canonicalJSON(body))`, truncated to 32
-bytes. Two nodes independently receiving the same message compute the same `id`, which is what makes
+**`id` is content-addressed**, not random: `id = blake2b256(canonicalJSON(body))` — a native
+256-bit-output BLAKE2b digest (32 bytes), not a wider BLAKE2b variant truncated after the fact (see
+below — those are different functions with different internal IVs). Two nodes independently
+receiving the same message compute the same `id`, which is what makes
 deduplication work without coordination. `canonicalJSON` means keys sorted lexicographically, no
 insignificant whitespace, integers without exponents.
+
+`blake2b256`: Node's OpenSSL build exposes `blake2b512`/`blake2s256` but not a 256-bit-output
+BLAKE2b (verified 2026-08-28 via `crypto.getHashes()`) — truncating `blake2b512` is **not** the
+same function, since BLAKE2b's initialization vector depends on the declared output length. The
+reference node uses `@noble/hashes` (pure JS, audited, no native deps) for a real 256-bit BLAKE2b
+rather than silently substituting SHA-256 or a truncated BLAKE2b-512.
+
+**`sig` encoding.** `<hex64>` above is shorthand for "a hex-encoded signature blob," not a literal
+64-hex-character length — a Jubjub Schnorr signature (an EC point announcement plus a scalar
+response) doesn't fit in 32 bytes. The reference encoding is
+`announcement.x (32B) || announcement.y (32B) || response (32B)`, hex-encoded to 192 characters
+(`encodeSchnorrSignature`/`decodeSchnorrSignature` in `packages/sdk/src/schnorr.ts`, re-exported
+from `packages/relay-node/src/schema.ts`).
+
+**What message the `quote_ref`/`cancel` signature is actually over.** This signature never touches
+the chain — no circuit ever verifies it — so it is *not* required to use the same message encoding
+the contract's in-circuit Schnorr verification uses. The reference implementation signs a single
+field element: `reduceToField(blake2b256(canonicalJSON(body)))`. This exists purely so relays and
+takers can attribute a message to a dealer key without a chain read; it carries no on-chain
+significance and dealers should not assume signing convention parity with reveal signatures (§4)
+or any contract circuit.
+
+**A relay cannot cryptographically verify these signatures, only their shape.** RELAY.md's own
+"drop and penalize" wording in §5 implies a validity check, but `quote_ref`/`cancel` carry only
+`dealerCmt` — a one-way hash of the dealer's quote key (`docs/CONTRACTS.md`) — never the public key
+itself, and a relay must not read the chain to resolve `dealerCmt -> quotePk` (untrusted-relay
+invariant, `docs/ARCHITECTURE.md` Pillar 3). So a relay validates only that `sig` is present and
+correctly shaped (192 hex chars); actual cryptographic verification against the on-chain `quotePk`
+is the client's job, per §3.2 step 3. A relay that skipped this and instead cached and trusted a
+`quotePk` from prior traffic would be reintroducing exactly the trusted intermediary the untrusted-
+relay model rejects.
 
 ---
 
@@ -212,11 +252,25 @@ Two properties make this work:
 - **The nonce is inside the ciphertext.** Only the taker can open the commitment, so publishing the
   on-chain commitment leaks nothing about the price.
 
+**Ciphertext framing.** `ciphertext` above is `base64(nonce(12B) || AEAD-ciphertext || tag(16B))` —
+X25519 ECDH between the dealer's `dealerEncPk` (advertised in `quote_ref`) and the taker's
+`takerEncPk` (from the RFQ), HKDF-SHA256 (`info = "otc:reveal-channel:v1"`) to derive a 32-byte key,
+then ChaCha20-Poly1305 with a fresh random 12-byte nonce per message. Reference implementation:
+`packages/sdk/src/reveal-channel.ts` (`encryptReveal`/`decryptReveal`).
+
 If a dealer cannot accept inbound connections (a common case behind NAT), a relay MAY offer a
 **store-and-forward mailbox**: the relay holds an opaque ciphertext blob addressed to
 `takerEncPk` and delivers it. The relay still cannot read it — it holds a sealed box addressed to
 someone else. `revealVia: "mailbox"` signals this. **A relay that could read a reveal is a protocol
 violation, not a configuration option.**
+
+The mailbox is HTTP, not gossip (§1): `POST /mailbox/:takerEncPk` with the `reveal` message above
+as the body stores it; `GET /mailbox/:takerEncPk` returns and clears all pending entries for that
+recipient. The relay validates only the outer shape (`type`, `v`, `quoteId` is 32-byte hex,
+`ciphertext`/`sig` are non-empty strings) — it never attempts to parse or decrypt `ciphertext`.
+Entries are capped per recipient and expire after `MAILBOX_TTL_MS` (90 minutes in the reference
+implementation, chosen to span one Offer File refresh cycle, `docs/DEALER-NODE.md` §5, plus slack —
+a placeholder, not tuned against real traffic, same status as the M1 `TIME_SLACK` guess).
 
 ---
 
@@ -291,13 +345,21 @@ contact dealers directly. This limitation is recorded in `GRANT.md` rather than 
 packages/relay-node/
   src/
     server.ts       # WebSocket + HTTP endpoints
-    gossip.ts       # propagation, dedup seen-set, TTL
-    validate.ts     # envelope + per-type schema validation, signature checks
-    peers.ts        # peer table, reconnect, misbehavior scoring
-    mailbox.ts      # optional store-and-forward for sealed reveals
-    schema.ts       # shared with packages/sdk — single source of truth for the wire format
-  README.md         # run your own relay: docker run / pnpm start
+    gossip.ts       # propagation, dedup seen-set, TTL, retention sweeps
+    validate.ts     # envelope + per-type schema validation, signature shape checks
+    peers.ts        # per-peer rate limiting, misbehavior scoring, ban/reconnect
+    mailbox.ts      # optional store-and-forward for opaque reveal blobs
+    schema.ts       # wire types, canonicalJSON, id computation — imports packages/sdk/src/schnorr.ts
+                     # for signing/encoding so client and node share one signature implementation
+    bytes.ts         # hex/bigint plumbing + the blake2b256 wrapper
+    bin.ts            # env-var-driven CLI entrypoint (RELAY_PORT, RELAY_PEERS, ...)
+  README.md         # run your own relay: pnpm --filter @otc/relay-node start
 ```
+
+The point-to-point reveal encryption itself (§4) lives in `packages/sdk/src/reveal-channel.ts`,
+not `packages/relay-node` — it is dealer/taker-side crypto that never touches a relay's own logic
+(a relay only ever forwards or mailboxes an already-opaque blob), so it belongs with the rest of
+the client-side quote/reveal flow in the SDK (`quotes.ts`, `fraud.ts`).
 
 `schema.ts` is shared with the SDK so client and node can never drift on the wire format. It is
 generated from, and validated against, the definitions in this document — **this file is normative,
