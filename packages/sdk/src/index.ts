@@ -10,6 +10,7 @@ export * from './providers.js';
 export * from './bonding.js';
 export * from './terms.js';
 export * from './quotes.js';
+export * from './reveal-channel.js';
 export * from './fraud.js';
 export * from './offers.js';
 export * from './indexer.js';
