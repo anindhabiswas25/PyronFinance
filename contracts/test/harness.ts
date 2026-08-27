@@ -19,7 +19,6 @@ import {
   createConstructorContext,
   createCircuitContext,
   dummyContractAddress,
-  encodeCoinPublicKey,
   type JubjubPoint,
 } from '@midnight-ntwrk/compact-runtime';
 import {
@@ -34,7 +33,7 @@ import { dealerCommitment } from '../../packages/sdk/src/domain.js';
 import { schnorrPublicKey } from '../../packages/sdk/src/schnorr.js';
 
 // ── Contract constants, mirrored for tests ────────────────────────────────
-// These duplicate the literals inlined in OTCProtocol.compact. Tests assert against them, so a
+// These mirror the nullary pure circuits in OTCProtocol.compact. Tests assert against them, so a
 // contract change that forgets to update them shows up as a failure rather than silent drift.
 export const MAX_QUOTE_VALIDITY = 900;
 export const CHALLENGE_WINDOW = 600;
@@ -47,7 +46,10 @@ export const SLASH_PROVER_BPS = 1000n;
 /** A plausible unix-seconds base time. Arbitrary but fixed, so tests are deterministic. */
 export const T0 = 1_800_000_000;
 
-const COIN_PK = encodeCoinPublicKey('0'.repeat(64));
+// A CoinPublicKey is a hex string at this API boundary, not encoded bytes. The simulator does
+// not care about its value — the contract's identity logic runs off the dealerSecretKey witness,
+// not the Zswap coin key.
+const COIN_PK = '0'.repeat(64);
 const CONTRACT_ADDR = dummyContractAddress();
 
 type CircuitName = keyof ImpureCircuits<OTCPrivateState>;

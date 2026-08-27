@@ -26,7 +26,7 @@ function settledTrade() {
   const cmt = bondDealer(sim);
   sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600));
   const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
-  sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) });
+  sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, bytes32(0xab));
   return { sim, cmt, quoteId };
 }
 

@@ -189,6 +189,32 @@
               }
             ]
           }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "releaseExpiredQuote",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "quoteId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
         }
       ],
       "result-type": {
