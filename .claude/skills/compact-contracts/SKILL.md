@@ -104,15 +104,54 @@ commitment (`docs/CONTRACTS.md` §8).
   largest representable `Uint` literal (i.e., `>= 2^248`), e.g.
   `(6554484396890773809930967563523245729705921265872317281365359162392183254199 as Field)`.
 
-### Unverified against the compiler — check during M1
+### Verified against compiler 0.30.0 (M1)
 
-1. **Struct-valued `Map`** (`Map<Bytes<32>, Bond>`).
-2. **Struct spread syntax** (`Bond { ...b, amount: 0 }`). If unsupported, rebuild field-by-field.
-3. **`blockTimeLt`** for the validity-window *upper* bound. `blockTimeGte(t)` gives a lower bound only;
-   `docs/CONTRACTS.md` §5.2 currently has a placeholder awaiting this.
-4. **`Maybe<Bytes<32>>` as a circuit parameter** (`recordSettlement`'s optional `challengeId`).
+| Question | Answer |
+|---|---|
+| Struct-valued `Map` (`Map<Bytes<32>, Bond>`) | ✅ Supported |
+| Struct spread (`Bond { ...b, amount: 0 }`) | ✅ Supported |
+| `Maybe<Bytes<32>>` as a circuit parameter | ✅ Supported — encodes as `{is_some, value}` in TS |
+| `blockTimeLt` | ❌ Does not exist, and is not needed — see below |
+| Module-scope `const` | ❌ **Parse error.** Use nullary `pure circuit`s instead |
+| Division operator `/` | ❌ **Parse error**, even for plain `Uint`. Use witness + range-check |
+| Reading block time as a value | ❌ Impossible. Only `blockTimeGte` comparison exists |
+| `Map<K, Counter>` auto-vivification | ❌ **Does NOT auto-vivify** — dangerous, see below |
 
-Record the answers here as they're found.
+### `Map<K, Counter>` does not auto-vivify
+
+`settled.lookup(k)` on a key that was never written **throws at runtime** — both for `.read()` and
+for `.increment(n)`. There is no zero-Counter default.
+
+This shipped as a live bug: `postBond` omitted counter initialisation on the assumption that lookup
+would vivify, which made `recordSettlement` and `slashBond` throw for every dealer. Slashing — the
+protocol's entire enforcement mechanism — did not work at all, and it compiled and typechecked
+perfectly.
+
+```compact
+settled.insertDefault(cmt);   // ✅ correct initialiser
+slashed.insertDefault(cmt);
+// default<Counter>() does not parse — Counter is a ledger-only ADT, not a constructible value.
+```
+
+**Initialise every `Map<K, Counter>` entry explicitly when the key is first created.**
+
+### Expressing an upper time bound without `blockTimeLt`
+
+To require `deadline <= now + WINDOW`, i.e. `now >= deadline - WINDOW`:
+
+```compact
+assert(blockTimeGte((deadline - WINDOW()) as Uint<64>), "window too long");   // ✅
+assert(!blockTimeGte((deadline - WINDOW()) as Uint<64>), "window too long");  // ❌ INVERTED
+```
+
+**Both compile. Both typecheck. They mean opposite things.** The negated form requires the window
+to be *longer* than the cap, rejecting every compliant input. This exact inversion shipped in M1's
+`commitQuote` and was invisible to the compiler, to `tsc`, and to review — only executing the
+circuit caught it.
+
+`!blockTimeGte(t)` is still the right idiom for "block time < t"; the trap is applying it where you
+actually want the non-negated comparison. Guard the subtraction too: `deadline - WINDOW` underflows
+`Uint<64>` and wraps if `deadline < WINDOW`.
 
 ---
 
@@ -261,7 +300,53 @@ the EC verification. Proving-time measurement (task 1.9/2.8) should account for 
 
 ---
 
-## 10. Security checklist for this contract
+## 10. Offline circuit testing — do this before touching a chain
+
+`@midnight-ntwrk/compact-runtime` executes real circuits with **no wallet, no proof server, no
+indexer and no deployment.** There is no excuse for an untested contract, even with the faucet
+rate-limited and Docker unavailable.
+
+```ts
+import { createConstructorContext, createCircuitContext, dummyContractAddress }
+  from '@midnight-ntwrk/compact-runtime';
+import { Contract, ledger } from '../managed/otc-protocol/contract/index.js';
+
+const contract = new Contract(otcWitnesses);
+const init = contract.initialState(createConstructorContext(privateState, COIN_PK));
+
+const ctx = createCircuitContext(
+  dummyContractAddress(),
+  COIN_PK,                      // a hex STRING here, not encodeCoinPublicKey() bytes
+  state, privateState,
+  undefined, undefined,
+  blockTime,                    // <- the whole reason this works
+);
+const res = contract.impureCircuits.postBond(ctx, 1000n, quotePk);
+const l = ledger(res.context.currentQueryContext.state);
+```
+
+**`createCircuitContext`'s trailing `time` argument is the raw block-time value `blockTimeGte`
+compares against.** It is not implicitly milliseconds — whatever unit you pass is the unit the
+contract sees. Since contract constants are seconds, pass seconds. Pin this with a probe test
+before writing timing assertions; every timelock, expiry and challenge-window test depends on it.
+
+Also available: `res.gasCost` for relative circuit cost, and full ledger inspection between calls.
+Swap `privateState` per call to simulate different actors (dealer / taker / anonymous watchdog).
+
+### Why this is not optional
+
+M1 produced a contract that compiled cleanly, generated all prover keys, and passed
+`tsc --noEmit` — while containing an inverted time comparison that rejected every valid quote and a
+counter-initialisation bug that made slashing impossible. **Neither the compiler nor the type
+checker can see either class of error.** Compilation proves a circuit is well-formed, not that it
+does what you meant.
+
+Write the tests as *characterization tests first* — assert correct spec behaviour, watch them fail,
+then fix. A suite written after the fix only proves the fix agrees with itself.
+
+---
+
+## 11. Security checklist for this contract
 
 - [ ] Quote commitments use `persistentCommit` with a fresh nonce — **never** `persistentHash`
 - [ ] Distinct `pad(32, "otc:...:v1")` domain separator per hash purpose
