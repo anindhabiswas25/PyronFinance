@@ -3,10 +3,12 @@
 > **Re-read this file at the start of every session before doing any work.**
 > It is the live record of what is done, what is in progress, and what decisions are still open.
 
-**Last updated:** 2026-08-28 — M1 contract now **executed and tested in simulation** (122 tests).
-Six defects found and fixed, two of which made the protocol non-functional. Tasks 1.0–1.6, 1.8,
-1.10 complete; 1.9 complete in simulation; 1.7 and on-chain 1.9 remain blocked on a funded Preprod
-wallet + local proof server.
+**Last updated:** 2026-08-28 — M2.1–2.3 (relay node, shared schema, encrypted reveal channel) built
+and tested in simulation (191 tests total: 122 from M1 + 69 new). Stopped for confirmation before
+2.4/2.5 per scope. M1 status below is unchanged from the prior session: contract **executed and
+tested in simulation** (122 tests). Six defects found and fixed, two of which made the protocol
+non-functional. Tasks 1.0–1.6, 1.8, 1.10 complete; 1.9 complete in simulation; 1.7 and on-chain 1.9
+remain blocked on a funded Preprod wallet + local proof server.
 
 ---
 
@@ -16,7 +18,7 @@ wallet + local proof server.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | 🟡 Contract executed & tested in simulation (122 tests, 11 circuits); on-chain deploy blocked on funded wallet + proof server |
-| **M2** | Relay node + minimal RFQ flow on Preprod | ⬜ Not started |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.3 built and tested in simulation (191 tests); 2.4–2.9 not started, blocked per scope below |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -127,15 +129,54 @@ quietly absorbed. **Do this first; do not build around it.**
 
 | # | Task | Status |
 |---|---|---|
-| 2.1 | `packages/relay-node` per `docs/RELAY.md`: envelope, validation, gossip, dedup, rate limits | ⬜ |
-| 2.2 | `schema.ts` shared between relay-node and SDK | ⬜ |
-| 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ⬜ |
-| 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ⬜ |
-| 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ |
+| 2.1 | `packages/relay-node` per `docs/RELAY.md`: envelope, validation, gossip, dedup, rate limits | ✅ Built and tested in simulation — see below |
+| 2.2 | `schema.ts` shared between relay-node and SDK | ✅ `packages/relay-node/src/schema.ts`; relay-node depends on `@otc/sdk`'s `schnorr.ts` for signing/encoding, not the reverse |
+| 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ✅ Built and tested in simulation — see below |
+| 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ⬜ Not started — blocked on a live indexer per CLAUDE.md scope note |
+| 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ Not started — blocked on a wallet |
 | 2.6 | Zswap settlement path from the taker's selection | ⬜ |
 | 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | ⬜ |
 | 2.8 | **Measure real proof-generation + commit latency on Preprod** | ⬜ |
 | 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ⬜ |
+
+**What "built and tested in simulation" means here, precisely** — same discipline M1 used
+(§ "Compilation is not verification" below):
+
+- `packages/relay-node` (2.1/2.2) is exercised by 60 tests: canonical-JSON/id determinism
+  including adversarial cases (reordered keys, unicode, id/body mismatch), every RELAY.md §5
+  rejection path individually, seen-set loop termination, TTL decrement, never-echo-to-sender,
+  rfq/quote_ref retention + expiry sweeps, per-type rate limiting, misbehavior banning, two- and
+  three-node in-process gossip convergence, **and** a real end-to-end test spinning up two actual
+  `startRelayServer` instances on real sockets and gossiping a message between them over a live
+  WebSocket connection (`packages/relay-node/test/server.test.ts`) — not just the in-process fakes.
+  It has **not** been run against real internet peers, TLS (`wss://`), or any sustained/adversarial
+  load — the rate-limit and misbehavior-score constants are placeholders, not tuned.
+- `packages/sdk/src/reveal-channel.ts` (2.3) is exercised by 9 tests covering exactly the negative
+  cases CLAUDE.md called out: the intended taker decrypts and recovers the exact plaintext; a
+  different party (wrong taker key, or correct taker key with a wrong claimed dealer key) fails
+  with a typed `RevealDecryptError`; a ciphertext tampered in the tag or in the body fails the AEAD
+  check; and a simulated mailbox operator holding only the raw wire bytes cannot decrypt them.
+  ChaCha20-Poly1305 uses Node's native `node:crypto` cipher (not a JS polyfill); X25519/HKDF use
+  `@noble/curves`/`@noble/hashes`, matching the audited-pure-JS-dependency bar CLAUDE.md set for
+  `blake2b256`.
+- **Genuinely unverified, do not claim otherwise:** no real relay has been run as a long-lived
+  process, no third party has attempted to write an independent conforming node from `RELAY.md`
+  alone (the actual test of Pillar 3's "protocol, not our backend" claim), and the mailbox/reveal
+  path has never been exercised against a real Dealer Node or real Offer File — those need M3.
+
+**Gap resolved during 2.1–2.3, surfaced rather than silently decided:** RELAY.md described
+`quote_ref`/`cancel` signature verification as something a relay does ("drop and penalize" on an
+invalid signature), but a relay only ever sees `dealerCmt` (a one-way hash) and — per the
+untrusted-relay invariant — must not read the chain to resolve it to a public key. A relay
+therefore cannot cryptographically verify these signatures at all, only their shape (192 hex
+chars). `RELAY.md` §2/§5 now say this explicitly; real verification stays the client's job per
+§3.2 step 3, unchanged from the original design intent.
+
+**Pre-existing uncommitted change found, not made by this session:** `packages/sdk/src/wallet.ts`
+has an uncommitted diff (deferred sync — `waitForSync()` no longer runs at construction time, so
+`createHeadlessWallet` doesn't block on an unfunded address's sync) left on this branch from
+before this session started. It's unrelated to M2 and was left untouched and uncommitted — flagging
+it here so it isn't mistaken for dropped work.
 
 **Definition of done:** one full sealed-bid RFQ cycle — including at least two competing dealer
 commitments — runs end to end on Preprod and is demoable.
