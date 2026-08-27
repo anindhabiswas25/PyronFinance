@@ -249,7 +249,14 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
 // recordSettlement is dealer-attested, not Zswap-verified: the contract cannot inspect a
 // Zswap swap, so this is a known, accepted limitation (see docs/CONTRACTS.md §5.2). The
 // counter is a soft reputation signal; the bond is the hard guarantee.
-export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>): [] {
+//
+// `recipient` is the dealer's unshielded wallet address for the challenge-bond refund. It must
+// be passed explicitly: the dealer *commitment* is persistentHash("otc:dealer:v1", sk), which is
+// an identity commitment and NOT an address — refunding to it would send funds to a key nobody
+// holds. withdrawBond takes an explicit recipient for exactly the same reason.
+export circuit recordSettlement(
+  quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>, recipient: Bytes<32>
+): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   const qidPub = disclose(quoteId);
   assert(quotes.member(qidPub), "Unknown quote");
@@ -269,7 +276,8 @@ export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>
     assert(!c.resolved, "Challenge already resolved");
     challenges.insert(cid, Challenge { ...c, resolved: true });
     // Challenge bond returns to the dealer — this is what prices griefing.
-    sendUnshielded(default<Bytes<32>>, c.bondAmount, right<ContractAddress, UserAddress>(UserAddress { bytes: cmt }));
+    sendUnshielded(default<Bytes<32>>, c.bondAmount,
+                   right<ContractAddress, UserAddress>(UserAddress { bytes: disclose(recipient) }));
     bonds.insert(cmt, Bond {
       ...b,
       liveQuotes: newLiveQuotes,
@@ -280,6 +288,41 @@ export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>
   }
 
   settled.lookup(cmt).increment(1);
+}
+
+// Releases a quote that expired without ever being settled — the ordinary outcome when no
+// taker trades. Permissionless: anyone may call it, including the dealer clearing their own
+// stale liability.
+//
+// WHY THIS EXISTS: liveQuotes is otherwise only decremented by recordSettlement, so an expired
+// unsettled quote would pin liveQuotes > 0 forever, and withdrawBond asserts liveQuotes == 0.
+// Without this circuit an honest dealer can never recover their bond.
+//
+// WHY IT IS GATED ON PROOF_GRACE_PERIOD, not just validUntil: submitFraudProofMismatch asserts
+// !q.resolved, so releasing at expiry would let a fraudulent dealer resolve their own quote the
+// instant it expired and become immune to a Class-A proof. Waiting out the grace period closes
+// that escape hatch and is what makes PROOF_GRACE_PERIOD load-bearing.
+//
+// The Class-B path needs no extra guard here: a challenge can only be opened while the quote is
+// live, so respondBy <= validUntil + CHALLENGE_WINDOW (600) < validUntil + PROOF_GRACE_PERIOD
+// (3600). Any timeout proof therefore becomes submittable strictly before release is possible.
+export circuit releaseExpiredQuote(quoteId: Bytes<32>): [] {
+  const qidPub = disclose(quoteId);
+  assert(quotes.member(qidPub), "Unknown quote");
+  const q = quotes.lookup(qidPub);
+  assert(!q.resolved, "Quote already resolved");
+  assert(blockTimeGte((q.validUntil + PROOF_GRACE_PERIOD()) as Uint<64>),
+         "Fraud-proof grace period still open");
+  quotes.insert(qidPub, Quote { ...q, resolved: true });
+  releaseLiveQuote(q.dealerCmt);
+}
+
+// Decrements a dealer's live-quote count, guarding against underflow. Every terminal transition
+// of a quote must call this exactly once, or the dealer's bond becomes unwithdrawable.
+circuit releaseLiveQuote(dealerCmt: Bytes<32>): [] {
+  const b = bonds.lookup(dealerCmt);
+  assert(b.liveQuotes > 0, "liveQuotes underflow");
+  bonds.insert(dealerCmt, Bond { ...b, liveQuotes: (b.liveQuotes - 1) as Uint<32> });
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -310,6 +353,7 @@ export circuit submitFraudProofMismatch(
   assert(recomputed != q.commitment, "Reveal matches commitment — no fraud");
 
   quotes.insert(qidPub, Quote { ...q, resolved: true });
+  releaseLiveQuote(q.dealerCmt);
   slashBond(q.dealerCmt, disclose(beneficiary));
 }
 
@@ -327,8 +371,22 @@ export circuit submitFraudProofTimeout(challengeId: Bytes<32>): [] {
   // Challenge bond returns to the taker; they were in the right.
   sendUnshielded(default<Bytes<32>>, c.bondAmount, right<ContractAddress, UserAddress>(UserAddress { bytes: c.takerAddr }));
   challenges.insert(cidPub, Challenge { ...c, resolved: true });
-  quotes.insert(c.quoteId, Quote { ...q, resolved: true });
+  closeChallenge(dealerCmt);
+  // The quote may already have been resolved by releaseExpiredQuote if nobody proved the
+  // timeout before the grace period elapsed. The challenge record is authoritative here — an
+  // unanswered challenge is still a slash — but the live-quote slot must only be released once.
+  if (!q.resolved) {
+    quotes.insert(c.quoteId, Quote { ...q, resolved: true });
+    releaseLiveQuote(dealerCmt);
+  }
   slashBond(dealerCmt, c.takerAddr);
+}
+
+// Decrements a dealer's open-challenge count, guarding against underflow.
+circuit closeChallenge(dealerCmt: Bytes<32>): [] {
+  const b = bonds.lookup(dealerCmt);
+  assert(b.openChallenges > 0, "openChallenges underflow");
+  bonds.insert(dealerCmt, Bond { ...b, openChallenges: (b.openChallenges - 1) as Uint<32> });
 }
 
 // Slash arithmetic computes the burn share as a remainder so integer-division
@@ -364,8 +422,15 @@ circuit slashBond(dealerCmt: Bytes<32>, beneficiary: Bytes<32>): [] {
 export circuit attachDisclosureNote(
   tradeId: Bytes<32>, ciphertextHash: Bytes<32>, policyTag: Uint<16>, recipientHint: Bytes<32>
 ): [] {
-  assert(!notes.member(disclose(tradeId)), "Note already attached");
-  notes.insert(disclose(tradeId), NoteRef {
+  const tid = disclose(tradeId);
+  // The one property this primitive must enforce, and the whole reason it has value:
+  // "A disclosure note is provably tied to one specific settled trade." Without these two
+  // assertions a note can be attached to arbitrary bytes, and that sentence — which
+  // docs/DISCLOSURE.md advertises and its verification flow depends on — is simply false.
+  assert(quotes.member(tid), "Unknown trade");
+  assert(quotes.lookup(tid).resolved, "Trade not settled");
+  assert(!notes.member(tid), "Note already attached");
+  notes.insert(tid, NoteRef {
     ciphertextHash: disclose(ciphertextHash),
     policyTag: disclose(policyTag),
     recipientHint: disclose(recipientHint),

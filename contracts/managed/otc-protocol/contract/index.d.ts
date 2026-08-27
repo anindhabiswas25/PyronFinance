@@ -55,7 +55,10 @@ export type ImpureCircuits<PS> = {
                           now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
                    quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array }): __compactRuntime.CircuitResults<PS, []>;
+                   challengeId_0: { is_some: boolean, value: Uint8Array },
+                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+  releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
+                      quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
                            quoteId_0: Uint8Array,
                            revealedTerms_0: bigint[],
@@ -92,7 +95,10 @@ export type ProvableCircuits<PS> = {
                           now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
                    quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array }): __compactRuntime.CircuitResults<PS, []>;
+                   challengeId_0: { is_some: boolean, value: Uint8Array },
+                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+  releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
+                      quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
                            quoteId_0: Uint8Array,
                            revealedTerms_0: bigint[],
@@ -132,7 +138,10 @@ export type Circuits<PS> = {
                           now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
                    quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array }): __compactRuntime.CircuitResults<PS, []>;
+                   challengeId_0: { is_some: boolean, value: Uint8Array },
+                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+  releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
+                      quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
                            quoteId_0: Uint8Array,
                            revealedTerms_0: bigint[],

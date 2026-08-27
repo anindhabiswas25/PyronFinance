@@ -186,7 +186,7 @@ describe('submitFraudProofTimeout — Class B', () => {
   it('a dealer who settles in time cannot then be slashed', () => {
     const { sim, cmt, quoteId, challengeId } = challenged();
     sim.advanceTo(T0 + 100);
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: challengeId });
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: challengeId }, bytes32(0xab));
 
     sim.advanceTo(T0 + CHALLENGE_WINDOW + 1);
     const msg = sim.expectRevert(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);

@@ -26,7 +26,7 @@ describe('recordSettlement — no challenge', () => {
   it('resolves the quote, bumps settled, and releases the live-quote slot', () => {
     const { sim, cmt, quoteId } = bondedWithQuote();
 
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) });
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
 
     expect(sim.ledger.quotes.lookup(quoteId).resolved).toBe(true);
     expect(sim.ledger.settled.lookup(cmt).read()).toBe(1n);
@@ -38,16 +38,16 @@ describe('recordSettlement — no challenge', () => {
     const other = bytes32(0xbb);
     sim.call(dealer(other), 'postBond', 1000n, QUOTE_PK);
     const msg = sim.expectRevert(
-      dealer(other), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) },
+      dealer(other), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT,
     );
     expect(msg).toMatch(/Not your quote/);
   });
 
   it('rejects double settlement', () => {
     const { sim, quoteId } = bondedWithQuote();
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) });
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
     const msg = sim.expectRevert(
-      dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) },
+      dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT,
     );
     expect(msg).toMatch(/Already resolved/);
   });
@@ -92,9 +92,7 @@ describe('recordSettlement answering a challenge — this is what prices griefin
     sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
     const cid = deriveChallengeId(quoteId, TAKER_ADDR);
 
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: cid },
-      // NOTE: this argument list gains a `recipient` once D2 is fixed.
-    );
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: cid }, RECIPIENT);
 
     expect(sim.ledger.challenges.lookup(cid).resolved).toBe(true);
     const bond = sim.ledger.bonds.lookup(cmt);
@@ -151,7 +149,7 @@ describe('expired quotes must not permanently lock the bond', () => {
 
   it('rejects releasing an already-resolved quote', () => {
     const { sim, quoteId } = bondedWithQuote();
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) });
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
     sim.advanceTo(T0 + 600 + PROOF_GRACE_PERIOD);
     const msg = sim.expectRevert(dealer(DEALER_SK), 'releaseExpiredQuote', quoteId);
     expect(msg).toMatch(/resolved/i);
