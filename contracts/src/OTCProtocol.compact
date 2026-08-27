@@ -1,0 +1,350 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+import "schnorr" prefix Schnorr_;
+
+// ─────────────────────────────────────────────────────────────────────────
+// Constants — see docs/CONTRACTS.md §2 and §6 (timelock inequality)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Slashing distribution — basis points, must sum to 10_000.
+// 60% compensation to the wronged taker, 10% bounty to the fraud prover,
+// 30% burned (retained forever, no withdrawal path — see slashBond below).
+// SLASH_TAKER_BPS = 6000, SLASH_PROVER_BPS = 1000, SLASH_BURN_BPS = 3000 (implicit remainder)
+
+// Timing (seconds).
+// MAX_QUOTE_VALIDITY = 900 (15 min), CHALLENGE_WINDOW = 600 (10 min),
+// PROOF_GRACE_PERIOD = 3600 (1 h), BOND_WITHDRAW_DELAY = 86400 (24 h).
+// Inequality: BOND_WITHDRAW_DELAY > MAX_QUOTE_VALIDITY + CHALLENGE_WINDOW + PROOF_GRACE_PERIOD
+//             86400 > 900 + 600 + 3600 = 5100  ✓ (large margin, deliberate — see CONTRACTS.md §6)
+
+// MIN_BOND / MIN_CHALLENGE_BOND are deliberately unset in the spec (CONTRACTS.md §7) —
+// they need M2 Preprod data. This is a placeholder, not a real value; do not use in
+// any deployment beyond internal Preprod testing.
+// PLACEHOLDER_MIN_BOND = 1  (smallest possible nonzero bond, for testability only)
+
+// ─────────────────────────────────────────────────────────────────────────
+// Ledger structs
+// ─────────────────────────────────────────────────────────────────────────
+
+export struct Bond {
+  amount: Uint<128>,          // currently bonded, minus any slashed
+  quotePk: JubjubPoint,       // dealer's quote-signing pubkey (verifies reveals)
+  withdrawRequested: Uint<64>,// unix secs; 0 = no pending withdrawal
+  liveQuotes: Uint<32>,       // unexpired commitments — blocks withdrawal while > 0
+  openChallenges: Uint<32>,   // unresolved challenges — blocks withdrawal while > 0
+  active: Boolean,
+}
+
+export struct Quote {
+  dealerCmt: Bytes<32>,
+  commitment: Bytes<32>,      // persistentCommit(terms, nonce) — NOT a bare hash
+  validUntil: Uint<64>,
+  rfqId: Bytes<32>,
+  resolved: Boolean,          // settled or slashed; terminal
+}
+
+export struct Challenge {
+  quoteId: Bytes<32>,
+  takerAddr: Bytes<32>,       // payout target for compensation
+  bondAmount: Uint<128>,
+  respondBy: Uint<64>,
+  resolved: Boolean,
+}
+
+export struct NoteRef {
+  ciphertextHash: Bytes<32>,  // hash of the off-chain encrypted note
+  policyTag: Uint<16>,        // generic; contract ascribes no meaning — see docs/DISCLOSURE.md
+  recipientHint: Bytes<32>,   // opaque to the contract
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Ledger state
+// ─────────────────────────────────────────────────────────────────────────
+
+export ledger bonds: Map<Bytes<32>, Bond>;          // dealerCmt -> bond
+export ledger settled: Map<Bytes<32>, Counter>;      // dealerCmt -> settled trades
+export ledger slashed: Map<Bytes<32>, Counter>;      // dealerCmt -> times slashed
+export ledger quotes: Map<Bytes<32>, Quote>;         // quoteId -> commitment record
+export ledger challenges: Map<Bytes<32>, Challenge>; // challengeId -> challenge
+export ledger notes: Map<Bytes<32>, NoteRef>;        // tradeId -> disclosure note ref
+export ledger burnedTotal: Uint<128>;                // transparency only; never withdrawable
+
+// ─────────────────────────────────────────────────────────────────────────
+// Private inputs
+// ─────────────────────────────────────────────────────────────────────────
+
+witness dealerSecretKey(): Bytes<32>;
+witness takerAddress(): Bytes<32>;
+
+// Compact has no division operator at all (confirmed against the compiler —
+// `/` is a parse error even for plain Uint arithmetic; see compact-contracts
+// SKILL.md). Computing the 60/10/30 slash split therefore needs the standard
+// ZK pattern: the witness supplies the pre-divided shares, and the circuit
+// verifies each is the correct floor-division result via multiplication
+// (which IS supported) and a tight two-sided inequality — the same
+// range-checked-division technique used for the Schnorr challenge reduction.
+witness computeSlashShares(amount: Uint<128>): [Uint<128>, Uint<128>]; // [takerCut, proverCut]
+
+// ─────────────────────────────────────────────────────────────────────────
+// Domain-separated derivations — distinct separators, never reused
+// ─────────────────────────────────────────────────────────────────────────
+
+pure circuit dealerCommitment(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "otc:dealer:v1"), sk]);
+}
+
+pure circuit deriveQuoteId(dealerCmt: Bytes<32>, rfqId: Bytes<32>, c: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "otc:quote:v1"), dealerCmt, rfqId, c]);
+}
+
+pure circuit deriveChallengeId(quoteId: Bytes<32>, taker: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "otc:challenge:v1"), quoteId, taker]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5.1 Bonding — permissionless, no approval step exists anywhere
+// ─────────────────────────────────────────────────────────────────────────
+
+export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  assert(!bonds.member(cmt), "Dealer already bonded; use topUpBond");
+  assert(disclose(amount) >= 1, "Bond below minimum"); // PLACEHOLDER_MIN_BOND — see docs/CONTRACTS.md §7
+  receiveUnshielded(default<Bytes<32>>, disclose(amount));
+  bonds.insert(cmt, Bond {
+    amount: disclose(amount),
+    quotePk: disclose(quotePk),
+    withdrawRequested: 0,
+    liveQuotes: 0,
+    openChallenges: 0,
+    active: true,
+  });
+  // settled/slashed need no explicit init — Map<K, Counter> auto-vivifies a
+  // zero Counter for any key on first .lookup() (verified against the
+  // compiler; default<Counter>() itself does not parse, Counter is a
+  // ledger-only ADT, not a constructible value — see compact-contracts
+  // SKILL.md).
+}
+
+export circuit topUpBond(amount: Uint<128>): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  assert(bonds.member(cmt), "Not a dealer");
+  const b = bonds.lookup(cmt);
+  receiveUnshielded(default<Bytes<32>>, disclose(amount));
+  bonds.insert(cmt, Bond { ...b, amount: (b.amount + disclose(amount)) as Uint<128> });
+}
+
+// Starts the timelock. Does NOT stop the dealer honoring quotes already live.
+//
+// `now` is caller-supplied, not chain-read: Compact circuits can only *compare* against
+// block time (`blockTimeGte`), there is no builtin to read it as a value (confirmed against
+// the compiler — see compact-contracts SKILL.md). The two-sided check below bounds `now` to
+// within TIME_SLACK seconds of actual chain time, so a caller can't claim a wildly wrong
+// timestamp to manipulate the timelock.
+export circuit requestBondWithdrawal(now: Uint<64>): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  assert(bonds.member(cmt), "Not a dealer");
+  const b = bonds.lookup(cmt);
+  const claimedNow = disclose(now);
+  assert(blockTimeGte(claimedNow), "claimed time is in the future");
+  assert(!blockTimeGte((claimedNow + 300) as Uint<64>), "claimed time too far in the past"); // TIME_SLACK
+  bonds.insert(cmt, Bond { ...b, withdrawRequested: claimedNow, active: false });
+  // active=false => commitQuote now rejects. A withdrawing dealer cannot take on new obligations.
+}
+
+export circuit withdrawBond(recipient: Bytes<32>): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  assert(bonds.member(cmt), "Not a dealer");
+  const b = bonds.lookup(cmt);
+  assert(b.withdrawRequested > 0, "No withdrawal requested");
+  assert(blockTimeGte((b.withdrawRequested + 86400) as Uint<64>), "Timelock not elapsed");
+  assert(b.openChallenges == 0, "Unresolved challenges outstanding");
+  assert(b.liveQuotes == 0, "Live quote commitments outstanding");
+  sendUnshielded(default<Bytes<32>>, b.amount,
+                 right<ContractAddress, UserAddress>(UserAddress { bytes: disclose(recipient) }));
+  bonds.remove(cmt); // counters deliberately persist — see docs/CONTRACTS.md §8
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5.2 Quoting and settlement
+// ─────────────────────────────────────────────────────────────────────────
+
+export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: Uint<64>): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  assert(bonds.member(cmt), "Not a dealer");
+  const b = bonds.lookup(cmt);
+  assert(b.active, "Dealer not active (withdrawing or unbonded)");
+  assert(b.amount >= 1, "Bond fell below minimum after slashing"); // PLACEHOLDER_MIN_BOND
+  // Validity window must be in the future and capped — an unbounded window would let a
+  // dealer sit on a free option indefinitely, and would force BOND_WITHDRAW_DELAY to be
+  // unbounded too. `!blockTimeGte(t)` is the clean "block time < t" idiom (no separate
+  // blockTimeLt needed — see compact-contracts SKILL.md §4).
+  assert(!blockTimeGte(disclose(validUntil)), "validUntil already past");
+  assert(!blockTimeGte((disclose(validUntil) - 900) as Uint<64>), "Validity window too long"); // MAX_QUOTE_VALIDITY
+  const qid = deriveQuoteId(cmt, disclose(rfqId), disclose(commitment));
+  assert(!quotes.member(qid), "Duplicate quote");
+  quotes.insert(qid, Quote {
+    dealerCmt: cmt,
+    commitment: disclose(commitment),
+    validUntil: disclose(validUntil),
+    rfqId: disclose(rfqId),
+    resolved: false,
+  });
+  bonds.insert(cmt, Bond { ...b, liveQuotes: (b.liveQuotes + 1) as Uint<32> });
+}
+
+// Taker converts an unobservable off-chain omission into an observable on-chain one.
+// `now` is caller-supplied and chain-validated — see requestBondWithdrawal above for why.
+export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>, now: Uint<64>): [] {
+  const qidPub = disclose(quoteId);
+  assert(quotes.member(qidPub), "Unknown quote");
+  const q = quotes.lookup(qidPub);
+  assert(!q.resolved, "Quote already resolved");
+  assert(!blockTimeGte(q.validUntil), "Quote expired — nothing to honor");
+  assert(disclose(bondAmount) >= 1, "Challenge bond too small"); // PLACEHOLDER_MIN_CHALLENGE_BOND
+  receiveUnshielded(default<Bytes<32>>, disclose(bondAmount));
+  const claimedNow = disclose(now);
+  assert(blockTimeGte(claimedNow), "claimed time is in the future");
+  assert(!blockTimeGte((claimedNow + 300) as Uint<64>), "claimed time too far in the past"); // TIME_SLACK
+  const taker = disclose(takerAddress());
+  const cid = deriveChallengeId(qidPub, taker);
+  assert(!challenges.member(cid), "Challenge already open for this taker");
+  challenges.insert(cid, Challenge {
+    quoteId: qidPub,
+    takerAddr: taker,
+    bondAmount: disclose(bondAmount),
+    respondBy: (claimedNow + 600) as Uint<64>, // CHALLENGE_WINDOW
+    resolved: false,
+  });
+  const dealerBond = bonds.lookup(q.dealerCmt);
+  bonds.insert(q.dealerCmt, Bond { ...dealerBond, openChallenges: (dealerBond.openChallenges + 1) as Uint<32> });
+}
+
+// Called by the dealer after Zswap settlement completes. Also answers any open challenge,
+// returning the challenge bond to the dealer — this is what prices griefing.
+//
+// recordSettlement is dealer-attested, not Zswap-verified: the contract cannot inspect a
+// Zswap swap, so this is a known, accepted limitation (see docs/CONTRACTS.md §5.2). The
+// counter is a soft reputation signal; the bond is the hard guarantee.
+export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>): [] {
+  const cmt = disclose(dealerCommitment(dealerSecretKey()));
+  const qidPub = disclose(quoteId);
+  assert(quotes.member(qidPub), "Unknown quote");
+  const q = quotes.lookup(qidPub);
+  assert(q.dealerCmt == cmt, "Not your quote");
+  assert(!q.resolved, "Already resolved");
+  quotes.insert(qidPub, Quote { ...q, resolved: true });
+
+  const b = bonds.lookup(cmt);
+  const newLiveQuotes = (b.liveQuotes - 1) as Uint<32>;
+
+  if (disclose(challengeId.is_some)) {
+    const cid = disclose(challengeId.value);
+    assert(challenges.member(cid), "Unknown challenge");
+    const c = challenges.lookup(cid);
+    assert(c.quoteId == qidPub, "Challenge does not match this quote");
+    assert(!c.resolved, "Challenge already resolved");
+    challenges.insert(cid, Challenge { ...c, resolved: true });
+    // Challenge bond returns to the dealer — this is what prices griefing.
+    sendUnshielded(default<Bytes<32>>, c.bondAmount, right<ContractAddress, UserAddress>(UserAddress { bytes: cmt }));
+    bonds.insert(cmt, Bond {
+      ...b,
+      liveQuotes: newLiveQuotes,
+      openChallenges: (b.openChallenges - 1) as Uint<32>,
+    });
+  } else {
+    bonds.insert(cmt, Bond { ...b, liveQuotes: newLiveQuotes });
+  }
+
+  settled.lookup(cmt).increment(1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5.3 Fraud proofs — permissionless, callable by anyone
+// ─────────────────────────────────────────────────────────────────────────
+
+// CLASS A — commitment mismatch. Fully objective.
+// Anyone holding a dealer-signed reveal that does not open the on-chain commitment can slash.
+export circuit submitFraudProofMismatch(
+  quoteId: Bytes<32>,
+  revealedTerms: Vector<4, Field>,   // pair, side, price, size — the signed message
+  revealedNonce: Bytes<32>,
+  signature: Schnorr_SchnorrSignature,
+  beneficiary: Bytes<32>             // wronged taker's payout address
+): [] {
+  const qidPub = disclose(quoteId);
+  assert(quotes.member(qidPub), "Unknown quote");
+  const q = quotes.lookup(qidPub);
+  assert(!q.resolved, "Quote already resolved");
+  const b = bonds.lookup(q.dealerCmt);
+
+  // 1. The dealer really said this. Without signature verification, anyone could
+  //    fabricate a "mismatching reveal" and slash an honest dealer.
+  Schnorr_schnorrVerify<4>(disclose(revealedTerms), signature, b.quotePk);
+
+  // 2. ...and it does not open the commitment they posted.
+  const recomputed = persistentCommit<Vector<4, Field>>(disclose(revealedTerms), disclose(revealedNonce));
+  assert(recomputed != q.commitment, "Reveal matches commitment — no fraud");
+
+  quotes.insert(qidPub, Quote { ...q, resolved: true });
+  slashBond(q.dealerCmt, disclose(beneficiary));
+}
+
+// CLASS B — failure to honor a live quote, proven by an unanswered challenge.
+export circuit submitFraudProofTimeout(challengeId: Bytes<32>): [] {
+  const cidPub = disclose(challengeId);
+  assert(challenges.member(cidPub), "Unknown challenge");
+  const c = challenges.lookup(cidPub);
+  assert(!c.resolved, "Challenge already resolved");
+  assert(blockTimeGte(c.respondBy), "Response window still open");
+  assert(quotes.member(c.quoteId), "Unknown quote");
+  const q = quotes.lookup(c.quoteId);
+  const dealerCmt = q.dealerCmt;
+
+  // Challenge bond returns to the taker; they were in the right.
+  sendUnshielded(default<Bytes<32>>, c.bondAmount, right<ContractAddress, UserAddress>(UserAddress { bytes: c.takerAddr }));
+  challenges.insert(cidPub, Challenge { ...c, resolved: true });
+  quotes.insert(c.quoteId, Quote { ...q, resolved: true });
+  slashBond(dealerCmt, c.takerAddr);
+}
+
+// Slash arithmetic computes the burn share as a remainder so integer-division
+// rounding cannot leak value or over-pay (docs/CONTRACTS.md §2).
+circuit slashBond(dealerCmt: Bytes<32>, beneficiary: Bytes<32>): [] {
+  const b = bonds.lookup(dealerCmt);
+
+  const shares = computeSlashShares(b.amount);
+  const takerCut = disclose(shares[0]);
+  const proverCut = disclose(shares[1]);
+  // taker/prover cuts must be the exact floor(amount*bps/10000) — bounded on both
+  // sides so a dishonest witness can't round in its own favor. amount*bps note:
+  // amount is Uint<128> and bps <= 6000; this can only overflow Uint<128> for bond
+  // sizes far beyond any realistic token supply, acceptable for the M1 prototype.
+  assert(takerCut * 10000 <= b.amount * 6000, "taker cut too high");
+  assert((takerCut + 1) * 10000 > b.amount * 6000, "taker cut not maximal");
+  assert(proverCut * 10000 <= b.amount * 1000, "prover cut too high");
+  assert((proverCut + 1) * 10000 > b.amount * 1000, "prover cut not maximal");
+  const burnCut = (b.amount - takerCut - proverCut) as Uint<128>; // remainder — no rounding leak
+  sendUnshielded(default<Bytes<32>>, takerCut, right<ContractAddress, UserAddress>(UserAddress { bytes: beneficiary }));
+  const prover = disclose(takerAddress());
+  sendUnshielded(default<Bytes<32>>, proverCut, right<ContractAddress, UserAddress>(UserAddress { bytes: prover }));
+  burnedTotal = (burnedTotal + burnCut) as Uint<128>; // retained forever; no path releases it
+  bonds.insert(dealerCmt, Bond { ...b, amount: 0, active: false });
+  slashed.lookup(dealerCmt).increment(1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5.4 Disclosure — generic; the contract knows nothing about auditors,
+// regulators, or policies
+// ─────────────────────────────────────────────────────────────────────────
+
+export circuit attachDisclosureNote(
+  tradeId: Bytes<32>, ciphertextHash: Bytes<32>, policyTag: Uint<16>, recipientHint: Bytes<32>
+): [] {
+  assert(!notes.member(disclose(tradeId)), "Note already attached");
+  notes.insert(disclose(tradeId), NoteRef {
+    ciphertextHash: disclose(ciphertextHash),
+    policyTag: disclose(policyTag),
+    recipientHint: disclose(recipientHint),
+  });
+}
