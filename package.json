@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "packageManager": "pnpm@9.0.0",
-  "workspaces": ["packages/*"],
   "scripts": {
     "compact": "compact compile contracts/src/OTCProtocol.compact contracts/managed/otc-protocol",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
     "generate-seed": "tsx scripts/generate-seed.ts",
     "print-address": "tsx --env-file=.env scripts/print-address.ts",
     "fund": "tsx --env-file=.env scripts/fund.ts",
@@ -17,6 +21,8 @@
   },
   "devDependencies": {
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "turbo": "^2.10.12",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11"
   }
 }
