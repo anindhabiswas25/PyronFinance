@@ -1,0 +1,83 @@
+module schnorr {
+  import CompactStandardLibrary;
+
+  export struct SchnorrSignature {
+    announcement: JubjubPoint,
+    response: Field,
+  }
+
+  // Jubjub's own subgroup order R (empirically confirmed by binary search
+  // against the running compiler/runtime — see compact-contracts SKILL.md).
+  // R = 6554484396890773809930967563523245729705921265872317281365359162392183254199
+  // R in hi/lo limbs split at 2^248 (Uint<0..n> is capped at n <= 2^248, so R
+  // itself — ~252 bits — cannot be used directly as a single range bound):
+  //   R_HI = 14
+  //   R_LO = 222104516725044372704429320860625768980218979470098935457522536959433977015
+  //
+  // A transientHash challenge lives in Compact's native Field (~255-bit proof
+  // system scalar field), but ecMul/ecMulGenerator scalars must be valid
+  // Jubjub-subgroup scalars (< R). This witness supplies the Euclidean
+  // decomposition challenge = quotient*R + remainder, with remainder itself
+  // split into (remHi, remLo) limbs at 2^248.
+  //
+  // Range checks enforced below pin down a UNIQUE valid (quotient, remainder)
+  // for any given challenge < Field's modulus:
+  //   - quotient in [0, 9)          (floor(FieldModulus / R) == 8)
+  //   - remHi in [0, 15), remLo in [0, 2^248)   (so remainder < 15*2^248)
+  //   - AND (remHi, remLo) lexicographically < (R_HI, R_LO), i.e. remainder < R
+  // Without that last lexicographic check, remHi==14 with remLo >= R_LO would
+  // let remainder exceed R while still passing the limb-width bounds alone —
+  // a dishonest witness could then supply a non-canonical decomposition.
+  witness getChallengeReduction(challenge: Field): [Uint<0..9>, Uint<0..15>, Uint<248>];
+
+  export pure circuit schnorrChallenge<#n>(
+    announcement: JubjubPoint,
+    pk: JubjubPoint,
+    msg: Vector<n, Field>
+  ): Field {
+    const msgHash = transientHash<Vector<n, Field>>(msg);
+    return transientHash<Vector<5, Field>>([
+      jubjubPointX(announcement), jubjubPointY(announcement),
+      jubjubPointX(pk), jubjubPointY(pk),
+      msgHash
+    ]);
+  }
+
+  // Reduces a Field challenge into a valid Jubjub-subgroup scalar. Exported
+  // separately so the fraud-proof circuit (or tests) can reuse it directly.
+  export circuit reduceToScalar(challenge: Field): Field {
+    const reduction = getChallengeReduction(challenge);
+    const q = reduction[0];
+    const remHi = reduction[1];
+    const remLo = reduction[2];
+
+    assert(
+      remHi < 14 || remLo < 222104516725044372704429320860625768980218979470098935457522536959433977015,
+      "schnorr: challenge remainder not canonical (>= R)"
+    );
+
+    const rem = (remHi as Field) * (452312848583266388373324160190187140051835877600158453279131187530910662656 as Field)
+              + (remLo as Field);
+
+    assert(
+      (q as Field) * (6554484396890773809930967563523245729705921265872317281365359162392183254199 as Field) + rem == challenge,
+      "schnorr: bad challenge reduction"
+    );
+
+    return rem;
+  }
+
+  export circuit schnorrVerify<#n>(
+    msg: Vector<n, Field>,
+    signature: SchnorrSignature,
+    pk: JubjubPoint
+  ): [] {
+    const c = schnorrChallenge<n>(signature.announcement, pk, msg);
+    const cReduced = reduceToScalar(c);
+
+    const lhs = ecMulGenerator(signature.response);
+    const rhs = ecAdd(signature.announcement, ecMul(pk, cReduced));
+    assert(jubjubPointX(lhs) == jubjubPointX(rhs), "schnorr: x mismatch");
+    assert(jubjubPointY(lhs) == jubjubPointY(rhs), "schnorr: y mismatch");
+  }
+}
