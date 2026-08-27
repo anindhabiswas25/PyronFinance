@@ -14,6 +14,7 @@ import {
   CompactTypeField,
   CompactTypeVector,
   maxField,
+  constructJubjubPoint,
 } from '@midnight-ntwrk/compact-runtime';
 import type { JubjubPoint } from '@midnight-ntwrk/compact-runtime';
 
@@ -84,6 +85,46 @@ export function schnorrVerify(msg: bigint[], signature: SchnorrSignature, pk: Ju
   const lhs = ecMulGenerator(signature.response);
   const rhs = ecAdd(signature.announcement, ecMul(pk, reducedChallenge));
   return jubjubPointX(lhs) === jubjubPointX(rhs) && jubjubPointY(lhs) === jubjubPointY(rhs);
+}
+
+function bigIntToBytesBE(value: bigint, length: number): Uint8Array {
+  if (value < 0n) throw new Error('bigIntToBytesBE: negative value');
+  const out = new Uint8Array(length);
+  let v = value;
+  for (let i = length - 1; i >= 0; i--) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  if (v !== 0n) throw new Error('bigIntToBytesBE: value does not fit in length');
+  return out;
+}
+
+function bytesToBigIntBE(bytes: Uint8Array): bigint {
+  let v = 0n;
+  for (const b of bytes) v = (v << 8n) | BigInt(b);
+  return v;
+}
+
+/** Wire encoding of a Schnorr signature used off-chain (docs/RELAY.md §2, §4): announcement.x
+ *  (32B) || announcement.y (32B) || response (32B), hex-encoded — 96 bytes / 192 hex chars.
+ *  Shared by packages/relay-node/src/schema.ts (quote_ref/cancel sigs) and
+ *  packages/sdk/src/reveal-channel.ts (reveal sigs) so both encode/decode identically. */
+export function encodeSchnorrSignature(sig: SchnorrSignature): string {
+  const x = bigIntToBytesBE(jubjubPointX(sig.announcement), 32);
+  const y = bigIntToBytesBE(jubjubPointY(sig.announcement), 32);
+  const r = bigIntToBytesBE(sig.response, 32);
+  return Buffer.from(Buffer.concat([x, y, r])).toString('hex');
+}
+
+export function decodeSchnorrSignature(hex: string): SchnorrSignature {
+  if (hex.length !== 192 || !/^[0-9a-f]+$/i.test(hex)) {
+    throw new Error('signature must be 96 bytes (192 hex chars)');
+  }
+  const bytes = Buffer.from(hex, 'hex');
+  const x = bytesToBigIntBE(bytes.subarray(0, 32));
+  const y = bytesToBigIntBE(bytes.subarray(32, 64));
+  const response = bytesToBigIntBE(bytes.subarray(64, 96));
+  return { announcement: constructJubjubPoint(x, y), response };
 }
 
 /** Cryptographically random nonce in (0, JUBJUB_R), suitable for schnorrSign's `k`. */
