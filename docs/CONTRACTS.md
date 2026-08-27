@@ -187,8 +187,12 @@ export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
     amount: disclose(amount), quotePk: disclose(quotePk),
     withdrawRequested: 0, liveQuotes: 0, openChallenges: 0, active: true,
   });
-  settled.insert(cmt, default<Counter>());
-  slashed.insert(cmt, default<Counter>());
+  // Map<K, Counter> does NOT auto-vivify: both reading and incrementing an uninitialised
+  // counter throw at runtime. Without these, recordSettlement and slashBond fail for every
+  // dealer — i.e. slashing never works at all. (`default<Counter>()` does not parse; Counter
+  // is a ledger-only ADT. insertDefault is the correct initialiser.)
+  settled.insertDefault(cmt);
+  slashed.insertDefault(cmt);
 }
 
 export circuit topUpBond(amount: Uint<128>): [] { /* receiveUnshielded; bond.amount += amount */ }
@@ -232,9 +236,16 @@ export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: 
   assert(b.amount >= MIN_BOND, "Bond fell below minimum after slashing");
   // Cap validity: an unbounded window would let a dealer sit on a free option indefinitely,
   // and would force BOND_WITHDRAW_DELAY to be unbounded too.
-  assert(!blockTimeGte(disclose(validUntil)), "validUntil already past");
-  assert(blockTimeGte(disclose(validUntil) - MAX_QUOTE_VALIDITY) == false
-         || true, /* see §9 note on expressing an upper bound */ "Validity window too long");
+  const validUntilPub = disclose(validUntil);
+  assert(!blockTimeGte(validUntilPub), "validUntil already past");
+  // Cap the window: require validUntil <= now + MAX_QUOTE_VALIDITY, i.e.
+  // now >= validUntil - MAX_QUOTE_VALIDITY, which is blockTimeGte — NOT its negation.
+  // POLARITY WARNING: the negated form compiles and typechecks identically but means the
+  // opposite, requiring the window to be LONGER than the cap. That inversion shipped in the
+  // M1 build and was invisible to both the compiler and tsc; only executing the circuit
+  // caught it (contracts/test/quoting.test.ts).
+  assert(validUntilPub >= MAX_QUOTE_VALIDITY(), "validUntil implausibly small"); // underflow guard
+  assert(blockTimeGte((validUntilPub - MAX_QUOTE_VALIDITY()) as Uint<64>), "Validity window too long");
   const qid = deriveQuoteId(cmt, disclose(rfqId), disclose(commitment));
   assert(!quotes.member(qid), "Duplicate quote");
   quotes.insert(qid, Quote { dealerCmt: cmt, commitment: disclose(commitment),
@@ -265,7 +276,13 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
 
 // Called by the dealer after Zswap settlement completes. Also answers any open challenge,
 // returning the challenge bond to the dealer — this is what prices griefing.
-export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>): [] {
+// `recipient` is the dealer's unshielded wallet address, for the challenge-bond refund. It must
+// be explicit: the dealer commitment is persistentHash("otc:dealer:v1", sk) — an identity hash,
+// NOT an address. Refunding to it sends funds to a key nobody holds. (Fixed during M1; the
+// original spec omitted this parameter and the implementation refunded to the commitment.)
+export circuit recordSettlement(
+  quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>, recipient: Bytes<32>
+): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   const q = quotes.lookup(disclose(quoteId));
   assert(q.dealerCmt == cmt, "Not your quote");
@@ -284,6 +301,42 @@ export circuit recordSettlement(quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>
 > transaction fee per increment while gaining nothing that a taker's own verification would trust.
 > Takers should weight bond size above settled count. Binding the counter to a Zswap transaction hash
 > is tracked as post-M4 work in `ROADMAP.md`.
+
+### 5.2a Releasing expired quotes
+
+Added during the M1 build. Not in the original spec, and its absence was a **liveness bug that
+made every honest dealer's bond permanently unwithdrawable.**
+
+```compact
+// Permissionless. Anyone may call it, including the dealer clearing their own stale liability.
+export circuit releaseExpiredQuote(quoteId: Bytes<32>): [] {
+  const qidPub = disclose(quoteId);
+  assert(quotes.member(qidPub), "Unknown quote");
+  const q = quotes.lookup(qidPub);
+  assert(!q.resolved, "Quote already resolved");
+  assert(blockTimeGte((q.validUntil + PROOF_GRACE_PERIOD()) as Uint<64>),
+         "Fraud-proof grace period still open");
+  quotes.insert(qidPub, Quote { ...q, resolved: true });
+  releaseLiveQuote(q.dealerCmt);   // liveQuotes -= 1, with underflow guard
+}
+```
+
+**Why it is needed.** `liveQuotes` was only ever decremented by `recordSettlement`. A quote that
+expires unsettled — the ordinary outcome whenever a taker doesn't trade — left `liveQuotes > 0`
+permanently, and `withdrawBond` asserts `liveQuotes == 0`. A dealer who quoted once and was never
+taken up could never recover their bond.
+
+**Why it is gated on `PROOF_GRACE_PERIOD`, not plain expiry.** `submitFraudProofMismatch` asserts
+`!q.resolved`. If release were allowed at expiry, a fraudulent dealer could resolve their own quote
+the instant it expired and become **immune to a Class-A fraud proof**. Waiting out the grace period
+closes that escape hatch — and is what makes `PROOF_GRACE_PERIOD` load-bearing rather than a number
+that appears only in the §6 inequality.
+
+**Why the Class-B path needs no additional guard.** A challenge can only be opened while the quote
+is live, so `respondBy <= validUntil + CHALLENGE_WINDOW (600)`, always strictly inside
+`validUntil + PROOF_GRACE_PERIOD (3600)`. Any timeout proof therefore becomes submittable before
+release is possible. This is the §6 inequality doing real work; do not shrink `PROOF_GRACE_PERIOD`
+below `CHALLENGE_WINDOW`.
 
 ### 5.3 Fraud proofs — permissionless, callable by anyone
 
@@ -366,8 +419,14 @@ permanent, visible slash counter.
 export circuit attachDisclosureNote(
   tradeId: Bytes<32>, ciphertextHash: Bytes<32>, policyTag: Uint<16>, recipientHint: Bytes<32>
 ): [] {
-  assert(!notes.member(disclose(tradeId)), "Note already attached");
-  notes.insert(disclose(tradeId), NoteRef {
+  const tid = disclose(tradeId);
+  // The one property this primitive must enforce: a note is provably tied to one specific
+  // SETTLED trade. Without these two assertions any caller can attach a note to arbitrary
+  // bytes, and DISCLOSURE.md's central claim is false. (Missing in the M1 build.)
+  assert(quotes.member(tid), "Unknown trade");
+  assert(quotes.lookup(tid).resolved, "Trade not settled");
+  assert(!notes.member(tid), "Note already attached");
+  notes.insert(tid, NoteRef {
     ciphertextHash: disclose(ciphertextHash),
     policyTag: disclose(policyTag),
     recipientHint: disclose(recipientHint),
@@ -433,24 +492,45 @@ relative to a long clean record. This is stated as an open risk in `GRANT.md`.
 
 ---
 
-## 9. Implementation risks to resolve during M1
+## 9. Implementation findings from the M1 build
 
-1. **`Schnorr_schnorrVerify` is a polyfill, not stdlib.** In-circuit Jubjub Schnorr verification
-   currently ships as a hand-written `schnorr.compact` module (per the `example-zk-loan-application`
-   reference), pending `jubjubSchnorrVerify` landing in the Compact Standard Library. Class-A fraud
-   proofs depend on it entirely. **First M1 task: confirm the polyfill compiles and verifies against
-   the current compiler version.** If it does not, Class-A proofs cannot ship as specified and the
-   design must fall back to challenge-based detection for both fraud classes — a materially weaker
-   guarantee that would need to be disclosed in `GRANT.md`.
-2. **Expressing "validity window not too long."** `blockTimeGte` gives a lower bound; the upper-bound
-   check in `commitQuote` is written awkwardly above pending confirmation of `blockTimeLt`
-   availability. Resolve and rewrite cleanly.
-3. **Struct-valued `Map` and struct spread.** `Map<Bytes<32>, Bond>` and `Bond { ...b, x: y }` spread
-   syntax both need verification against the compiler; if spread is unsupported, structs must be
-   rebuilt field-by-field.
-4. **Circuit size.** `submitFraudProofMismatch` does signature verification *and* a commitment
-   recomputation, making it by far the largest circuit. Watch proving time and the `k` parameter.
-5. **`JubjubPoint` equality** must compare `jubjubPointX()` / `jubjubPointY()` — struct `==` is
-   reference equality and always fails for freshly constructed points.
+All five original risks are resolved. Recorded here because several contradicted assumptions in
+this spec, and one of them silently disabled the protocol's entire enforcement mechanism.
 
-Update `.claude/skills/compact-contracts/SKILL.md` in place with whatever these investigations reveal.
+1. **`Schnorr_schnorrVerify` polyfill — RESOLVED, works.** Still not in stdlib (confirmed against
+   compiler 0.30.0). The hand-written `contracts/src/schnorr.compact` compiles and verifies
+   correctly, but required a two-limb range-checked reduction: `ecMul` scalars must be valid
+   Jubjub-subgroup elements (`EmbeddedFr`, ~252 bits) while a `transientHash` challenge lives in the
+   ~255-bit Field, so a naive polyfill compiles and is broken for ~87.5% of inputs. Verified
+   end-to-end in `contracts/test/schnorr.test.ts` against the real compiled circuit. **Class-A
+   fraud proofs ship as specified; no fallback needed.**
+2. **Validity-window upper bound — RESOLVED.** No `blockTimeLt` is needed:
+   `assert(blockTimeGte(validUntil - MAX_QUOTE_VALIDITY))` expresses the cap directly. The M1 build
+   shipped the *negated* form, which inverts the meaning and rejects every compliant quote. See the
+   polarity warning in §5.2.
+3. **Struct-valued `Map` and struct spread — RESOLVED, both supported.** `Map<Bytes<32>, Bond>` and
+   `Bond { ...b, x: y }` work as written.
+4. **Circuit size — measured.** `submitFraudProofMismatch` is the largest circuit as predicted
+   (5.7 MB prover key vs ~2.8 MB for a typical bonding circuit), followed by `commitQuote` (5.2 MB).
+   Real proving *time* still requires a proof server and is unmeasured.
+5. **`JubjubPoint` equality — confirmed**, compare `jubjubPointX()` / `jubjubPointY()`.
+
+Three constraints this spec did not anticipate:
+
+6. **No module-scope `const`.** `const X: T = v;` at the top level is a parse error. Constants are
+   nullary `pure circuit`s instead, which keeps a single source of truth.
+7. **No division operator.** `/` is a parse error even for plain `Uint` arithmetic. The 60/10/30
+   split uses a witness supplying pre-divided shares, range-checked in-circuit by multiplication —
+   the same technique the Schnorr reduction needs.
+8. **No way to read block time as a value.** Circuits can only *compare* against it via
+   `blockTimeGte`. `requestBondWithdrawal` and `openSettlementChallenge` therefore take a
+   caller-supplied `now`, bounded to within `TIME_SLACK` (300 s) of chain time by a two-sided
+   check. **This adds a parameter not in §5.1/§5.2's original signatures**, and `TIME_SLACK` is an
+   untuned placeholder — tracked as open in `ROADMAP.md`.
+9. **`Map<K, Counter>` does NOT auto-vivify.** Both reading and incrementing an uninitialised
+   counter throw at runtime. The M1 build omitted counter initialisation on the assumption that it
+   did, which meant `recordSettlement` and `slashBond` failed for every dealer — **slashing never
+   worked at all.** `postBond` now calls `settled.insertDefault` / `slashed.insertDefault`.
+
+Every one of items 2, 8 and 9 compiled cleanly and passed `tsc --noEmit`. They were caught only by
+executing the circuits (`contracts/test/`). Compilation is not verification.

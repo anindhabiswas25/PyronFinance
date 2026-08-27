@@ -3,9 +3,10 @@
 > **Re-read this file at the start of every session before doing any work.**
 > It is the live record of what is done, what is in progress, and what decisions are still open.
 
-**Last updated:** 2026-08-28 — M1 tasks 1.0–1.6, 1.8, and 1.10 complete; 1.7/1.9 code-complete and
-fully typechecked but blocked on execution (funded Preprod wallet + local proof server — see M1
-section below).
+**Last updated:** 2026-08-28 — M1 contract now **executed and tested in simulation** (122 tests).
+Six defects found and fixed, two of which made the protocol non-functional. Tasks 1.0–1.6, 1.8,
+1.10 complete; 1.9 complete in simulation; 1.7 and on-chain 1.9 remain blocked on a funded Preprod
+wallet + local proof server.
 
 ---
 
@@ -14,7 +15,7 @@ section below).
 | Milestone | Scope | Status |
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
-| **M1** | Core protocol contract on Preprod | 🟡 Contract + SDK + scripts code-complete and typechecked; execution blocked on funded wallet + proof server |
+| **M1** | Core protocol contract on Preprod | 🟡 Contract executed & tested in simulation (122 tests, 11 circuits); on-chain deploy blocked on funded wallet + proof server |
 | **M2** | Relay node + minimal RFQ flow on Preprod | ⬜ Not started |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
@@ -32,7 +33,7 @@ Build and deploy `OTCProtocol.compact` per `docs/CONTRACTS.md`.
 | # | Task | Status |
 |---|---|---|
 | 1.0 | **Resolve the Schnorr polyfill risk** (`CONTRACTS.md` §9.1) — blocks 1.5 | ✅ Resolved — works, needs a range-checked reduction gadget (see below) |
-| 1.1 | Toolchain: Compact compiler, Docker proof server, pnpm + Turborepo skeleton | ✅ pnpm/turbo skeleton in place; Docker proof server not yet started (needed for 1.7+) |
+| 1.1 | Toolchain: Compact compiler, Docker proof server, pnpm + Turborepo skeleton | ✅ pnpm + turbo (now actually installed — `turbo.json` was previously dead config) + vitest + root tsconfig; Docker proof server not started (needed for 1.7+) |
 | 1.2 | Ledger + structs + domain-separated derivations | ✅ `contracts/src/OTCProtocol.compact` |
 | 1.3 | Bonding circuits: `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` | ✅ Compiles; not yet run against live Preprod |
 | 1.4 | Quote circuits: `commitQuote`, `openSettlementChallenge`, `recordSettlement` | ✅ Compiles; not yet run against live Preprod |
@@ -40,7 +41,7 @@ Build and deploy `OTCProtocol.compact` per `docs/CONTRACTS.md`.
 | 1.6 | `attachDisclosureNote` (contract side only; client flow is M3) | ✅ Compiles |
 | 1.7 | Deploy + init scripts, Preprod config, faucet funding | 🟡 Code-complete, typechecked (`scripts/deploy.ts`, `scripts/init.ts`, `scripts/fund.ts`) — **never executed**, blocked on a funded wallet |
 | 1.8 | `packages/sdk` — bonding, quote commit/reveal, fraud proofs, Zswap offer helpers | ✅ Code-complete, fully typechecked against real installed packages — bonding/quotes/fraud verified; Zswap offer construction (`offers.ts`) is a documented stub pending a live proof server |
-| 1.9 | Scripted E2E test: bond → commit → mismatched reveal → fraud proof → slash verified | 🟡 Script written (`scripts/e2e-fraud.ts`), typechecked — **never executed**, blocked on 1.7 |
+| 1.9 | Scripted E2E test: bond → commit → mismatched reveal → fraud proof → slash verified | ✅ **In simulation** (`contracts/test/fraud.test.ts`) incl. negative cases; on-chain run still blocked on 1.7 |
 | 1.10 | Resolve `CONTRACTS.md` §9.2–9.5; update `.claude/skills/compact-contracts/SKILL.md` in place | ✅ Done — all five items resolved (see skill file §4, §9) |
 
 **All 10 circuits compile cleanly and generate real prover/verifier keys** (`contracts/managed/otc-protocol/`).
@@ -76,19 +77,40 @@ hit its 24h rate limit on 2026-08-27) and a running local proof server
 Not fabricating credentials or skipping this — flagging it for the owner. Once both exist:
 `pnpm generate-seed` → fund the printed address → `pnpm deploy` → `pnpm init` → `pnpm e2e-fraud`.
 
-**Two implementation findings not anticipated by `CONTRACTS.md`'s pseudocode** — both required for the
-contract to compile at all, recorded here plus in the skill file (§4, §9):
+### Defects found by executing the contract (2026-08-28)
 
-1. **No `<now>` read inside a circuit.** Compact can only *compare* against block time
-   (`blockTimeGte`), never read it as a value. `requestBondWithdrawal` and
-   `openSettlementChallenge` now take a caller-supplied `now: Uint<64>` parameter, bound to within a
-   300-second `TIME_SLACK` of actual chain time via a two-sided `blockTimeGte` check. **This is a new
-   parameter not in the original circuit signatures in `CONTRACTS.md` §5.1/§5.2 — flagging for
-   review**, not a silent decision.
-2. **No division operator in Compact at all** (`/` is a parse error, confirmed against the compiler).
-   `slashBond`'s 60/10/30 split now uses a witness (`computeSlashShares`) that supplies the
-   pre-divided shares, verified in-circuit via multiplication and a tight two-sided inequality — the
-   same range-checked-division technique the Schnorr fix required.
+The contract had only ever been *compiled*. A `compact-runtime` simulator suite (122 tests, no
+wallet/proof server/deployment needed — see `compact-contracts` SKILL.md §10) found six defects.
+**Every one of them compiled cleanly and passed `tsc --noEmit`.**
+
+| # | Defect | Consequence | Status |
+|---|---|---|---|
+| D1 | `commitQuote`'s validity cap was **inverted** (`!blockTimeGte(validUntil - 900)`) | Rejected every spec-compliant quote; accepted only over-long ones | ✅ Fixed |
+| D11 | `Map<K, Counter>` does **not** auto-vivify, contrary to the comment in `postBond` | `recordSettlement` and `slashBond` threw for every dealer — **slashing never worked at all** | ✅ Fixed (`insertDefault`) |
+| D2 | `recordSettlement` refunded the challenge bond to the dealer **commitment**, not an address | Refund sent to a key nobody holds | ✅ Fixed — added `recipient` param |
+| D3 | `liveQuotes` never decremented for expired-unsettled quotes | `withdrawBond` asserts `liveQuotes == 0`, so **honest dealers could never withdraw their bond** | ✅ Fixed — new `releaseExpiredQuote` |
+| D4 | Fraud circuits never released `liveQuotes` / `openChallenges` | Permanent counter drift, bond unwithdrawable after a slash | ✅ Fixed |
+| D5 | `attachDisclosureNote` accepted any 32 bytes as a `tradeId` | `DISCLOSURE.md`'s "provably tied to one settled trade" was **false** | ✅ Fixed |
+
+Contract is now **11 circuits** (was 10): `releaseExpiredQuote` added. `recordSettlement` gained a
+`recipient` parameter — a breaking signature change, propagated to `packages/sdk/src/fraud.ts`.
+
+**Three Compact constraints not anticipated by `CONTRACTS.md`** (all recorded in
+`compact-contracts` SKILL.md §4):
+
+1. **No `<now>` read inside a circuit.** Compact can only *compare* against block time.
+   `requestBondWithdrawal` and `openSettlementChallenge` take a caller-supplied `now`, bounded to
+   within `TIME_SLACK` (300 s) of chain time. **New parameter vs. `CONTRACTS.md` §5.1/§5.2 —
+   flagged for review**, and `TIME_SLACK` is an untuned guess.
+2. **No division operator at all** (`/` is a parse error). `slashBond` uses a witness supplying
+   pre-divided shares, range-checked in-circuit by multiplication.
+3. **No module-scope `const`** (parse error). Constants are now nullary `pure circuit`s rather than
+   literals inlined at each call site.
+
+**Still unverified — do not claim these as done:** real ZK proof generation, transaction balancing
+and submission, wallet flow, indexer round-trips, on-chain deployment, and Zswap offer construction.
+Simulation validates *contract logic*, not chain integration. That is exactly why 1.7 and the
+on-chain half of 1.9 stay open.
 
 **Definition of done:** on Preprod, a test dealer can post a bond and commit a quote, and a scripted
 fraud-proof test correctly slashes the bond on a deliberately mismatched reveal. No frontend.
@@ -183,6 +205,9 @@ DUST-generation/registration process.
 | Binding `recordSettlement` to a Zswap tx hash | Post-M4 | Closes the self-attested settled-counter gap (`CONTRACTS.md` §5.2) |
 | Sybil-resistant relay discovery | Post-M4 | `peer_announce` is spammable; stake-weighting would reintroduce permissioning |
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
+| **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
+| **Slash arithmetic overflow (D7)** | M4 (4.1) | `b.amount * 6000` can overflow `Uint<128>` for absurd bond sizes. Unreachable at realistic values; settle alongside `MIN_BOND` |
+| **Fraud proofs have no upper time bound** | M2 | `submitFraudProofMismatch` can be submitted arbitrarily late while a quote stays unresolved. `releaseExpiredQuote` lets a dealer close their own window after `PROOF_GRACE_PERIOD`, which bounds it in practice, but nothing forces it |
 | `TIME_SLACK` (300s) for caller-supplied `now` in `requestBondWithdrawal`/`openSettlementChallenge` | M1 (surfaced) | Not pre-approved — needed because Compact can't read block time as a value, only compare against it. A caller-supplied, chain-bounded `now` was the only viable design found; 300s is a placeholder guess, not tuned |
 
 ---
@@ -195,5 +220,9 @@ DUST-generation/registration process.
   `.claude/skills/midnight-deployment/SKILL.md`.
 - **Drift alarm:** if the build starts pulling matching or price-comparison logic into Compact, stop
   and flag it. That is drift from the spec, not an optimization.
+- **Compilation is not verification.** Six defects — including two that made the protocol
+  non-functional — compiled cleanly and passed `tsc --noEmit`. Run circuits through the
+  `compact-runtime` simulator (`contracts/test/harness.ts`) before believing anything about them.
+  `pnpm test` needs no wallet, proof server or network.
 - Update `.claude/skills/*/SKILL.md` **in place** whenever contract work reveals a Compact constraint
   those files do not capture.
