@@ -6,10 +6,9 @@
 import type { WitnessContext } from '@midnight-ntwrk/compact-runtime';
 import type { Ledger, Witnesses } from '../../../contracts/managed/otc-protocol/contract/index.js';
 import type { OTCPrivateState } from './private-state.js';
-import { reduceChallengeToScalar } from './schnorr.js';
-
-const FIELD_MODULUS =
-  52435875175126190479447740508185965837690552500527637822603658699938581184513n;
+// Single source of truth: schnorr.ts derives this from the runtime's own maxField(), so it
+// cannot drift from the field the circuits actually use.
+import { reduceChallengeToScalar, FIELD_MODULUS } from './schnorr.js';
 
 export const otcWitnesses: Witnesses<OTCPrivateState> = {
   dealerSecretKey(context: WitnessContext<Ledger, OTCPrivateState>): [OTCPrivateState, Uint8Array] {

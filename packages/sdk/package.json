@@ -7,7 +7,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.."
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.15.0",
@@ -20,7 +21,6 @@
     "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.0.2",
     "@midnight-ntwrk/midnight-js-types": "4.0.2",
     "@midnight-ntwrk/midnight-js-utils": "4.0.2",
-    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.0",
     "@midnight-ntwrk/wallet-sdk-dust-wallet": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-facade": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-hd": "3.0.1",
@@ -35,5 +35,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12"
   },
-  "engines": { "node": ">=22.0.0" }
+  "engines": {
+    "node": ">=22.0.0"
+  }
 }
