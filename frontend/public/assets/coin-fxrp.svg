@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1100" viewBox="0 0 2000 1100" fill="none">
+  <defs>
+    <!-- polished chrome bezel: key light top-left, bounce light bottom-right -->
+    <linearGradient id="fxrp-bezel" x1="0.08" y1="0" x2="0.92" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="16%" stop-color="#cfe0ff"/>
+      <stop offset="40%" stop-color="#6f93e8"/>
+      <stop offset="56%" stop-color="#dce8ff"/>
+      <stop offset="76%" stop-color="#6f93e8"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="fxrp-side" x1="0" y1="0" x2="1" y2="0.55">
+      <stop offset="0%" stop-color="#eaf1ff"/>
+      <stop offset="30%" stop-color="#9db9ee"/>
+      <stop offset="66%" stop-color="#3f61c4"/>
+      <stop offset="100%" stop-color="#1f327f"/>
+    </linearGradient>
+    <radialGradient id="fxrp-face" cx="30%" cy="20%" r="92%">
+      <stop offset="0%" stop-color="#3a5ce8"/>
+      <stop offset="46%" stop-color="#2340cf"/>
+      <stop offset="100%" stop-color="#101f86"/>
+    </radialGradient>
+    <linearGradient id="fxrp-back" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3f61c4"/>
+      <stop offset="100%" stop-color="#1f327f"/>
+    </linearGradient>
+    <linearGradient id="fxrp-sheen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="fxrp-bandclip"><path d="M 0 -104.0 A 95.7 104.0 0 0 1 0 104.0 L 34.0 104.0 A 95.7 104.0 0 0 0 34.0 -104.0 Z"/></clipPath>
+  </defs>
+
+  <g transform="translate(565 528) rotate(-6)">
+    <ellipse cx="34" rx="95.7" ry="104.0" fill="url(#fxrp-back)"/>
+    <path d="M 0 -104.0 A 95.7 104.0 0 0 1 0 104.0 L 34.0 104.0 A 95.7 104.0 0 0 0 34.0 -104.0 Z" fill="url(#fxrp-side)"/>
+    <path d="M 0 -104.0 A 95.7 104.0 0 0 1 0 104.0 L 34.0 104.0 A 95.7 104.0 0 0 0 34.0 -104.0 Z" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1.4"/>
+
+    <ellipse rx="95.7" ry="104.0" fill="url(#fxrp-bezel)"/>
+    <ellipse rx="82.3" ry="89.4" fill="url(#fxrp-face)"/>
+    <ellipse rx="82.3" ry="89.4" fill="none" stroke="#a9bdf2" stroke-opacity="0.45" stroke-width="2"/>
+
+    <g transform="scale(0.92 1)">
+      <g stroke="#e3ebff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.95">
+        <path d="M-42 -28 L0 14 L42 -28"/>
+        <path d="M-42 28 L0 -14 L42 28"/>
+      </g>
+      <ellipse rx="72" ry="72" fill="none" stroke="#e3ebff" stroke-opacity="0.4" stroke-width="4"/>
+    </g>
+
+    <path d="M -70.8 -58.2 A 90.9 98.8 0 0 1 34.4 -93.6"
+          stroke="url(#fxrp-sheen)" stroke-width="10.4" fill="none" stroke-linecap="round"/>
+    <path d="M 57.4 74.9 A 90.9 98.8 0 0 0 89.0 29.1"
+          stroke="#ffffff" stroke-opacity="0.4" stroke-width="6.2" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

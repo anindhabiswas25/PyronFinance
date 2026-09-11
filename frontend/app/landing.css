@@ -1,0 +1,980 @@
+/* =========================================================================
+   Pyron Finance — landing page styles
+
+   Ported verbatim from landing/styles.css. The palette, type scale and radius
+   tokens it uses now live in styles/tokens.css, shared with the app; only the
+   asset URLs changed (they are served from /public now).
+
+   The fluid scale below is the reason the marketing routes have their OWN root
+   layout: 1rem = 1vw makes the whole page scale as a single composition, which
+   is right here and wrong for the app. See app/(marketing)/layout.tsx.
+   ========================================================================= */
+
+html { font-size: 1rem; }
+
+@media screen and (min-width: 240px) {
+  html { font-size: 1vw; }
+}
+
+@media screen and (min-width: 1920px) {
+  html { font-size: 0.8vw; }
+  .container { width: 100rem; }
+}
+
+@media screen and (min-width: 1920px) and (min-aspect-ratio: 21/9) {
+  html { font-size: calc(1280px / 100); }
+}
+
+@media screen and (min-width: 3440px) and (min-aspect-ratio: 21/9) {
+  html { font-size: calc(1920px / 100); }
+}
+
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  color: var(--color-graphite);
+  background-color: var(--color-white);
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 20px;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+::selection {
+  background-color: var(--color-mint);
+  color: var(--color-white);
+}
+
+h1, h2, h3, p, ul { margin: 0; padding: 0; }
+ul { list-style: none; }
+img, svg { display: block; max-width: 100%; height: auto; }
+
+.page-wrapper { position: relative; overflow: hidden; }
+
+/* ---------------------------------------------------------------- layout */
+
+.container {
+  width: 100%;
+  max-width: 100rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 7.4rem;
+  padding-right: 7.4rem;
+  position: relative;
+}
+
+.full-container { position: relative; }
+.full-container.hero-s { overflow: hidden; }
+
+.text-elements {
+  text-align: center;
+  display: flex;
+  flex-flow: column;
+  justify-content: center;
+  align-items: center;
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+}
+
+.text-elements.values-card-s {
+  text-align: left;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.headline-wrapper { width: 100%; }
+.description-wrapper { width: 100%; }
+
+/* ------------------------------------------------------------ typography */
+
+.headline-h1 {
+  color: var(--color-dark);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: var(--headline-h1);
+  line-height: var(--lh-100);
+  font-weight: 500;
+}
+
+.headline-h2 {
+  color: var(--color-dark);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: var(--headline-h2);
+  line-height: var(--lh-100);
+  font-weight: 500;
+}
+
+.headline-h3 {
+  color: var(--color-dark);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: var(--headline-h3);
+  line-height: var(--lh-120);
+  font-weight: 500;
+}
+
+.headline-h2.white,
+.headline-h3.white { color: var(--color-white); }
+
+.subheadline-s1 {
+  color: var(--color-dark);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: var(--subheadline-s1);
+  line-height: var(--lh-100);
+  font-weight: 500;
+}
+
+.subheadline-s2 {
+  font-size: var(--subheadline-s2);
+  line-height: var(--lh-100);
+}
+
+.body-b1 { font-size: var(--body-b1); line-height: var(--lh-130); }
+.body-b2 { font-size: var(--body-b2); line-height: var(--lh-130); }
+.body-b4 { font-size: var(--body-b4); line-height: var(--lh-130); }
+.body-b5 { font-size: var(--body-b5); line-height: var(--lh-130); }
+
+.body-b1.dark { color: var(--color-dark); }
+.body-b1.white { color: var(--color-white); }
+.subheadline-s2.white,
+.body-b2.white,
+.body-b5.white { color: var(--color-white); }
+
+.weight-500 { font-weight: 500; }
+
+/* ------------------------------------------------------------- animation */
+
+/* Word-level reveal: blur + scale down into place, staggered per word. */
+.word-span {
+  opacity: 0;
+  filter: blur(0.6rem);
+  transform: scale(1.2);
+  transition: filter 0.6s, transform 0.6s, opacity 0.6s;
+  display: inline-block;
+}
+.word-span.view {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+
+/* Line-level reveal for body copy: slide up, staggered per line. */
+.line-span-body {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: transform 0.6s, opacity 0.6s;
+  display: block;
+}
+.line-span-body.view {
+  opacity: 1;
+  transform: translate(0);
+}
+
+/* Block reveal for anything that enters as one piece. */
+.view-element {
+  opacity: 0;
+  transform: translateY(2rem);
+  transition: transform 0.6s, opacity 0.6s;
+}
+.view-element.view {
+  opacity: 1;
+  transform: translate(0);
+}
+
+/* Film-grain overlay used on the blurred hero ellipses. */
+[data-noise] { position: relative; }
+[data-noise]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("/assets/noise.gif");
+  background-position: 50%;
+  background-repeat: repeat;
+  background-size: auto;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+/* Two drift cycles, offset in period so the coins never bob in lockstep:
+   a slow 6s at -2% and a shallower 5s at -1%. Straight translateY, no tilt. */
+[data-levitation="1"] { animation: levitateFirst 6s ease-in-out infinite; }
+[data-levitation="2"] { animation: levitateSecond 5s ease-in-out infinite; }
+
+@keyframes levitateFirst {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-2%); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes levitateSecond {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-1%); }
+  100% { transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------- header */
+
+.header {
+  z-index: 9000;
+  position: absolute;
+  inset: 3rem 0% auto;
+}
+
+.header-logo {
+  display: flex;
+  justify-content: center;
+}
+
+/* Extrabold and set tight — the weight and tracking of the reference
+   lockup. White on the blue. */
+.wordmark {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  color: var(--color-white);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------- hero */
+
+.container.hero-sc {
+  display: flex;
+  flex-flow: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* The blue field is the backdrop plate itself (hero-main-bg.png), not a
+   gradient — this box only crops it and hangs the blooms behind it. */
+.hero-bg-elements {
+  aspect-ratio: 100 / 62.5;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Two identical blooms, stacked, hung half their own height above the canvas
+   so only the lower arc of each bleeds into the field. */
+.hero-bg-ellipse {
+  aspect-ratio: 1;
+  background-color: var(--color-blue);
+  border-radius: 50%;
+  width: 58rem;
+  margin-left: auto;
+  margin-right: auto;
+  position: absolute;
+  inset: -50% 0% auto;
+  filter: blur(12rem);
+  will-change: filter;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Grain, fading out radially from the top where the blue is saturated. */
+.hero-bg-noise {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  -webkit-mask-image: radial-gradient(at top, #000 0%, #0000 58%);
+  mask-image: radial-gradient(at top, #000 0%, #0000 58%);
+}
+
+/* Every layer is a full-bleed 2400 x 943 plate; the art itself carries each
+   coin's position, so the layers just stack in the same box. */
+.hero-bg-images {
+  z-index: 100;
+  aspect-ratio: 32 / 13;
+  width: 100%;
+  position: absolute;
+  top: 12%;
+}
+
+.hero-bg-image {
+  width: 100%;
+  position: absolute;
+}
+
+.image-contain {
+  object-fit: contain;
+  width: 100%;
+  display: block;
+}
+
+/* The backdrop plate feathers out at both edges so it never hits the viewport
+   sides with a hard cut. */
+.hero-bg-image.s1 {
+  z-index: 10;
+  -webkit-mask-image: linear-gradient(90deg, #0000 0%, #000 10%, #000 90%, #0000 100%);
+  mask-image: linear-gradient(90deg, #0000 0%, #000 10%, #000 90%, #0000 100%);
+}
+/* Only the BTC plate is lifted; the rest stack in document order. */
+.hero-bg-image.s3 { z-index: 15; }
+
+.hero-main-elements {
+  z-index: 200;
+  display: flex;
+  flex-flow: column;
+  gap: 3rem;
+  position: absolute;
+  bottom: 4.2rem;
+}
+
+.headline-wrapper.hero-s { width: 54rem; }
+
+/* ----------------------------------------------------------- email form */
+
+.email-form-wrapper {
+  padding: var(--stroke-main);
+  border-radius: var(--radius-corner);
+  background-color: var(--color-dark);
+  width: 30rem;
+  margin: 0 auto;
+}
+
+.email-form {
+  display: grid;
+  grid-template-columns: 18.6rem 1fr;
+  grid-auto-columns: 1fr;
+  gap: var(--stroke-main);
+}
+
+.email-input {
+  border: 1px solid transparent;
+  border-radius: var(--radius-corner);
+  background-color: var(--color-white);
+  color: var(--color-dark);
+  font-family: inherit;
+  font-size: var(--body-b2);
+  line-height: var(--lh-130);
+  height: 3.6rem;
+  margin: 0;
+  padding: 0 1.1rem 0 1.68rem;
+  outline: none;
+  width: 100%;
+}
+.email-input::placeholder { color: var(--color-graphite); }
+.email-input:focus { border-color: var(--color-blue); }
+
+.email-submit {
+  border: 0;
+  border-radius: var(--radius-corner);
+  background-color: var(--color-transparent);
+  color: var(--color-white);
+  font-family: inherit;
+  font-size: var(--body-b2);
+  line-height: var(--lh-130);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.email-submit:hover { background-color: var(--color-blue); }
+
+.success-message-wrapper { display: none; background-color: var(--color-transparent); }
+.success-message { padding: 0.9rem 1.68rem; }
+.form-fail { display: none; padding: 0.9rem 1.68rem; color: var(--color-white); }
+.email-form-wrapper.is-done { background-color: var(--color-transparent); }
+.email-form-wrapper.is-done .email-form { display: none; }
+.email-form-wrapper.is-done .success-message-wrapper { display: block; }
+
+.mail-span { color: var(--color-blue); text-decoration: none; }
+.mail-span.footer-s { color: var(--color-white); font-weight: 400; }
+.success-text { font-size: var(--body-b2); line-height: var(--lh-130); }
+.success-text.footer-s { color: var(--color-white); }
+
+/* --------------------------------------------------------------- values */
+
+.container.values-sc {
+  display: flex;
+  flex-flow: column;
+  gap: 4.2rem;
+  padding-top: 4rem;
+  padding-bottom: 14rem;
+}
+
+.headline-tag {
+  z-index: 10;
+  display: flex;
+  gap: 0.84rem;
+  border-radius: var(--radius-corner);
+  background-color: #f4f6f9;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1.1rem;
+  padding: 0.56rem 0.56rem 0.56rem 1.24rem;
+  position: relative;
+}
+
+.headline-tag.changed-color {
+  border: var(--stroke-main) solid var(--color-light-grey);
+  background-color: #ffffff66;
+  margin-bottom: 2.2rem;
+}
+
+.headline-tag-svg {
+  display: flex;
+  border-radius: var(--radius-corner);
+  background-color: var(--color-blue);
+  justify-content: center;
+  align-items: center;
+  width: 1.52rem;
+  height: 1.52rem;
+  padding: 0.28rem;
+  position: relative;
+}
+
+.description-wrapper.values-s { width: 38rem; padding-top: 2.2rem; }
+
+.values-cards { display: flex; flex-flow: column; gap: 1.4rem; }
+
+.values-cards-pair {
+  display: grid;
+  grid-template-rows: auto;
+  grid-auto-columns: 1fr;
+  gap: 1.4rem;
+}
+.values-cards-pair.big-left { grid-template-columns: 1fr 0.74fr; }
+.values-cards-pair.big-right { grid-template-columns: 0.74fr 1fr; }
+
+.values-card {
+  border: var(--stroke-main) solid var(--color-light-grey);
+  border-radius: var(--radius-main);
+  width: 100%;
+  height: 100%;
+  padding: 3.47rem 2.78rem;
+  position: relative;
+  overflow: hidden;
+}
+.values-card.b-padding { padding-top: 27rem; }
+
+.headline-wrapper.values-s.s1 { width: 30rem; }
+.description-wrapper.values-card-s { padding-top: 1.4rem; }
+.description-wrapper.values-card-s.s1 { width: 38rem; }
+.description-wrapper.values-card-s.s2,
+.description-wrapper.values-card-s.s3 { width: 23rem; }
+.description-wrapper.values-card-s.s4 { width: 34rem; }
+
+.values-lottie { width: 100%; position: absolute; }
+.values-lottie.s1 { inset: 0% 0% auto; }
+.values-lottie.s2 { inset: auto 0% 0%; }
+/* Reserve each artwork's own box before its Lottie mounts. */
+.values-lottie.s1[data-lottie] { aspect-ratio: 708 / 346; }
+.values-lottie.s2[data-lottie] { aspect-ratio: 500 / 340; }
+.values-lottie.s3[data-lottie] { aspect-ratio: 500 / 378; }
+.values-lottie.s4[data-lottie] { aspect-ratio: 708 / 376; }
+.solutions-lottie[data-lottie] { aspect-ratio: 1033 / 814; }
+.values-lottie.s3 { inset: auto 0% -7%; }
+.values-lottie.s4 { inset: 0% 0% auto; }
+
+.values-button-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  inset: auto 0% 10.6rem;
+}
+
+.values-button-element {
+  border-radius: var(--radius-corner);
+  background-color: var(--color-white);
+  padding: 0.7rem;
+  display: inline-block;
+}
+.values-button-element.s1 { box-shadow: 0 1rem 2rem #207cfe1f; }
+.values-button-element.s2 { box-shadow: 0 1rem 2rem #207cfe14; }
+
+.values-button {
+  border-radius: var(--radius-corner);
+  background-color: var(--color-blue);
+  color: var(--color-white);
+  font-size: 2rem;
+  line-height: var(--lh-130);
+  cursor: pointer;
+  padding: 1.64rem 2.78rem;
+  text-decoration: none;
+  transition: all 0.4s;
+  display: inline-block;
+}
+.values-button:hover {
+  background-color: var(--color-white);
+  color: var(--color-dark);
+  box-shadow: inset 0 0 2rem #207cfe1f;
+}
+
+/* ------------------------------------------------------------ solutions */
+
+.full-container.solutions-s {
+  background-color: var(--color-blue);
+  background-image: radial-gradient(circle farthest-corner at 50% 0%, #ffffff2e, var(--color-transparent) 36%);
+  border-top-left-radius: 5.56rem;
+  border-top-right-radius: 5.56rem;
+  overflow: hidden;
+}
+
+.container.solutions-s {
+  z-index: 10;
+  display: flex;
+  flex-flow: column;
+  gap: 10.8rem;
+  padding-top: 24rem;
+  padding-bottom: 14rem;
+  overflow: visible;
+}
+
+.headline-wrapper.solutions-s { width: 74rem; }
+
+.description-pair { display: flex; position: relative; }
+.description-pair.solutions-s {
+  justify-content: space-between;
+  align-items: center;
+  width: 72rem;
+  padding-top: 4.2rem;
+}
+.description-pair-element {
+  width: 20rem;
+  margin-left: auto;
+  margin-right: auto;
+  position: absolute;
+  top: 30%;
+  left: 0;
+  right: 0;
+}
+
+.description-wrapper.solutions-s { width: 24rem; }
+.description-wrapper.solutions-s.left { text-align: left; }
+.description-wrapper.solutions-s.right { text-align: right; }
+
+/* Sits directly above the text block. The reference pins this with a
+   percentage of the text height, which only clears the tag because its
+   headline runs to three lines — anchoring to the bottom keeps the gap
+   correct however our copy wraps. */
+.solutions-headline-element {
+  width: 27rem;
+  margin-left: auto;
+  margin-right: auto;
+  position: absolute;
+  inset: auto 0% 100%;
+}
+
+.solutions-content-wrapper {
+  padding: var(--stroke-main);
+  border-radius: var(--radius-main);
+  background-image: linear-gradient(140deg, var(--color-white), var(--color-transparent) 54%);
+}
+
+.solutions-content {
+  display: flex;
+  background-color: #0360f6;
+  background-image:
+    radial-gradient(circle farthest-corner at 100% 100%, #2c7cfc, var(--color-transparent)),
+    radial-gradient(circle farthest-corner at 100% 0%, #2c7cfc, var(--color-transparent)),
+    radial-gradient(circle farthest-corner at 50% 0%, #3e83fc, var(--color-transparent));
+  border-radius: 2.1rem;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.4rem;
+}
+
+.solutions-slider-nav { display: flex; flex-flow: column; gap: 4rem; }
+.solutions-slider-tab { cursor: pointer; }
+
+.solutions-slider-tab-element {
+  display: flex;
+  flex-flow: column;
+  gap: 1.68rem;
+  cursor: pointer;
+}
+
+.sol-slider-tab-title {
+  display: flex;
+  gap: 0.84rem;
+  transition: opacity 0.2s;
+}
+
+.sol-slider-title-svg {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 1.66rem;
+  height: 1.66rem;
+}
+
+.sol-slider-tab-list {
+  display: flex;
+  flex-flow: column;
+  gap: 0.6rem;
+  color: var(--color-white);
+  width: 34rem;
+  margin: 0;
+  padding-left: 2.6rem;
+  transition: opacity 0.2s;
+}
+
+@media (min-width: 479px) {
+  .sol-slider-tab-title { opacity: 0.6; }
+  .sol-slider-tab-list { opacity: 0.4; }
+  .custom-dot.is-active .sol-slider-tab-title { opacity: 1; }
+  .custom-dot.is-active .sol-slider-tab-list { opacity: 1; }
+}
+
+.solutions-slider-content {
+  aspect-ratio: 41.7 / 45.8;
+  background-color: var(--color-dark);
+  border-radius: 1.2rem;
+  width: 41.6rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.solution-swiper { width: 100%; height: 100%; position: relative; }
+.swiper-wrapper { width: 100%; height: 100%; display: flex; transition: transform 0.5s ease; }
+.swiper-slide { flex: none; width: 100%; height: 100%; }
+.swiper-lottie-wrapper, .swiper-lottie { width: 100%; height: 100%; }
+
+.swiper-pagination {
+  z-index: 100;
+  display: flex;
+  gap: 0.84rem;
+  justify-content: center;
+  align-items: center;
+  height: 4rem;
+  position: absolute;
+  inset: auto 0% 0%;
+}
+
+.swiper-pagination-bullet {
+  border-radius: var(--radius-corner);
+  cursor: pointer;
+  background-color: #ffffff1f;
+  width: 4.2rem;
+  height: 0.3rem;
+  overflow: hidden;
+}
+
+.swiper-progress-line {
+  border-radius: var(--radius-corner);
+  background-color: var(--color-white);
+  width: 0%;
+  height: 100%;
+  display: block;
+}
+.swiper-progress-line.animate { transition: width 4.3s linear; }
+
+.solutions-mobile-p { display: none; }
+
+/* --------------------------------------------------------------- footer */
+
+.full-container.footer-s {
+  background-color: var(--color-blue);
+  overflow: hidden;
+}
+
+.container.footer-s { padding-bottom: 2.78rem; }
+
+.footer-logo {
+  border-radius: 1.4rem;
+  width: 6.2rem;
+  margin: 0 auto 3.6rem;
+  overflow: hidden;
+  box-shadow: 0 1rem 1rem #0000001f;
+}
+
+.description-wrapper.footer-s { width: 38rem; padding-top: 2.2rem; }
+
+.footer-form {
+  z-index: 10;
+  padding-top: 2.78rem;
+  padding-bottom: 10.56rem;
+  position: relative;
+}
+
+.footer-down-block {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.footer-rights-block { position: absolute; left: 0%; }
+
+.media-links {
+  display: flex;
+  gap: 1.4rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.media-link {
+  aspect-ratio: 1;
+  display: flex;
+  border: var(--stroke-main) solid #ffffff26;
+  background-image: radial-gradient(circle farthest-corner at 50% 50%, var(--color-transparent), #d6d2ff1a);
+  border-radius: 50%;
+  justify-content: center;
+  align-items: center;
+  width: 3.3rem;
+  transition: background-color 0.2s;
+  color: var(--color-white);
+}
+.media-link:hover { background-color: var(--color-mint); color: var(--color-dark); }
+.media-svg { display: flex; width: 1.4rem; }
+
+.footer-coin { width: 20rem; position: absolute; inset: auto auto 0% 0%; }
+/* Pulled further into the corners than the reference: our headline runs
+   wider than theirs, so the reference offsets put both coins on top of it. */
+.footer-coin.s1 { width: 24rem; bottom: 26%; left: -16%; }
+.footer-coin.s2 { width: 22rem; inset: auto -12% -18% auto; }
+
+/* The coins ship at two crops: a wide one for desktop, a tighter one that
+   keeps them readable once the footer narrows. */
+.mobile-p-view { display: none; }
+
+/* ---------------------------------------------------------- tablet <=991 */
+
+@media screen and (max-width: 991px) {
+  :root {
+    --headline-h1: 8.4rem;
+    --headline-h2: 5.6rem;
+    --headline-h3: 4.8rem;
+    --subheadline-s1: 5.4rem;
+    --subheadline-s2: 2.6rem;
+    --body-b1: 2rem;
+    --body-b2: 1.9rem;
+    --body-b4: 1.7rem;
+    --body-b5: 1.6rem;
+    --radius-main: 4rem;
+  }
+
+  .container { padding-left: 5.3rem; padding-right: 5.3rem; }
+  .container.values-sc { gap: 6rem; padding-top: 10rem; padding-bottom: 16rem; }
+  .container.solutions-s { gap: 14rem; padding-top: 24rem; padding-bottom: 14rem; }
+  .container.footer-s { padding-top: 8rem; padding-bottom: 4rem; }
+
+  .wordmark { font-size: 3.4rem; }
+  .headline-wrapper.hero-s { width: 74rem; }
+  .headline-wrapper.solutions-s { width: 88rem; }
+  .headline-wrapper.values-s.s1 { width: auto; }
+  .description-wrapper.values-s,
+  .description-wrapper.footer-s { width: 60rem; padding-top: 3.4rem; }
+  .description-wrapper.values-card-s.s1,
+  .description-wrapper.values-card-s.s2,
+  .description-wrapper.values-card-s.s3,
+  .description-wrapper.values-card-s.s4 { width: auto; }
+
+  .email-form-wrapper { width: 52rem; }
+  .email-form { grid-template-columns: 32rem 1fr; }
+  .email-input { height: 6.4rem; padding-left: 3rem; padding-right: 2rem; }
+
+  .values-cards, .values-cards-pair { gap: 2.6rem; }
+  .values-card { padding: 5rem 4rem; }
+  .values-card.b-padding { padding-top: 30rem; }
+  .values-button { font-size: 2.8rem; padding: 2.4rem 4rem; }
+  .values-button-wrapper { bottom: 14rem; }
+
+  .description-pair.solutions-s { width: 84rem; }
+  .description-wrapper.solutions-s { width: 30rem; }
+  .solutions-content { flex-flow: column; gap: 5rem; padding: 3rem; }
+  .sol-slider-tab-list { width: 100%; }
+  .solutions-slider-content { width: 100%; }
+}
+
+/* --------------------------------------------------------- mobile <=479 */
+
+@media screen and (max-width: 479px) {
+  :root {
+    --stroke-main: 1px;
+    --radius-main: 8.5rem;
+    --headline-h1: 12.4rem;
+    --headline-h2: 9rem;
+    --headline-h3: 8.5rem;
+    --subheadline-s1: 6rem;
+    --subheadline-s2: 6.4rem;
+    --body-b1: 4.8rem;
+    --body-b2: 4.26rem;
+    --body-b4: 4.26rem;
+    --body-b5: 3.73rem;
+  }
+
+  .container { padding-left: 5.3rem; padding-right: 5.3rem; }
+  .container.values-sc { gap: 10rem; padding-top: 26rem; padding-bottom: 26rem; }
+  .container.solutions-s { gap: 21rem; padding-top: 50rem; padding-bottom: 14rem; }
+  .container.footer-s { padding-top: 14rem; padding-bottom: 6rem; }
+
+  .header { top: 8.5rem; }
+  .wordmark { font-size: 7.6rem; }
+
+  .hero-bg-elements { height: 100svh; min-height: 100svh; max-height: none; }
+  .hero-bg-ellipse { width: 150rem; top: -56rem; left: -25%; filter: blur(40rem); }
+  .hero-bg-images { width: 220%; top: 44rem; left: -78%; }
+  .hero-main-elements { gap: 12rem; width: 100%; padding: 0 5.3rem; }
+  .headline-wrapper.hero-s { width: auto; }
+
+  .email-form-wrapper { width: 100%; border-radius: 7rem; }
+  .email-form { grid-template-columns: 1fr; }
+  .email-input { height: 12.4rem; padding-left: 6.4rem; padding-right: 4.2rem; }
+  .email-submit { height: 12.4rem; background-color: var(--color-blue); }
+
+  .headline-tag { gap: 3.2rem; margin-bottom: 4.2rem; padding: 2rem 1.6rem 2rem 4.8rem; }
+  .headline-tag-svg { width: 5.8rem; height: 5.8rem; padding: 1rem; }
+
+  .description-wrapper.values-s,
+  .description-wrapper.footer-s { width: 80rem; padding-top: 6.4rem; }
+
+  .values-cards, .values-cards-pair { gap: 5.4rem; }
+  .values-cards-pair.big-left,
+  .values-cards-pair.big-right { display: flex; flex-flow: column; }
+  .values-card { aspect-ratio: 12 / 14; padding: 8.5rem 7.74rem; }
+  .values-card.b-padding { padding-top: 8.5rem; }
+  .values-card.b-padding.flex-p { display: flex; justify-content: center; align-items: flex-end; }
+  .subheadline-s1 { text-align: left; }
+  .values-lottie.s1, .values-lottie.s4 { width: 120%; left: -10%; }
+  .values-lottie.s2 { width: 110%; left: -5%; }
+  .values-lottie.s3 { width: 120%; bottom: -16%; left: -10%; }
+  .values-button-element { padding: 1.8rem; }
+  .values-button { padding: 4.4rem 7.4rem; font-size: 5.5rem; }
+  .values-button-wrapper { bottom: 23rem; }
+
+  .full-container.solutions-s { border-top-left-radius: 10rem; border-top-right-radius: 10rem; }
+  .headline-h3.white { text-align: center; }
+  .headline-wrapper.solutions-s { width: 88rem; }
+  .description-pair.solutions-s {
+    gap: 6rem;
+    flex-flow: column;
+    align-items: flex-start;
+    width: 90rem;
+    padding-top: 36rem;
+  }
+  .description-wrapper.solutions-s.left,
+  .description-wrapper.solutions-s.right { width: auto; text-align: left; }
+  .description-pair-element { width: 40rem; top: 5%; }
+  .solutions-headline-element { width: 60rem; top: -28%; bottom: auto; }
+  .solutions-content-wrapper { background-image: linear-gradient(94deg, var(--color-white), var(--color-transparent) 41%); }
+  .solutions-content { border-radius: 8.4rem; padding: 10.5rem 5.4rem 5.4rem; }
+  .solutions-slider-nav, .solutions-slider-content { display: none; }
+  .solutions-mobile-p { display: flex; flex-flow: column; gap: 10.6rem; }
+  .sol-card-p {
+    aspect-ratio: 41.7 / 45.8;
+    background-color: var(--color-dark);
+    border-radius: 4rem;
+    overflow: hidden;
+    margin-top: 6rem;
+  }
+  .solutions-slider-tab-element { gap: 4.8rem; }
+  .sol-slider-tab-title { gap: 3.2rem; }
+  .sol-slider-title-svg { width: 6.4rem; height: 6.4rem; }
+  .sol-slider-tab-list { gap: 2.8rem; width: 100%; padding-left: 8rem; }
+
+  .footer-logo { border-radius: 3.8rem; width: 16rem; margin-bottom: 10.6rem; }
+  .footer-form { padding-top: 10.6rem; padding-bottom: 32rem; }
+  .footer-down-block { gap: 10.6rem; flex-flow: column; }
+  .footer-rights-block { order: 1; position: relative; left: auto; }
+  .media-links { gap: 5.4rem; }
+  .media-link { width: 12.8rem; }
+  .media-svg { width: 5.4rem; }
+  .footer-coin.s1 { width: 58rem; bottom: 68%; left: -25%; }
+  .footer-coin.s2 { width: 43rem; bottom: 17%; right: -15%; }
+  .mobile-p-view { display: inline-block; }
+  .mobile-p-hidden { display: none; }
+}
+
+/* ------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .word-span, .line-span-body, .view-element {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  [data-levitation] { animation: none !important; }
+  .swiper-wrapper { transition: none; }
+}
+
+/* ====================================================== launch app CTA
+
+   Replaces the hero's waitlist form. Deliberately the same object as the
+   `.email-form-wrapper` it stands in for — same dark fill, same pill radius,
+   same blue-on-hover as `.email-submit` — so the hero's silhouette is
+   unchanged and only the invitation is different.
+
+   `display: flex` rather than `inline-flex` so `margin: 0 auto` actually
+   centres it: auto margins do nothing to an inline-level box, which is why the
+   button previously sat against the left edge of its stretched wrapper while
+   the headline above it was centred.
+   ------------------------------------------------------------------------ */
+
+.launch-cta {
+  display: flex;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  height: 3.8rem;
+  padding: 0 2.4rem;
+  border-radius: var(--radius-corner);
+  background-color: var(--color-dark);
+  color: var(--color-white);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: var(--body-b2);
+  font-weight: 600;
+  line-height: var(--lh-100);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.launch-cta:hover {
+  background-color: var(--color-blue);
+  transform: translateY(-0.15rem);
+}
+
+.launch-cta-arrow {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  transition: transform 0.2s;
+}
+
+.launch-cta:hover .launch-cta-arrow { transform: translateX(0.25rem); }
+
+/* The hero button sits exactly where the waitlist form did — centred in the
+   hero column, directly under the headline. */
+.launch-cta.hero-s {
+  height: 4.4rem;
+  padding: 0 3rem;
+  font-size: var(--body-b1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-cta,
+  .launch-cta:hover,
+  .launch-cta-arrow,
+  .launch-cta:hover .launch-cta-arrow { transition: none; transform: none; }
+}
+
+/* Matched to the form heights they replace at each breakpoint: 6.4rem on
+   tablet, 12.4rem on mobile (see .email-input above). */
+@media screen and (max-width: 991px) {
+  .launch-cta { gap: 1.6rem; }
+  .launch-cta.hero-s { height: 6.8rem; padding: 0 4.4rem; }
+  .launch-cta-arrow { width: 2rem; height: 2rem; }
+}
+
+@media screen and (max-width: 479px) {
+  .launch-cta { gap: 2.6rem; }
+  .launch-cta.hero-s { height: 12.4rem; padding: 0 7rem; border-radius: 7rem; }
+  .launch-cta-arrow { width: 3.4rem; height: 3.4rem; }
+}

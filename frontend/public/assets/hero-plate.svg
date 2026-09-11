@@ -1,0 +1,130 @@
+<!-- Hero backdrop: the white ribbon landscape the coins float over,
+     plus the drifting particle trails. Canvas matches every hero layer. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1100" viewBox="0 0 2000 1100" fill="none">
+  <style>
+    .trail { animation: trail 7s linear infinite; }
+    @keyframes trail { 0% { opacity: 0 } 20%,70% { opacity: 1 } 100% { opacity: 0 } }
+    .spark { animation: spark 4.5s ease-in-out infinite; }
+    @keyframes spark { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+  </style>
+  <defs>
+    <linearGradient id="w1" x1="0" y1="0" x2="1" y2="0.4">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.38"/>
+    </linearGradient>
+    <linearGradient id="w2" x1="0" y1="0" x2="1" y2="0.3">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.72"/>
+    </linearGradient>
+    <!-- the ribbon itself: fades in from the left, solid by the time it exits right -->
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="16%" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="48%" stop-color="#ffffff" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="crest" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="22%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="70%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="stripe" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8fb6f2" stop-opacity="0"/>
+      <stop offset="35%" stop-color="#8fb6f2" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#8fb6f2" stop-opacity="0.12"/>
+    </linearGradient>
+
+    <!-- guarantees the canvas ends on solid white so it can butt up against the page -->
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <clipPath id="bandClip">
+      <path d="M-50 806 C 380 798 640 748 900 622 C 1160 496 1360 442 1620 458 C 1800 469 1920 498 2050 526
+               L2050 612 C 1920 584 1800 556 1620 546 C 1360 532 1170 588 910 714 C 650 840 400 884 -50 892 Z"/>
+    </clipPath>
+    <clipPath id="midClip">
+      <path d="M-50 892 C 360 852 700 946 1020 792 C 1340 638 1560 552 2050 582 L2050 1150 L-50 1150 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- receding swells -->
+  <path d="M-50 872 C 300 832 600 932 900 772 C 1200 612 1420 522 2050 552 L2050 1150 L-50 1150 Z" fill="url(#w1)"/>
+  <path d="M-50 892 C 360 852 700 946 1020 792 C 1340 638 1560 552 2050 582 L2050 1150 L-50 1150 Z" fill="url(#w2)"/>
+
+  <!-- ruled surface catching the light on the right -->
+  <g clip-path="url(#midClip)" stroke="url(#stripe)" stroke-width="1.4">
+    <path d="M1330 900 L1700 560"/><path d="M1410 900 L1780 560"/><path d="M1490 900 L1860 560"/>
+    <path d="M1570 900 L1940 560"/><path d="M1650 900 L2020 560"/>
+  </g>
+
+  <!-- the ribbon: a band with real thickness, brightest along its crest -->
+  <path d="M-50 806 C 380 798 640 748 900 622 C 1160 496 1360 442 1620 458 C 1800 469 1920 498 2050 526
+           L2050 612 C 1920 584 1800 556 1620 546 C 1360 532 1170 588 910 714 C 650 840 400 884 -50 892 Z"
+        fill="url(#band)"/>
+  <g clip-path="url(#bandClip)" stroke="#cbdcf8" stroke-opacity="0.5" stroke-width="1.2">
+    <path d="M1360 700 L1760 400"/><path d="M1460 700 L1860 400"/><path d="M1560 700 L1960 400"/>
+    <path d="M1660 700 L2060 400"/>
+  </g>
+  <path d="M-50 806 C 380 798 640 748 900 622 C 1160 496 1360 442 1620 458 C 1800 469 1920 498 2050 526"
+        stroke="url(#crest)" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- node riding the ribbon -->
+  <g class="spark" transform="translate(1620 458)">
+    <circle r="26" fill="#ffffff"/>
+    <g transform="translate(-8.6 -11.4) scale(0.0245)">
+      <g transform="translate(-337 -190)">
+        <rect x="357" y="440" width="99" height="531" fill="#0a3ea8"/>
+        <path d="M845 380 A 234 234 0 1 0 844 610" fill="none" stroke="#0a3ea8"
+              stroke-width="99" stroke-linecap="round"/>
+        <circle cx="861" cy="502" r="55" fill="#ea1c5d"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- particle trails -->
+  <g fill="#ffffff">
+    <g class="trail">
+      <circle cx="372" cy="466" r="6" opacity="0.9"/>
+      <circle cx="404" cy="464" r="3.4" opacity="0.65"/>
+      <circle cx="430" cy="462" r="2.4" opacity="0.45"/>
+      <circle cx="452" cy="461" r="1.8" opacity="0.3"/>
+    </g>
+    <g class="trail" style="animation-delay:2.2s">
+      <circle cx="1518" cy="222" r="6" opacity="0.9"/>
+      <circle cx="1556" cy="228" r="3.2" opacity="0.6"/>
+      <circle cx="1588" cy="234" r="2.2" opacity="0.4"/>
+    </g>
+    <g class="trail" style="animation-delay:3.6s">
+      <circle cx="948" cy="268" r="7" opacity="0.85"/>
+      <circle cx="986" cy="258" r="3" opacity="0.5"/>
+    </g>
+    <circle class="spark" cx="1448" cy="612" r="5" opacity="0.7"/>
+    <circle class="spark" style="animation-delay:1.4s" cx="1690" cy="268" r="4" opacity="0.6"/>
+    <circle class="spark" style="animation-delay:2.6s" cx="1582" cy="668" r="4" opacity="0.55"/>
+    <circle class="spark" style="animation-delay:0.8s" cx="974" cy="636" r="5" opacity="0.5"/>
+  </g>
+
+  <!-- faint speed lines -->
+  <g stroke="#ffffff" stroke-linecap="round" opacity="0.45">
+    <path d="M1000 232 L1050 224" stroke-width="2.5"/>
+    <path d="M1614 244 L1676 254" stroke-width="2"/>
+    <path d="M672 402 L742 394" stroke-width="2"/>
+  </g>
+
+  <rect y="860" width="2000" height="240" fill="url(#floor)"/>
+
+  <!-- contactless glyph resting on the front swell -->
+  <g transform="translate(398 806)" class="spark" style="animation-delay:1.8s">
+    <rect x="-26" y="-26" width="52" height="52" rx="16" fill="#ffffff"/>
+    <g stroke="#7f9bc7" stroke-width="2.6" fill="none" stroke-linecap="round">
+      <path d="M-9 -9 A 13 13 0 0 1 -9 9"/>
+      <path d="M-2 -13 A 19 19 0 0 1 -2 13"/>
+      <path d="M5 -17 A 25 25 0 0 1 5 17"/>
+    </g>
+  </g>
+</svg>

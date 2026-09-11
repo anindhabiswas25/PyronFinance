@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" fill="none">
+  <style>
+    .f { animation: f 3.6s ease-in-out infinite; }
+    @keyframes f { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+  </style>
+  <g class="f" opacity="0.9">
+    <rect x="70" y="52" width="180" height="96" rx="24" fill="#ffffff" fill-opacity="0.10"
+          stroke="#ffffff" stroke-opacity="0.35"/>
+    <rect x="96" y="80" width="86" height="10" rx="5" fill="#ffffff" fill-opacity="0.55"/>
+    <rect x="96" y="102" width="128" height="10" rx="5" fill="#ffffff" fill-opacity="0.3"/>
+    <circle cx="222" cy="86" r="14" fill="#0defd1"/>
+  </g>
+</svg>

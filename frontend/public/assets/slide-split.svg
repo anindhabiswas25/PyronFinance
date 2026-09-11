@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="835" viewBox="0 0 760 835" fill="none">
+  <style>
+    .fade { animation: fade 4s ease-in-out infinite; }
+    @keyframes fade { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+    .fall { animation: fall 3.4s ease-in-out infinite; }
+    @keyframes fall { 0% { transform: translateY(-14px); opacity: 0 } 30%,70% { transform: translateY(0); opacity: 1 } 100% { transform: translateY(14px); opacity: 0 } }
+    .count { animation: fade 2.2s ease-in-out infinite; }
+  </style>
+  <rect width="760" height="835" fill="#010320"/>
+  <circle cx="380" cy="180" r="300" fill="#0066ff" opacity="0.16"/>
+
+  <!-- panel -->
+  <rect x="70" y="120" width="620" height="600" rx="40" fill="#ffffff" fill-opacity="0.06"
+        stroke="#ffffff" stroke-opacity="0.16"/>
+
+  <text x="112" y="188" font-family="'Plus Jakarta Sans',sans-serif" font-size="26" font-weight="600" fill="#ffffff">Split</text>
+  <rect x="600" y="164" width="52" height="28" rx="14" fill="#0defd1" opacity="0.9"/>
+
+  <!-- input -->
+  <rect x="112" y="220" width="536" height="120" rx="26" fill="#ffffff" fill-opacity="0.07"/>
+  <text x="146" y="266" font-family="Inter,sans-serif" font-size="18" fill="#ffffff" opacity="0.55">You deposit</text>
+  <text x="146" y="312" font-family="'Plus Jakarta Sans',sans-serif" font-size="38" font-weight="600" fill="#ffffff">10,000</text>
+  <g transform="translate(538 262)">
+    <circle r="26" fill="#0066ff"/>
+    <text y="7" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="14" font-weight="600" fill="#ffffff">FXRP</text>
+  </g>
+
+  <g class="fall">
+    <path d="M380 366 v 44" stroke="#0defd1" stroke-width="3" stroke-linecap="round"/>
+    <path d="M366 396 l14 16 l14 -16" stroke="#0defd1" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- outputs -->
+  <g class="fade">
+    <rect x="112" y="440" width="536" height="112" rx="26" fill="#ffffff" fill-opacity="0.10"/>
+    <text x="146" y="482" font-family="Inter,sans-serif" font-size="17" fill="#ffffff" opacity="0.55">You receive</text>
+    <text x="146" y="522" font-family="'Plus Jakarta Sans',sans-serif" font-size="32" font-weight="600" fill="#ffffff">10,000 PT</text>
+    <text x="616" y="514" text-anchor="end" font-family="Inter,sans-serif" font-size="17" fill="#0defd1">matures 30 Jun</text>
+  </g>
+  <g class="fade" style="animation-delay:1.2s">
+    <rect x="112" y="572" width="536" height="112" rx="26" fill="#ffffff" fill-opacity="0.10"/>
+    <text x="146" y="614" font-family="Inter,sans-serif" font-size="17" fill="#ffffff" opacity="0.55">and</text>
+    <text x="146" y="654" font-family="'Plus Jakarta Sans',sans-serif" font-size="32" font-weight="600" fill="#ffffff">10,000 YT</text>
+    <text x="616" y="646" text-anchor="end" font-family="Inter,sans-serif" font-size="17" fill="#0defd1">accruing</text>
+  </g>
+</svg>

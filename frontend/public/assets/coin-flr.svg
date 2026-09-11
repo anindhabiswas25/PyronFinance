@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1100" viewBox="0 0 2000 1100" fill="none">
+  <defs>
+    <!-- polished chrome bezel: key light top-left, bounce light bottom-right -->
+    <linearGradient id="flr-bezel" x1="0.08" y1="0" x2="0.92" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="16%" stop-color="#e8eeff"/>
+      <stop offset="40%" stop-color="#93a8e2"/>
+      <stop offset="56%" stop-color="#f4f7ff"/>
+      <stop offset="76%" stop-color="#93a8e2"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="flr-side" x1="0" y1="0" x2="1" y2="0.55">
+      <stop offset="0%" stop-color="#f6f9ff"/>
+      <stop offset="30%" stop-color="#c3d2f2"/>
+      <stop offset="66%" stop-color="#6d84cf"/>
+      <stop offset="100%" stop-color="#2f4394"/>
+    </linearGradient>
+    <radialGradient id="flr-face" cx="30%" cy="20%" r="92%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="46%" stop-color="#eaf0ff"/>
+      <stop offset="100%" stop-color="#bccbee"/>
+    </radialGradient>
+    <linearGradient id="flr-back" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6d84cf"/>
+      <stop offset="100%" stop-color="#2f4394"/>
+    </linearGradient>
+    <linearGradient id="flr-sheen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="flr-bandclip"><path d="M 0 -115.0 A 92.0 115.0 0 0 0 0 115.0 L -46.0 115.0 A 92.0 115.0 0 0 1 -46.0 -115.0 Z"/></clipPath>
+  </defs>
+
+  <g transform="translate(1440 300) rotate(3)">
+    <ellipse cx="-46" rx="92.0" ry="115.0" fill="url(#flr-back)"/>
+    <path d="M 0 -115.0 A 92.0 115.0 0 0 0 0 115.0 L -46.0 115.0 A 92.0 115.0 0 0 1 -46.0 -115.0 Z" fill="url(#flr-side)"/>
+    <g clip-path="url(#flr-bandclip)" stroke="#2f4394" stroke-opacity="0.35" stroke-width="1.8">
+      <path d="M -33.0 -107.3 L -79.0 -107.3"/>
+      <path d="M -45.9 -99.7 L -91.9 -99.7"/>
+      <path d="M -55.2 -92.0 L -101.2 -92.0"/>
+      <path d="M -62.5 -84.3 L -108.5 -84.3"/>
+      <path d="M -68.6 -76.7 L -114.6 -76.7"/>
+      <path d="M -73.6 -69.0 L -119.6 -69.0"/>
+      <path d="M -77.8 -61.3 L -123.8 -61.3"/>
+      <path d="M -81.4 -53.7 L -127.4 -53.7"/>
+      <path d="M -84.3 -46.0 L -130.3 -46.0"/>
+      <path d="M -86.7 -38.3 L -132.7 -38.3"/>
+      <path d="M -88.7 -30.7 L -134.7 -30.7"/>
+      <path d="M -90.1 -23.0 L -136.1 -23.0"/>
+      <path d="M -91.2 -15.3 L -137.2 -15.3"/>
+      <path d="M -91.8 -7.7 L -137.8 -7.7"/>
+      <path d="M -92.0 0.0 L -138.0 0.0"/>
+      <path d="M -91.8 7.7 L -137.8 7.7"/>
+      <path d="M -91.2 15.3 L -137.2 15.3"/>
+      <path d="M -90.1 23.0 L -136.1 23.0"/>
+      <path d="M -88.7 30.7 L -134.7 30.7"/>
+      <path d="M -86.7 38.3 L -132.7 38.3"/>
+      <path d="M -84.3 46.0 L -130.3 46.0"/>
+      <path d="M -81.4 53.7 L -127.4 53.7"/>
+      <path d="M -77.8 61.3 L -123.8 61.3"/>
+      <path d="M -73.6 69.0 L -119.6 69.0"/>
+      <path d="M -68.6 76.7 L -114.6 76.7"/>
+      <path d="M -62.5 84.3 L -108.5 84.3"/>
+      <path d="M -55.2 92.0 L -101.2 92.0"/>
+      <path d="M -45.9 99.7 L -91.9 99.7"/>
+      <path d="M -33.0 107.3 L -79.0 107.3"/>
+    </g>
+    <path d="M 0 -115.0 A 92.0 115.0 0 0 0 0 115.0 L -46.0 115.0 A 92.0 115.0 0 0 1 -46.0 -115.0 Z" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="1.4"/>
+
+    <ellipse rx="92.0" ry="115.0" fill="url(#flr-bezel)"/>
+    <ellipse rx="79.1" ry="98.9" fill="url(#flr-face)"/>
+    <ellipse rx="79.1" ry="98.9" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="2"/>
+
+    <g transform="scale(0.8 1)">
+      <g transform="translate(-105.4 -97.8) scale(0.1656)">
+        <rect x="357" y="440" width="99" height="531" fill="#2f4bb8"/>
+        <path d="M845 380 A 234 234 0 1 0 844 610" fill="none" stroke="#2f4bb8"
+              stroke-width="99" stroke-linecap="round"/>
+        <circle cx="861" cy="502" r="55" fill="#ea1c5d"/>
+      </g>
+    </g>
+
+    <path d="M -68.1 -64.4 A 87.4 109.2 0 0 1 33.1 -103.5"
+          stroke="url(#flr-sheen)" stroke-width="11.5" fill="none" stroke-linecap="round"/>
+    <path d="M 55.2 82.8 A 87.4 109.2 0 0 0 85.6 32.2"
+          stroke="#ffffff" stroke-opacity="0.4" stroke-width="6.9" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="440" viewBox="0 0 800 440" fill="none">
+  <style>
+    .flow { stroke-dasharray: 10 14; animation: dash 2.4s linear infinite; }
+    @keyframes dash { to { stroke-dashoffset: -48; } }
+    .pulse { animation: pulse 3s ease-in-out infinite; transform-origin: center; }
+    @keyframes pulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+    .rise { animation: rise 4s ease-in-out infinite; }
+    @keyframes rise { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+  </style>
+  <defs>
+    <radialGradient id="cs-glow" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#0066ff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#0066ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="440" fill="url(#cs-glow)"/>
+
+  <!-- source position -->
+  <g class="rise">
+    <circle cx="400" cy="128" r="52" fill="#0066ff"/>
+    <circle cx="400" cy="128" r="52" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="2"/>
+    <text x="400" y="136" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+          font-size="19" font-weight="600" fill="#ffffff">FXRP</text>
+  </g>
+
+  <!-- split into two legs -->
+  <path class="flow" d="M400 186 C 400 250, 268 246, 254 300" stroke="#0066ff" stroke-width="3" fill="none" opacity="0.8"/>
+  <path class="flow" d="M400 186 C 400 250, 532 246, 546 300" stroke="#0defd1" stroke-width="3" fill="none" opacity="0.9"/>
+
+  <g class="pulse">
+    <rect x="164" y="304" width="180" height="84" rx="42" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="254" y="344" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+          font-size="26" font-weight="700" fill="#010320">PT</text>
+    <text x="254" y="368" text-anchor="middle" font-family="Inter,sans-serif"
+          font-size="14" fill="#66676c">principal, fixed</text>
+  </g>
+
+  <g class="pulse" style="animation-delay:1.5s">
+    <rect x="456" y="304" width="180" height="84" rx="42" fill="#010320"/>
+    <text x="546" y="344" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+          font-size="26" font-weight="700" fill="#0defd1">YT</text>
+    <text x="546" y="368" text-anchor="middle" font-family="Inter,sans-serif"
+          font-size="14" fill="#ffffff" opacity="0.65">yield, until maturity</text>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+packages:
+  - frontend
+
+# pnpm 11 blocks dependency build scripts by default. `sharp` is Next's image
+# optimizer and is worth compiling. Note the key is `allowBuilds` in pnpm 11 —
+# the older `onlyBuiltDependencies` form is silently ignored.
+allowBuilds:
+  sharp: true

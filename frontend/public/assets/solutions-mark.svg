@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420" fill="none">
+  <style>
+    .spin { animation: spin 18s linear infinite; transform-origin: 210px 210px; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .breathe { animation: breathe 5s ease-in-out infinite; transform-origin: 210px 210px; }
+    @keyframes breathe { 0%,100% { transform: scale(1) } 50% { transform: scale(1.05) } }
+  </style>
+  <g class="spin" opacity="0.5">
+    <circle cx="210" cy="210" r="150" fill="none" stroke="#ffffff" stroke-opacity="0.35"
+            stroke-width="2" stroke-dasharray="6 16"/>
+    <circle cx="210" cy="60" r="9" fill="#0defd1"/>
+    <circle cx="360" cy="210" r="7" fill="#ffffff"/>
+  </g>
+  <g class="breathe">
+    <circle cx="210" cy="210" r="104" fill="#ffffff" fill-opacity="0.10"/>
+    <circle cx="210" cy="210" r="104" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="2"/>
+    <g transform="translate(163 158) scale(0.1183)">
+      <rect x="357" y="440" width="99" height="531" fill="#ffffff"/>
+      <path d="M845 380 A 234 234 0 1 0 844 610" fill="none" stroke="#ffffff"
+            stroke-width="99" stroke-linecap="round"/>
+      <circle cx="861" cy="502" r="55" fill="#ea1c5d"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,94 @@
+<!-- Vector rebuild of the supplied coin render, so it stays sharp at any size.
+     Geometry measured off the source: semi-axes 62.7 / 48.4 (foreshortening
+     0.772) with the disc axis at 52°, i.e. a -38° lean with the milled edge
+     falling to the lower left. Colours sampled from the same file. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1100" viewBox="0 0 2000 1100" fill="none">
+  <defs>
+    <!-- chrome bezel: white crest top-left, saturated blue through the lower right -->
+    <linearGradient id="btc-bezel" x1="0.12" y1="0" x2="0.88" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="14%" stop-color="#eff6ff"/>
+      <stop offset="32%" stop-color="#9cc4ff"/>
+      <stop offset="52%" stop-color="#2556d0"/>
+      <stop offset="72%" stop-color="#3d81ff"/>
+      <stop offset="88%" stop-color="#1c6ffd"/>
+      <stop offset="100%" stop-color="#7fb6ff"/>
+    </linearGradient>
+    <linearGradient id="btc-side" x1="0" y1="0" x2="0.9" y2="0.6">
+      <stop offset="0%" stop-color="#40a3fe"/>
+      <stop offset="38%" stop-color="#1d6eff"/>
+      <stop offset="78%" stop-color="#0e4efe"/>
+      <stop offset="100%" stop-color="#0a3ad2"/>
+    </linearGradient>
+    <linearGradient id="btc-back" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1d6eff"/>
+      <stop offset="100%" stop-color="#0a3ad2"/>
+    </linearGradient>
+    <!-- glassy face -->
+    <radialGradient id="btc-face" cx="30%" cy="22%" r="92%">
+      <stop offset="0%" stop-color="#dbe5ff"/>
+      <stop offset="30%" stop-color="#b3c7ff"/>
+      <stop offset="66%" stop-color="#7f9ce8"/>
+      <stop offset="100%" stop-color="#4f7ef8"/>
+    </radialGradient>
+    <linearGradient id="btc-gloss" x1="0.1" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.62"/>
+      <stop offset="38%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="btc-crest" x1="0" y1="0" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="30%" stop-color="#ffffff"/>
+      <stop offset="62%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <clipPath id="btc-faceclip"><ellipse rx="113.5" ry="147" /></clipPath>
+  </defs>
+
+  <g transform="translate(920 400) rotate(-38)">
+    <!-- body: back face, milled side, then the front bezel -->
+    <ellipse cx="-30" rx="113.5" ry="147" fill="url(#btc-back)"/>
+    <path d="M 0 -147 A 113.5 147 0 0 0 0 147 L -30 147 A 113.5 147 0 0 1 -30 -147 Z"
+          fill="url(#btc-side)"/>
+    <g clip-path="url(#btc-faceclip)" transform="translate(-30 0)" opacity="0.2">
+      <g stroke="#0a3ad2" stroke-width="2">
+        <path d="M-113 -60 h 40"/><path d="M-113 -40 h 46"/><path d="M-113 -20 h 48"/>
+        <path d="M-113 0 h 50"/><path d="M-113 20 h 48"/><path d="M-113 40 h 46"/>
+        <path d="M-113 60 h 40"/>
+      </g>
+    </g>
+    <ellipse rx="113.5" ry="147" fill="url(#btc-bezel)"/>
+
+    <!-- face -->
+    <ellipse rx="97" ry="126" fill="url(#btc-face)"/>
+    <ellipse rx="97" ry="126" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="2"/>
+
+    <!-- Bitcoin mark, painted on the face so it stays near-upright on screen -->
+    <g transform="rotate(30) scale(0.772 1)">
+      <g fill="#41589f" opacity="0.45" transform="translate(5 6)">
+        <rect x="-34" y="-92" width="17" height="30" rx="4"/>
+        <rect x="2" y="-92" width="17" height="30" rx="4"/>
+        <rect x="-34" y="62" width="17" height="30" rx="4"/>
+        <rect x="2" y="62" width="17" height="30" rx="4"/>
+        <text y="42" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+              font-size="150" font-weight="700">B</text>
+      </g>
+      <g fill="#cfdcff">
+        <rect x="-34" y="-92" width="17" height="30" rx="4"/>
+        <rect x="2" y="-92" width="17" height="30" rx="4"/>
+        <rect x="-34" y="62" width="17" height="30" rx="4"/>
+        <rect x="2" y="62" width="17" height="30" rx="4"/>
+        <text y="42" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+              font-size="150" font-weight="700">B</text>
+      </g>
+    </g>
+
+    <!-- glass: broad gloss over the upper left, crest along the rim -->
+    <ellipse rx="97" ry="126" fill="url(#btc-gloss)"/>
+    <path d="M -86 -78 A 111 144 0 0 1 66 -128" stroke="url(#btc-crest)" stroke-width="13"
+          fill="none" stroke-linecap="round"/>
+    <path d="M 74 92 A 111 144 0 0 0 106 30" stroke="#ffffff" stroke-opacity="0.5"
+          stroke-width="8" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

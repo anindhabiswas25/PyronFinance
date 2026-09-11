@@ -1,0 +1,11 @@
+<!-- Pyron mark, traced from the supplied artwork.
+     Ring centre (640.5, 493.5), centreline radius 234, stroke 99, open on the
+     right where the accent dot sits. The stem is the ring's left stroke run down. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="337 190 600 800" fill="none">
+  <g fill="#e8e6e7" stroke="none">
+    <rect x="357" y="440" width="99" height="531"/>
+    <path d="M845 380 A 234 234 0 1 0 844 610"
+          fill="none" stroke="#e8e6e7" stroke-width="99" stroke-linecap="round"/>
+  </g>
+  <circle cx="861" cy="502" r="55" fill="#ea1c5d"/>
+</svg>

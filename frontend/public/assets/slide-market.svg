@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="835" viewBox="0 0 760 835" fill="none">
+  <style>
+    .draw { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: draw 4.5s ease-in-out infinite; }
+    @keyframes draw { 0% { stroke-dashoffset: 1200 } 55%,100% { stroke-dashoffset: 0 } }
+    .row { animation: row 4s ease-in-out infinite; }
+    @keyframes row { 0%,100% { opacity: .5 } 50% { opacity: 1 } }
+    .dot { animation: dot 2.6s ease-in-out infinite; }
+    @keyframes dot { 0%,100% { r: 8; opacity: 1 } 50% { r: 13; opacity: .6 } }
+  </style>
+  <rect width="760" height="835" fill="#010320"/>
+  <circle cx="380" cy="240" r="300" fill="#0defd1" opacity="0.10"/>
+
+  <rect x="70" y="120" width="620" height="600" rx="40" fill="#ffffff" fill-opacity="0.06"
+        stroke="#ffffff" stroke-opacity="0.16"/>
+
+  <text x="112" y="188" font-family="'Plus Jakarta Sans',sans-serif" font-size="26" font-weight="600" fill="#ffffff">PT / SY</text>
+  <text x="648" y="188" text-anchor="end" font-family="'Plus Jakarta Sans',sans-serif" font-size="26" font-weight="600" fill="#0defd1">7.42%</text>
+  <text x="648" y="212" text-anchor="end" font-family="Inter,sans-serif" font-size="15" fill="#ffffff" opacity="0.5">implied fixed APY</text>
+
+  <g stroke="#ffffff" stroke-opacity="0.10" stroke-width="1.5">
+    <path d="M112 300 H648"/><path d="M112 370 H648"/><path d="M112 440 H648"/>
+  </g>
+  <path class="draw" d="M112 452 C 200 430, 250 396, 330 372 S 480 330, 560 306 L 648 292"
+        stroke="#0defd1" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <circle class="dot" cx="648" cy="292" r="8" fill="#0defd1"/>
+
+  <g font-family="Inter,sans-serif" font-size="17" fill="#ffffff">
+    <g class="row">
+      <rect x="112" y="508" width="536" height="58" rx="20" fill="#ffffff" fill-opacity="0.08"/>
+      <text x="140" y="544" opacity="0.75">Sep 2026</text>
+      <text x="620" y="544" text-anchor="end" fill="#0defd1">6.80%</text>
+    </g>
+    <g class="row" style="animation-delay:.8s">
+      <rect x="112" y="576" width="536" height="58" rx="20" fill="#ffffff" fill-opacity="0.08"/>
+      <text x="140" y="612" opacity="0.75">Dec 2026</text>
+      <text x="620" y="612" text-anchor="end" fill="#0defd1">7.42%</text>
+    </g>
+    <g class="row" style="animation-delay:1.6s">
+      <rect x="112" y="644" width="536" height="58" rx="20" fill="#ffffff" fill-opacity="0.08"/>
+      <text x="140" y="680" opacity="0.75">Mar 2027</text>
+      <text x="620" y="680" text-anchor="end" fill="#0defd1">8.05%</text>
+    </g>
+  </g>
+</svg>

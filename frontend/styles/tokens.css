@@ -1,0 +1,106 @@
+/* =========================================================================
+   Pyron Finance — shared design tokens
+
+   The single source of truth for colour, type and shape across BOTH the
+   marketing routes and the app. Lifted from landing/styles.css so the app
+   inherits the landing's identity exactly rather than approximating it.
+
+   What is deliberately NOT here: the fluid `html { font-size: 1vw }` rule.
+   That belongs to the marketing layout alone — see the note in
+   app/(marketing)/landing.css. The app runs on a fixed root so that a balance
+   is the same size on a laptop as on a 4K display.
+   ========================================================================= */
+
+:root {
+  /* ---- palette (landing/styles.css:27-33) ---- */
+  --color-dark: #010320;
+  --color-graphite: #66676c;
+  --color-blue: #0066ff;
+  --color-white: #ffffff;
+  --color-light-grey: #e2e8f0;
+  --color-mint: #0defd1;
+  --color-transparent: transparent;
+
+  /* ---- app-only extensions ----
+     Derived from the palette above, never new hues. */
+  --color-ink: #0b0d2b;          /* body text in the app, softer than --color-dark */
+  --color-mist: #f6f8fc;         /* page background behind panels */
+  --color-hairline: #eef1f7;     /* internal rules, lighter than --color-light-grey */
+  --color-blue-wash: #f0f6ff;    /* selected/active tint */
+  --color-mint-deep: #049e88;    /* mint is too light for text — this is its readable form */
+  --color-danger: #d8305e;       /* the brand mark's accent dot, reused for errors */
+  --color-danger-wash: #fdf0f4;
+  --color-warn: #b06a00;
+  --color-warn-wash: #fff8ec;
+
+  /* ---- semantic token colour ----
+     Applied consistently on every page: PT is the certain thing, YT the
+     variable one, SY the neutral wrapper. */
+  --color-pt: var(--color-mint-deep);
+  --color-pt-wash: #e9fbf7;
+  --color-yt: var(--color-blue);
+  --color-yt-wash: var(--color-blue-wash);
+  --color-sy: var(--color-graphite);
+  --color-sy-wash: #f2f3f5;
+
+  /* ---- shape ---- */
+  --stroke-main: 0.1rem;
+  --radius-corner: 256rem;       /* pills */
+  --radius-main: 2.2rem;         /* cards — resolves fluidly on marketing */
+
+  /* ---- type families ---- */
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-body: Inter, sans-serif;
+
+  /* ---- marketing type scale (fluid rem) ---- */
+  --headline-h1: 6.52rem;
+  --headline-h2: 4.16rem;
+  --headline-h3: 3.6rem;
+  --subheadline-s1: 5rem;
+  --subheadline-s2: 1.8rem;
+  --body-b1: 1.38rem;
+  --body-b2: 1.25rem;
+  --body-b4: 1.1rem;
+  --body-b5: 1.04rem;
+
+  --lh-100: 100%;
+  --lh-120: 120%;
+  --lh-130: 130%;
+}
+
+/* =========================================================================
+   App scale
+
+   Scoped to the app layout so it cannot leak into the marketing routes,
+   which run their whole layout off `1rem = 1vw`. Inside `.app-root`, rem is
+   a plain 16px and these fixed sizes apply.
+   ========================================================================= */
+
+.app-root {
+  --app-radius-card: 18px;
+  --app-radius-input: 12px;
+  --app-radius-chip: 999px;
+
+  --app-fs-display: 32px;
+  --app-fs-h1: 26px;
+  --app-fs-h2: 19px;
+  --app-fs-h3: 15px;
+  --app-fs-body: 14px;
+  --app-fs-small: 13px;
+  --app-fs-label: 11px;
+  --app-fs-stat: 22px;
+
+  --app-gap: 20px;
+  --app-pad: 22px;
+  --app-shadow: 0 1px 2px rgba(1, 3, 32, 0.04), 0 8px 24px -12px rgba(1, 3, 32, 0.12);
+  --app-shadow-lift: 0 2px 4px rgba(1, 3, 32, 0.05), 0 18px 40px -18px rgba(1, 3, 32, 0.22);
+}
+
+/* Every figure that polls — balances, prices, APYs, countdowns — uses tabular
+   figures so digits keep their column and the number does not jitter as it
+   refreshes. Applied by class rather than globally because proportional
+   figures read better in prose. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

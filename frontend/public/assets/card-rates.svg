@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="440" viewBox="0 0 800 440" fill="none">
+  <style>
+    .draw { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: draw 5s ease-in-out infinite; }
+    @keyframes draw { 0% { stroke-dashoffset: 1400 } 45%,100% { stroke-dashoffset: 0 } }
+    .blip { animation: blip 5s ease-in-out infinite; }
+    @keyframes blip { 0%,40% { opacity: 0 } 55%,100% { opacity: 1 } }
+  </style>
+  <defs>
+    <linearGradient id="cr" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0066ff" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0066ff"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#e2e8f0" stroke-width="1.5">
+    <path d="M80 120 H 720"/><path d="M80 200 H 720"/><path d="M80 280 H 720"/><path d="M80 360 H 720"/>
+  </g>
+  <!-- volatile variable rate -->
+  <path class="draw" d="M80 300 L150 250 L210 320 L270 210 L330 290 L390 190 L450 260 L510 170 L570 230 L630 160 L720 190"
+        stroke="url(#cr)" stroke-width="3" fill="none" stroke-linejoin="round" opacity="0.85"/>
+  <!-- the fixed rate it gets replaced with -->
+  <g class="blip">
+    <path d="M80 232 H 720" stroke="#0defd1" stroke-width="4" stroke-linecap="round"/>
+    <rect x="600" y="196" width="122" height="34" rx="17" fill="#010320"/>
+    <text x="661" y="219" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+          font-size="16" font-weight="600" fill="#0defd1">FIXED 7.4%</text>
+  </g>
+</svg>

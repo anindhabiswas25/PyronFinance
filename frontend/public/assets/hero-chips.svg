@@ -1,0 +1,44 @@
+<!-- The small chips that overlap the coins: they drift on their own cycle. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1100" viewBox="0 0 2000 1100" fill="none">
+  <defs>
+    <linearGradient id="chip-dark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#101a4a"/>
+      <stop offset="100%" stop-color="#04061f"/>
+    </linearGradient>
+    <linearGradient id="chip-light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4f8ff"/>
+      <stop offset="100%" stop-color="#c3d3ef"/>
+    </linearGradient>
+    <radialGradient id="pip" cx="34%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#4df0bd"/>
+      <stop offset="100%" stop-color="#06b183"/>
+    </radialGradient>
+  </defs>
+
+  <!-- mint pip peeking out from behind the dark chip -->
+  <circle cx="770" cy="546" r="34" fill="url(#pip)"/>
+
+  <g transform="translate(710 568) rotate(-4)">
+    <rect x="-33" y="-33" width="66" height="66" rx="20" fill="url(#chip-dark)"/>
+    <rect x="-33" y="-33" width="66" height="66" rx="20" fill="none"
+          stroke="#ffffff" stroke-opacity="0.22" stroke-width="1.4"/>
+    <g stroke="#ffffff" stroke-width="4.4" stroke-linecap="round">
+      <path d="M-12 0 H 12"/><path d="M0 -12 V 12"/>
+    </g>
+  </g>
+
+  <g transform="translate(1197 358) rotate(6)">
+    <rect x="-31" y="-31" width="62" height="62" rx="19" fill="url(#chip-light)"/>
+    <rect x="-31" y="-31" width="62" height="62" rx="19" fill="none"
+          stroke="#ffffff" stroke-opacity="0.75" stroke-width="1.4"/>
+    <g transform="translate(0 2)" fill="none" stroke="#42639f" stroke-width="3" stroke-linejoin="round">
+      <rect x="-13" y="-9" width="26" height="18" rx="5"/>
+      <path d="M4 0 h 9"/>
+    </g>
+    <g transform="translate(25 -25)">
+      <circle r="12.5" fill="#0a1440"/>
+      <text y="4" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif"
+            font-size="13" font-weight="600" fill="#ffffff">3</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+{
+  "name": "pyron-finance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @pyron/frontend dev",
+    "build": "pnpm --filter @pyron/frontend build",
+    "start": "pnpm --filter @pyron/frontend start",
+    "typecheck": "pnpm --filter @pyron/frontend typecheck"
+  },
+  "devDependencies": {"typescript": "^5.7.2"},
+  "packageManager": "pnpm@11.17.0"
+}

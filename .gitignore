@@ -1,0 +1,11 @@
+# Node / pnpm
+node_modules/
+dist/
+.next/
+
+# Env
+.env
+.env.local
+
+# TypeScript incremental build cache
+*.tsbuildinfo

@@ -1,0 +1,13 @@
+<!-- Header lockup: mark + wordmark, white for the blue hero. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="76" viewBox="0 0 340 76" fill="none">
+  <g transform="translate(0 2) scale(0.0935)">
+    <g transform="translate(-337 -190)">
+      <rect x="357" y="440" width="99" height="531" fill="#ffffff"/>
+      <path d="M845 380 A 234 234 0 1 0 844 610"
+            fill="none" stroke="#ffffff" stroke-width="99" stroke-linecap="round"/>
+      <circle cx="861" cy="502" r="55" fill="#ea1c5d"/>
+    </g>
+  </g>
+  <text x="72" y="49" font-family="'Plus Jakarta Sans',sans-serif" font-size="34"
+        font-weight="800" letter-spacing="-1.5" fill="#ffffff">Pyron Finance</text>
+</svg>
