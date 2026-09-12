@@ -6,6 +6,7 @@ export * from './witnesses.js';
 export * from './types.js';
 export * from './contract.js';
 export * from './wallet.js';
+export * from './wallet-state.js';
 export * from './providers.js';
 export * from './bonding.js';
 export * from './terms.js';

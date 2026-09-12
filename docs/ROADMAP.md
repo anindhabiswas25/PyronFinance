@@ -74,10 +74,25 @@ typical bonding circuit) — Schnorr verification plus the challenge-reduction r
   settlement). Flagged rather than guessed.
 
 **Blocked on network access:** 1.7 and 1.9 need a funded Preprod wallet seed (the Preprod faucet
-hit its 24h rate limit on 2026-08-27) and a running local proof server
-(`docker run -p 6300:6300 midnightnetwork/proof-server`), neither available in this environment.
-Not fabricating credentials or skipping this — flagging it for the owner. Once both exist:
-`pnpm generate-seed` → fund the printed address → `pnpm deploy` → `pnpm init` → `pnpm e2e-fraud`.
+hit its 24h rate limit on 2026-08-27) and a running local proof server, neither available in this
+environment. Not fabricating credentials or skipping this — flagging it for the owner. Once both
+exist: `pnpm generate-seed` → fund the printed address → `pnpm deploy` → `pnpm init` → `pnpm e2e-fraud`.
+
+**Proof server image — get this exactly right:**
+
+```bash
+docker run -d -p 6300:6300 midnightntwrk/proof-server:8.1.0 midnight-proof-server -v
+```
+
+- The org is **`midnightntwrk`** (no "e"), not `midnightnetwork`. Both exist on Docker Hub.
+  `midnightnetwork/proof-server` is an unrelated, stale repo whose `latest` is 7.0.0-rc.1 from
+  2026-01-12; this doc named it until 2026-09-12. Pointing ledger-v8 8.x at it produces no error —
+  the server accepts the `/prove` POST, logs "Starting to process request", then spins at 100% CPU
+  on ~33 MB of RSS indefinitely until the client times out. It looks exactly like slow proving.
+- Pin the tag to the **ledger-v8 minor version** (`packages/sdk/package.json`). The image tracks
+  ledger releases: ledger-v8 8.1.2 → `proof-server:8.1.0` (no 8.1.2 image is published). Bumping
+  ledger-v8 without bumping this is the same silent hang.
+- The trailing `midnight-proof-server -v` command is required.
 
 ### Defects found by executing the contract (2026-08-28)
 

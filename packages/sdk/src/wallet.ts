@@ -29,6 +29,7 @@ import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { getNetworkId, setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import type { WalletProvider, MidnightProvider } from '@midnight-ntwrk/midnight-js-types';
 import type { ChainConfig, NetworkId } from './config.js';
+import { loadWalletSnapshot, saveWalletSnapshot } from './wallet-state.js';
 
 export function initNetworkId(network: NetworkId): void {
   // Must be called before any other SDK operation — midnight-js SKILL.md §2.
@@ -88,13 +89,26 @@ export interface HeadlessWallet {
   waitForUnshieldedBalance(): Promise<bigint>;
   waitForDust(): Promise<void>;
   registerForDustGeneration(): Promise<void>;
+  /** Persists sync progress so the next start resumes instead of replaying from genesis.
+   *  waitForSync() already calls this; call it directly after submitting transactions if you want
+   *  the resulting state captured without waiting for the next sync. */
+  saveState(): Promise<void>;
+}
+
+export interface HeadlessWalletOptions {
+  /** Set false to ignore any on-disk snapshot and force a full genesis sync. Default true. */
+  persistState?: boolean;
 }
 
 /** Builds and starts a headless (Node.js) wallet from a hex seed, wired for use as both
  *  WalletProvider and MidnightProvider. Construction follows WalletFacade.init's real signature
  *  (see file header) — NOT the simpler pattern in midnight-js SKILL.md, which is stale relative
  *  to the pinned package versions. */
-export async function createHeadlessWallet(seedHex: string, chain: ChainConfig): Promise<HeadlessWallet> {
+export async function createHeadlessWallet(
+  seedHex: string,
+  chain: ChainConfig,
+  options: HeadlessWalletOptions = {},
+): Promise<HeadlessWallet> {
   const hdWallet = HDWallet.fromSeed(Buffer.from(seedHex, 'hex'));
   if (hdWallet.type !== 'seedOk') throw new Error('Invalid wallet seed');
 
@@ -116,18 +130,84 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
   const relayURL = new URL(chain.rpc.replace(/^http/, 'ws'));
   const provingServerUrl = new URL(chain.proofServer);
 
+  // batchUpdates is what makes a from-genesis Preprod sync survivable. The SDK default is
+  // { size: 10, spacing: 4 } — 10 events per 4 ms, i.e. a ~2500 events/s ceiling. Measured against
+  // live Preprod (~1.5M events to replay from genesis), the dust wallet applied only ~306 events/s
+  // under that default while the indexer pushed ~430/s, so the unapplied-event queue grew without
+  // bound and the process OOM'd — at 47 s on a 2 GB heap, and still at 26 min on a 6 GB one, which
+  // is what rules out "just needs more memory." The shielded wallet, by contrast, managed ~20k
+  // events/s with a flat ~200 MB heap, which is how the dust path was isolated as the culprit.
+  //
+  // spacing: 0 removes the inter-batch delay entirely and size: 500 amortizes per-batch overhead,
+  // letting the consumer outrun the producer so the queue drains instead of growing. Note this
+  // knob did not exist in the versions this file was originally written against
+  // (wallet-sdk-dust-wallet 3.0.0 hardcoded `const batchSize = 10`); it arrived in 4.2.0, which is
+  // the reason for the coordinated wallet-SDK major bump in packages/sdk/package.json.
+  const batchUpdates = { size: 500, spacing: 0 };
+
+  // costParameters became a REQUIRED dust-wallet config field in wallet-sdk-dust-wallet 4.x — it
+  // did not exist in 3.0.0. Omitting it does not fail to typecheck (the facade's DefaultConfiguration
+  // does not surface it as required), it fails at run time deep inside balancing with
+  // "Cannot read properties of undefined (reading 'feeBlocksMargin')" the first time a transaction
+  // is balanced — i.e. only once you have a synced, funded wallet and are actually deploying.
+  // Values per midnight-js SKILL.md §5.
+  //
+  // feeBlocksMargin is an EXPONENT, not a block count — ledger-v8 warns "it is very easy to get a
+  // completely unreasonable margin here." Do not raise it casually to buy fee headroom; 5 is the
+  // documented value.
+  const costParameters = {
+    additionalFeeOverhead: 300_000_000_000_000n,
+    feeBlocksMargin: 5,
+  };
+
   const configuration = {
     networkId: getNetworkId(),
     indexerClientConnection,
     relayURL,
     provingServerUrl,
+    batchUpdates,
+    costParameters,
   };
+
+  // Resume from a previous run's snapshot when one is valid for this exact wallet, network and SDK
+  // version set; otherwise fall back to a full genesis sync. See wallet-state.ts for why that costs
+  // ~20 minutes on Preprod. A snapshot is only ever a sync shortcut — restore() sets the starting
+  // state, and facade.start() below still syncs forward from it to the chain tip, so a stale
+  // snapshot costs a longer catch-up, never a wrong balance.
+  const persistState = options.persistState !== false;
+  const snapshot = persistState ? loadWalletSnapshot(chain.network, publicKey.address) : undefined;
+
+  /** A corrupt or incompatible snapshot must degrade to a slow start, never abort startup. */
+  function restoreOrFresh<T>(label: string, restore: () => T, fresh: () => T): T {
+    if (!snapshot) return fresh();
+    try {
+      return restore();
+    } catch (err) {
+      console.warn(`[wallet-state] ${label} restore failed (${(err as Error).message}); syncing from genesis`);
+      return fresh();
+    }
+  }
 
   const facade = await WalletFacade.init({
     configuration,
-    shielded: (config: any) => ShieldedWallet(config).startWithSecretKeys(shieldedSecretKeys),
-    unshielded: (config: any) => UnshieldedWallet(config).startWithPublicKey(publicKey),
-    dust: (config: any) => DustWallet(config).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+    shielded: (config: any) =>
+      restoreOrFresh(
+        'shielded',
+        () => ShieldedWallet(config).restore(snapshot!.shielded),
+        () => ShieldedWallet(config).startWithSecretKeys(shieldedSecretKeys),
+      ),
+    unshielded: (config: any) =>
+      restoreOrFresh(
+        'unshielded',
+        () => UnshieldedWallet(config).restore(snapshot!.unshielded),
+        () => UnshieldedWallet(config).startWithPublicKey(publicKey),
+      ),
+    dust: (config: any) =>
+      restoreOrFresh(
+        'dust',
+        () => DustWallet(config).restore(snapshot!.dust),
+        () => DustWallet(config).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+      ),
   });
 
   // WalletFacade.init() only wires the sub-wallets together — it does NOT start syncing.
@@ -149,8 +229,26 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
   // already do this.
   let latestSyncedState: Awaited<ReturnType<typeof facade.waitForSyncedState>> | undefined;
 
+  async function saveState(): Promise<void> {
+    if (!persistState) return;
+    try {
+      const [shielded, unshielded, dust] = await Promise.all([
+        facade.shielded.serializeState(),
+        facade.unshielded.serializeState(),
+        facade.dust.serializeState(),
+      ]);
+      saveWalletSnapshot(chain.network, publicKey.address, { shielded, unshielded, dust });
+    } catch (err) {
+      // Never fail a caller's real work because a cache write failed — the next run just resyncs.
+      console.warn(`[wallet-state] could not save snapshot: ${(err as Error).message}`);
+    }
+  }
+
   async function waitForSync(): Promise<void> {
     latestSyncedState = await facade.waitForSyncedState();
+    // Snapshot at the point sync completes: this is both the most expensive state to rebuild and
+    // the one every script reaches before doing anything else.
+    await saveState();
   }
 
   async function waitForUnshieldedBalance(): Promise<bigint> {
@@ -165,12 +263,17 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
     );
   }
 
+  // DustWalletState.walletBalance(date) was renamed to .balance(date) in wallet-sdk-dust-wallet 4.x.
+  // The old name was reached through an `as any`, so the rename did not fail to typecheck — it threw
+  // "s.dust.walletBalance is not a function" at run time, and only after a full ~20 min genesis sync
+  // plus a successfully submitted registration transaction. Kept typed (no cast) so the next rename
+  // is caught by tsc instead of 20 minutes into a live run.
   async function waitForDust(): Promise<void> {
     await Rx.firstValueFrom(
       facade.state().pipe(
         Rx.throttleTime(5_000),
         Rx.filter((s) => s.isSynced),
-        Rx.filter((s) => (s.dust as any).walletBalance(new Date()) > 0n),
+        Rx.filter((s) => s.dust.balance(new Date()) > 0n),
       ),
     );
   }
@@ -213,10 +316,13 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
 
   async function registerForDustGeneration(): Promise<void> {
     const s = await Rx.firstValueFrom(facade.state().pipe(Rx.filter((s) => s.isSynced)));
-    if ((s.dust as any).availableCoins.length > 0) return;
+    if (s.dust.availableCoins.length > 0) return;
 
-    const nightUtxos = (s.unshielded as any).availableCoins.filter(
-      (coin: any) => coin.meta?.registeredForDustGeneration !== true,
+    // No `as any` on these state getters: both DustWalletState.availableCoins and
+    // UnshieldedWalletState.availableCoins are real, typed members. Casting here is what let the
+    // walletBalance -> balance rename above reach production undetected.
+    const nightUtxos = s.unshielded.availableCoins.filter(
+      (coin) => coin.meta?.registeredForDustGeneration !== true,
     );
     if (nightUtxos.length === 0) {
       throw new Error('No unregistered NIGHT UTXOs found — wallet may not be funded yet');
@@ -240,5 +346,6 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
     waitForUnshieldedBalance,
     waitForDust,
     registerForDustGeneration,
+    saveState,
   };
 }
