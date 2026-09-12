@@ -20,7 +20,11 @@
     "e2e-fraud": "tsx --env-file=.env scripts/e2e-fraud.ts",
     "status": "tsx --env-file=.env scripts/status.ts",
     "probe-swap": "tsx --env-file=.env scripts/probe-swap-semantics.ts",
-    "e2e-settle": "tsx --env-file=.env scripts/e2e-settle.ts"
+    "e2e-settle": "tsx --env-file=.env scripts/e2e-settle.ts",
+    "compact:testtoken": "compact compile contracts/src/TestToken.compact contracts/managed/test-token",
+    "deploy-test-token": "tsx --env-file=.env scripts/deploy-test-token.ts",
+    "probe-testusd": "tsx --env-file=.env scripts/probe-testusd-spend.ts",
+    "probe-merge-sigs": "tsx --env-file=.env scripts/probe-merge-signatures.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

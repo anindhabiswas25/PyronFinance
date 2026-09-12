@@ -1,0 +1,90 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+// ═════════════════════════════════════════════════════════════════════════
+// TestToken — TESTNET SCAFFOLDING. NEVER DEPLOY THIS TO MAINNET.
+// ═════════════════════════════════════════════════════════════════════════
+//
+// This is NOT part of the OTC protocol. It is not referenced by
+// OTCProtocol.compact, it holds no bonds, and no protocol rule depends on it.
+// It exists for exactly one reason:
+//
+//   Preprod has exactly ONE asset — native unshielded tNIGHT. USDM does not
+//   exist there, and no substitute is obtainable: shielded tNIGHT is a
+//   genuinely distinct balance-vector entry, but neither the wallet SDK nor
+//   ledger-v8 exposes any unshielded -> shielded conversion, so a
+//   faucet-funded wallet can never acquire a shielded balance to trade.
+//
+//   That left `pnpm run e2e-settle` settling a ONE-SIDED offer
+//   (`{unshielded tNIGHT: +1000}`), which exercises every mechanism except
+//   the one thing the protocol is actually about: a balance vector with TWO
+//   entries that net to zero. That gap was an argument, not a live run.
+//   This contract closes it by minting a second real, spendable asset.
+//
+// WHY MINT AN *UNSHIELDED LEDGER* TOKEN AND NOT AN ERC-20-STYLE BALANCE MAP:
+// an account-model contract token (`balances: Map<Bytes<32>, Uint<128>>`)
+// moves only by circuit call. It never enters a Zswap offer, never appears in
+// `Transaction.imbalances`, and therefore cannot be settled by this protocol
+// at all. `mintUnshieldedToken` mints into the UTXO ledger, which is what
+// Zswap actually settles, and what a wallet can hold, select coins from and
+// spend. Getting this backwards would have produced a token that looked
+// right and could not be traded.
+//
+// The token type is derived as `rawTokenType(DOMAIN_SEP, contractAddress)` —
+// scoped to this contract, so it can never collide with native tNIGHT or
+// with another deployment of this same source.
+//
+// MAINNET: delete this file's deployment, not just its use. On Mainnet the
+// second leg is a REAL asset (docs/CONTRACTS.md's tNIGHT/USDM, ROADMAP 4.3),
+// which is a token type in config — the settlement path in
+// packages/sdk/src/offers.ts is asset-generic and needs no change. See
+// docs/ROADMAP.md "The mainnet second asset".
+
+// Compact has no module-scope `const` (parse error) — constants are nullary
+// pure circuits. See compact-contracts SKILL.md §4.
+//
+// Domain separator for the minted token type. "otc:testusd:v1" stands in for
+// the USDM leg of the tNIGHT/USDM pair.
+pure circuit DOMAIN_SEP(): Bytes<32> { return pad(32, "otc:testusd:v1"); }
+
+// Per-call mint cap. This is a faucet, not a supply-controlled asset, so the
+// cap is not an economic parameter — it is a fat-finger guard. Minting an
+// absurd quantity would make downstream `Uint` arithmetic (notional caps,
+// bond sizing) meaningless in a way that looks like a protocol bug rather
+// than a bad test fixture.
+pure circuit MAX_MINT_PER_CALL(): Uint<64> { return 1000000000000; }
+
+// Public, purely for visibility when inspecting the deployment. Nothing
+// depends on either field.
+//
+// `totalMinted` is a plain Uint<128>, NOT a Counter: `Counter.increment`
+// accepts only `Uint<16>` ("expected first argument of increment to have type
+// Uint<16> but received Uint<64>"), so a Counter cannot accumulate mint
+// amounts at all. It works for `mintCount`, which only ever adds 1.
+export ledger totalMinted: Uint<128>;
+export ledger mintCount: Counter;
+
+// PERMISSIONLESS BY DESIGN, and consistent with the protocol's own ethos:
+// there is no admin key here for the same reason there is no admin key in
+// OTCProtocol.compact. Anyone testing against Preprod can mint themselves a
+// balance without asking us for one. On a testnet the asset is worthless, so
+// an open faucet costs nothing; on Mainnet this contract does not exist.
+//
+// `recipient` is a raw 32-byte UserAddress, NOT a commitment — the same
+// distinction that produced defect D2 in the M1 build, where a refund was
+// sent to an identity commitment and therefore to a key nobody holds.
+export circuit mint(amount: Uint<64>, recipient: Bytes<32>): [] {
+  const amt = disclose(amount);
+  assert(amt > 0, "Mint amount must be positive");
+  assert(amt <= MAX_MINT_PER_CALL(), "Mint amount exceeds per-call cap");
+
+  mintUnshieldedToken(
+    DOMAIN_SEP(),
+    amt,
+    right<ContractAddress, UserAddress>(UserAddress { bytes: disclose(recipient) })
+  );
+
+  totalMinted = (totalMinted + amt) as Uint<128>;
+  mintCount.increment(1);
+}

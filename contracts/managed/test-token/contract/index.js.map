@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "file": "index.js",
+  "sourceRoot": "../../../../",
+  "sources": ["contracts/src/TestToken.compact", "compiler/standard-library.compact"],
+  "names": [],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAAA;;;;;;;;;;MA4EA,AAAA,IAaC;;;;;cAbmB,QAAgB;cAAE,WAAoB;;;;;;;;;;;;;;;;;;;;;;;;;yCAAtC,QAAgB,+BAAE,WAAoB;;;;;;;;;sCAAtC,QAAgB;sCAAE,WAAoB;;;OAazD;;;;GACA;EA1FD;;;;;;;;;;;;;;;;;;;;;;;;;;;IAgEA;;;;;;;;;yEAAqC;IACrC;;;;;;;;;yEAAiC;;;;;;;GAyBhC;ECrDD,AAAA,QAA0B;kCACkB;;EAG5C,AAAA,SAA2B;yEACqC;;EA8EhE,AAAA,aAAyB,cAAuB;qCACC,cAAY;;;EAiL7D,AAAA;;yBACE;yBACA;yBACA;;IAEA;;;;;;;;;;;2HAAsB;;;;;;2HAAW;;;;;;;;;;;;;UAC3B,4BAAkB;8DAAW;;;;;;;;;;;;UACnC,qBAA2D;UAA3D,QAA8E;IAA9E;;;;;;;;;;;;6HAAA;;6HAAmE;;;;;;;2HAAnE;;;;;;;;;;;;;QAEI;;sBAAqB;8CAAwB;;;;;;;;;;;;;YAC/C,qBAAsD;YAAtD,QAA8D;MAA9D;;;;;;;;;;;6HAAA;;;;;;6HAAA;;;;;;;;;;;;;;WAEK;;EAtTT,AAAA,oBAAA,SAAA;;uDAAA;uDAAA;;;EDgDA,AAAA,aAA0E;;GAAA;EAO1E,AAAA,oBAAoE,6BAAA;EAqBpE,AAAA,OAaC,4BAbmB,QAAgB,EAAE,WAAoB;UAClD,KAAsB,GAAP,QAAM;4BACpB,KAAG;4BACH,KAAG;;;;;gCAIR,KAAG;uDAC+D,WAAS;UAG7E,KAAW;;;;;6CAAI;;;;;;;;;;;kHAAW;;qBAAG,KAAG;IAAhC;;;;;;;2HAAA,KAAW;;yEAAA;UACX,KAAS;IAAT;;;;;;;;;;6FAAA,KAAS;;;;wEAAA;;GACV;;;;;;;;;;;;;;;;;;;;IAzBD;qCAAA;;;;;;;;;;;0GAAqC;KAAA;IACrC;qCAAA;;;;;;;;;;;0GAAiC;KAAA;;;;;;;;;;"
+}

@@ -181,6 +181,22 @@ survivable):
    Committing to a quote backed by an Offer File that expires mid-window guarantees the dealer cannot
    settle, which guarantees a slash.
 
+**A warm pool holds its inputs hostage — reserve UTXOs for the node's own transactions.** Found on
+Preprod while building 2.6, not anticipated here: `initSwap` **books every coin it selects** in local
+wallet state for the entire life of the Offer File. A pool sized to consume the wallet's UTXOs
+therefore starves the node's own on-chain operations — `postBond`, `topUpBond`, `recordSettlement`,
+and a challenge response all move funds and do their own coin selection. The observed failure was a
+bare `Wallet.InsufficientFunds` from deep in the wallet SDK, with nothing pointing at the warm pool
+as the cause.
+
+This is worse than an inconvenience: **the transaction most likely to be starved is a challenge
+response**, which is exactly the one whose failure costs the entire bond. A node that cannot answer
+a challenge because its own warm pool consumed its coins gets slashed for being well-stocked.
+
+So the pool needs an explicit reserve — a minimum count and value of unshielded UTXOs never
+available to offer construction, sized to cover the node's worst-case concurrent on-chain
+obligations. Not yet designed; **do not size a warm pool before this exists.**
+
 That last rule is the one that converts "expiry is an annoyance" into "expiry is handled." The
 constraint the node enforces at all times:
 

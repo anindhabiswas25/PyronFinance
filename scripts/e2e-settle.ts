@@ -3,23 +3,21 @@
 // This is the first complete trade the protocol executes. Where e2e-fraud.ts proves the punishment
 // works, this proves the thing being punished for failing to do actually works.
 //
-// THE PAIR, AND WHAT THIS SCRIPT DOES NOT PROVE. Read this before quoting the result anywhere.
+// THE PAIR. Preprod has exactly one native asset (tNIGHT) and USDM does not exist there, so the
+// production pair cannot settle on this network. No substitute is obtainable either: shielded
+// tNIGHT genuinely is a separate balance-vector entry, but neither the wallet SDK nor ledger-v8
+// exposes any unshielded -> shielded conversion, so a faucet-funded wallet can never acquire a
+// shielded balance to pay with.
 //
-// Preprod has exactly one asset: native unshielded tNIGHT. USDM does not exist there, so the
-// production pair cannot settle on this network, and no substitute second asset is obtainable:
-// shielded tNIGHT genuinely is a separate balance-vector entry (probe 6 in
-// scripts/probe-swap-semantics.ts shows `{unshielded:+1000, shielded:-900}` building cleanly), but
-// neither the wallet SDK nor ledger-v8 exposes any unshielded -> shielded conversion, so a
-// faucet-funded wallet can never acquire a shielded balance to pay with.
+// So the second leg is MINTED: contracts/src/TestToken.compact (testnet scaffolding, deployed by
+// `pnpm run deploy-test-token`) mints TESTUSD as a real unshielded LEDGER token, which is what
+// Zswap actually settles. This trade therefore produces a genuine two-entry balance vector,
 //
-// So this settles a ONE-ASSET offer: the dealer's half is `{unshielded tNIGHT: +1000}` and the
-// taker's complementary half absorbs it. Everything in the settlement path is real and asset-
-// independent — construction, proving, binding, serialization, the encrypted reveal, commitment
-// verification, `balanceFinalizedTransaction`, the client-side nets-to-zero assertion, submission,
-// and `recordSettlement`. What is NOT exercised is a SECOND entry in the balance vector. The
-// nets-to-zero rule is per-token-independent arithmetic, so the two-asset case differs only by
-// having another entry — but that is an argument, not a live run, and it is recorded as such in
-// docs/ROADMAP.md rather than glossed over.
+//     dealer half: { unshielded tNIGHT: +1000, unshielded TESTUSD: -41440 }
+//
+// which is exactly the shape of zswap-offer-files SKILL.md §2's tNIGHT/USDM example, down to the
+// numbers. Nothing about the settlement path is aware of which assets these are — `SwapLeg.token`
+// is just a RawTokenType — which is what makes the Mainnet second leg a config change.
 //
 // ROLES. One wallet plays both dealer and taker, as e2e-fraud.ts does — the protocol places no
 // restriction on this (docs/ARCHITECTURE.md: "these roles are not exclusive"). It is not a shortcut
@@ -61,16 +59,30 @@ function showVector(v: Record<string, bigint>): string {
 }
 
 const NIGHT = ledger.nativeToken().raw;
-const UNSHIELDED_KEY = balanceKey({ tag: 'unshielded', raw: NIGHT });
 
-// The trade. Size and price are decimal strings on the wire and exact integers internally — never
-// floats (zswap-offer-files SKILL.md §7). Base units are Stars: 1 tNIGHT = 1e6 Stars, and
-// terms.ts uses 6 decimals for both, so these line up exactly.
-const SIZE = '0.001'; // 1000 Stars, handed over by the dealer
-const PRICE = '1.0'; //  degenerate on Preprod — see the header
+// The trade. Price and size are decimal strings on the wire and EXACT INTEGERS internally — never
+// floats (zswap-offer-files SKILL.md §7). Both legs use 6-decimal base units, so the fixed-point
+// arithmetic below is exact and the divisibility assert is a real check, not decoration: a price
+// and size that do not multiply to a whole number of base units is precisely the rounding
+// discrepancy that surfaces later as a balance vector which doesn't quite net to zero.
+const SIZE = '0.001'; //  1000 base units of tNIGHT, handed over by the dealer
+const PRICE = '41.44'; // TESTUSD per tNIGHT — the docs' own example price
+const DECIMALS = 1_000_000n; // 6 dp, matching PRICE_DECIMALS / SIZE_DECIMALS in terms.ts
+
 /** Override with E2E_GIVE_UNITS to vary the trade size — useful for isolating coin-selection
  *  effects, since the dealer half's shape depends on how many UTXOs the size forces it to spend. */
 const GIVE_UNITS = BigInt(process.env.E2E_GIVE_UNITS ?? '1000');
+const PRICE_FIXED = 41_440_000n; // PRICE at 6 dp
+const WANT_NUMERATOR = GIVE_UNITS * PRICE_FIXED;
+if (WANT_NUMERATOR % DECIMALS !== 0n) {
+  throw new Error(
+    `size ${SIZE} at price ${PRICE} is not a whole number of TESTUSD base units ` +
+      `(${WANT_NUMERATOR} / ${DECIMALS}). Pick a size/price pair that divides exactly — settling a ` +
+      'rounded amount is how a balance vector ends up not quite netting to zero.',
+  );
+}
+const WANT_UNITS = WANT_NUMERATOR / DECIMALS;
+
 const VALIDITY_SECS = 300; // within MAX_QUOTE_VALIDITY (900s)
 
 const chain = loadChainConfig();
@@ -83,42 +95,34 @@ if (!fs.existsSync(deploymentFile)) {
 const { address: contractAddress } = JSON.parse(fs.readFileSync(deploymentFile, 'utf-8'));
 console.log('Testing against contract:', contractAddress);
 
+const tokenFile = path.resolve(import.meta.dirname, `../deployments/${chain.network}-test-token.json`);
+if (!fs.existsSync(tokenFile)) {
+  throw new Error(
+    `No TestToken deployment at ${tokenFile} — run \`pnpm run deploy-test-token\` first. ` +
+      'Without it there is no second asset on Preprod and this settles nothing worth proving.',
+  );
+}
+const { address: tokenAddress, tokenType: TESTUSD } = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
+console.log('TestToken (TESTUSD):', tokenAddress);
+
+const UNSHIELDED_NIGHT = balanceKey({ tag: 'unshielded', raw: NIGHT });
+const UNSHIELDED_TESTUSD = balanceKey({ tag: 'unshielded', raw: TESTUSD });
+
 const wallet = await createHeadlessWallet(requireWalletSeed(), chain);
 await wallet.waitForSync();
 const providers = buildOTCProviders(chain, wallet);
 
-// ---------------------------------------------------------------------------
-// [1/6] Dealer builds and PROVES the Offer File — BEFORE anything else touches the wallet.
-//
-// This is the warm-pool step, and its position here is load-bearing in two ways.
-//
-// Protocol-wise: `canBackQuote` is enforced inside `buildAndProveOffer`, so an offer that would die
-// inside the quote window is refused now rather than discovered after the dealer is already bound
-// on-chain — at which point the taker challenges and the whole bond goes.
-//
-// Mechanically: building the offer FIRST books its UTXOs in local wallet state, so the bond
-// transaction's own coin selection cannot pick the same coin. Doing it the other way round was a
-// real, reproducible failure — see the comment at step [2/6].
-// ---------------------------------------------------------------------------
-console.log('\n[1/6] Building + proving the Offer File (dealer, warm-pool step)...');
-const proveStart = Date.now();
-const offer = await buildAndProveOffer({
-  wallet,
-  give: { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS },
-  // No `want` leg: on Preprod there is no second asset to ask for. See the header.
-  validitySecs: VALIDITY_SECS,
-});
-const proveMs = Date.now() - proveStart;
-console.log(`  proved in ${proveMs} ms`);
-console.log('  balance vector:', showVector(offer.balanceVector));
-console.log(`  offer file: ${offer.offerFileBase64.length} base64 chars, expires at ${offer.expiresAt}`);
-
-if (offer.balanceVector[UNSHIELDED_KEY] !== GIVE_UNITS || Object.keys(offer.balanceVector).length !== 1) {
+// The taker pays in TESTUSD, so it must actually hold some. Checked up front with a pointed error:
+// discovering this inside `balanceFinalizedTransaction` surfaces as an opaque insufficient-funds
+// failure from deep in the wallet SDK.
+console.log(`\nTaker needs >= ${WANT_UNITS} TESTUSD to pay with...`);
+const takerTestUsd = await wallet.waitForUnshieldedTokenBalance(TESTUSD, WANT_UNITS).catch(() => 0n);
+if (takerTestUsd < WANT_UNITS) {
   throw new Error(
-    `Offer balance vector is not the trade we asked for. Expected exactly ` +
-      `{unshielded tNIGHT: +${GIVE_UNITS}}, got ${showVector(offer.balanceVector)}`,
+    `Wallet holds ${takerTestUsd} TESTUSD, needs ${WANT_UNITS}. Run \`pnpm run deploy-test-token\`.`,
   );
 }
+console.log('  TESTUSD balance:', takerTestUsd);
 
 const dealerSk = randomBytes32();
 const dealerCmt = dealerCommitment(dealerSk);
@@ -137,23 +141,59 @@ const contract = await findDeployedContract(providers, {
 });
 
 // ---------------------------------------------------------------------------
-// [2/6] Dealer posts a bond.
+// [1/6] Dealer posts a bond.
 //
-// WHY THIS COMES AFTER THE OFFER. `postBond` moves unshielded funds, so it does its own coin
-// selection, and `chooseCoin` always takes the SMALLEST matching UTXO. Building the offer after the
-// bond produced a reproducible `1010: Invalid Transaction: Custom error: 168` at settlement: the
-// bond had already spent the small UTXO, the wallet's local view had not caught up, and offer
-// construction selected the same, now-spent coin. It only appeared once the wallet held more than
-// one UTXO — with a single UTXO the two selections could not diverge, which is exactly why the
-// first successful run did not show it.
+// ORDERING NOTE, and a correction to an earlier version of this script. The bond was briefly moved
+// AFTER offer construction on the theory that `postBond` spends the smallest UTXO first and could
+// race offer construction into selecting an already-spent coin. That theory was WRONG — the
+// rejection it was meant to explain (`Custom error: 168`) turned out to be an underpaid fee (see
+// docs/ROADMAP.md S4) — and the reordering caused a second, real failure: `initSwap` BOOKS every
+// coin it selects, and an offer large enough to need all of the wallet's tNIGHT UTXOs left
+// `postBond` with nothing to spend, failing with `Wallet.InsufficientFunds`.
 //
-// Building the offer first fixes it structurally rather than by sleeping: `initSwap` books its
-// inputs in local wallet state, so the bond's selection cannot reach them.
+// So the bond goes first, and the ordering constraint worth remembering is the general one: a
+// pre-proved Offer File holds its inputs hostage for its whole lifetime. A dealer node running a
+// warm pool must reserve UTXOs for its own on-chain operations, not assume the pool can consume
+// the wallet. That belongs in DEALER-NODE.md §5 at M3.
 // ---------------------------------------------------------------------------
-console.log('\n[2/6] postBond...');
+console.log('\n[1/6] postBond...');
 const bondAmount = 1n; // PLACEHOLDER_MIN_BOND — docs/CONTRACTS.md §7, deliberately unset
 await postBond(contract, bondAmount, quotePk);
 console.log('  bond posted.');
+
+// ---------------------------------------------------------------------------
+// [2/6] Dealer builds and PROVES the Offer File — the warm-pool step.
+//
+// `canBackQuote` is enforced inside `buildAndProveOffer`, so an offer that would die inside the
+// quote window is refused here rather than discovered after the dealer is already bound on-chain —
+// at which point the taker challenges and the whole bond goes.
+// ---------------------------------------------------------------------------
+console.log('\n[2/6] Building + proving the Offer File (dealer, warm-pool step)...');
+const proveStart = Date.now();
+const offer = await buildAndProveOffer({
+  wallet,
+  give: { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS },
+  want: { kind: 'unshielded', token: TESTUSD, amount: WANT_UNITS },
+  validitySecs: VALIDITY_SECS,
+});
+const proveMs = Date.now() - proveStart;
+console.log(`  proved in ${proveMs} ms`);
+console.log('  balance vector:', showVector(offer.balanceVector));
+console.log(`  offer file: ${offer.offerFileBase64.length} base64 chars, expires at ${offer.expiresAt}`);
+
+// TWO entries, opposite signs. This assertion is the point of the whole exercise: it is the
+// difference between "settlement works" and "a balance vector with two legs nets to zero".
+if (
+  offer.balanceVector[UNSHIELDED_NIGHT] !== GIVE_UNITS ||
+  offer.balanceVector[UNSHIELDED_TESTUSD] !== -WANT_UNITS ||
+  Object.keys(offer.balanceVector).length !== 2
+) {
+  throw new Error(
+    `Offer balance vector is not the trade we asked for. Expected exactly ` +
+      `{unshielded tNIGHT: +${GIVE_UNITS}, unshielded TESTUSD: -${WANT_UNITS}}, ` +
+      `got ${showVector(offer.balanceVector)}`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // [3/6] Dealer seals and commits the quote. The commitment covers the TERMS, never the serialized
@@ -163,7 +203,7 @@ console.log('  bond posted.');
 console.log('\n[3/6] commitQuote...');
 const rfqId = randomBytes32();
 const validUntil = BigInt(Math.floor(Date.now() / 1000) + VALIDITY_SECS);
-const terms = { pair: 'tNIGHT/tNIGHT', side: 'sell' as const, price: PRICE, size: SIZE };
+const terms = { pair: 'tNIGHT/TESTUSD', side: 'sell' as const, price: PRICE, size: SIZE };
 const sealed = sealQuote(terms, rfqId, validUntil);
 const commitStart = Date.now();
 await commitQuote(contract, sealed);

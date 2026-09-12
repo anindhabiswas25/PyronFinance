@@ -3,11 +3,16 @@
 > **Re-read this file at the start of every session before doing any work.**
 > It is the live record of what is done, what is in progress, and what decisions are still open.
 
-**Last updated:** 2026-09-12 — **M1 complete, and M2 task 2.6 has settled the protocol's first
-complete trade on-chain** (`pnpm run e2e-settle`). `offers.ts` is no longer a stub, and the open
-question "can the taker settle unilaterally from a pre-proved Offer File?" is answered: **yes** —
-see the finding near the end of this file, and read task 2.6's stated limits before quoting the
-result anywhere.
+**Last updated:** 2026-09-13 — **M1 complete. M2 task 2.6 settled the protocol's first complete
+trade on-chain** (`pnpm run e2e-settle`), `offers.ts` is no longer a stub, and the open question
+"can the taker settle unilaterally from a pre-proved Offer File?" is answered: **yes**.
+
+**Two things to read before quoting any of this.** The settled trade was **one-asset** — Preprod has
+only tNIGHT. A second asset now exists (`contracts/src/TestToken.compact`, deployed and minted on
+Preprod), the two-asset offer builds with exactly the right balance vector, and the taker can spend
+that asset — but the two-asset **settlement is blocked** by an unidentified node rejection with four
+candidate causes already ruled out. See **S4** (a fee floor, and a correction to a wrong story this
+file previously told) and **S5** (the blocker) under task 2.6.
 
 **M1 is complete on Preprod.** The contract is deployed, verified by
 indexer read-back, and `pnpm run e2e-fraud` has executed the full fraud path on-chain: bond posted →
@@ -185,7 +190,7 @@ quietly absorbed. **Do this first; do not build around it.**
 | 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ✅ Built and tested in simulation — see below |
 | 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ⬜ Not started — blocked on a live indexer per CLAUDE.md scope note |
 | 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ Not started — blocked on a wallet |
-| 2.6 | Zswap settlement path from the taker's selection | ✅ **On-chain on Preprod and reproduced** (`pnpm run e2e-settle`): offer built, proved, bound, revealed point-to-point, settled by the taker, `settled` counter 1. `offers.ts` is no longer a stub. Read the limits and S4 below before quoting this |
+| 2.6 | Zswap settlement path from the taker's selection | 🟡 **One-asset settlement on-chain and reproduced** (`settled` counter 1); `offers.ts` is no longer a stub. **Two-asset settlement is BLOCKED** on an unidentified node rejection — see S5. Read S4/S5 before quoting this |
 | 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | ⬜ |
 | 2.8 | **Measure real proof-generation + commit latency on Preprod** | 🟡 First real settlement-path numbers below; the warm-pool/ladder numbers still need M3 |
 | 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ⬜ |
@@ -301,10 +306,74 @@ plus one. Meanwhile ledger-v8's own estimate for the same transaction was `92629
 The one settlement that landed was submitted while the real fee was still under `3e14`. That is the
 whole explanation for "worked once, never again," and it is why it presented as flakiness.
 
-**Fix: `additionalFeeOverhead` raised `3e14` → `3e15`** (`packages/sdk/src/wallet.ts`), after which
-the settlement went through on the first attempt with `DUST provisioned 3000000000000001`. Unlike
-`feeBlocksMargin` — an exponent the ledger explicitly warns about — this is a linear SPECK amount,
-so raising it only buys headroom.
+**Fix: `additionalFeeOverhead` raised** (`packages/sdk/src/wallet.ts`). Unlike `feeBlocksMargin` —
+an exponent the ledger explicitly warns about — this is a linear SPECK amount, so raising it only
+buys headroom.
+
+Observed on real submissions:
+
+| Provisioned | Ledger estimate | Ratio | Tx size | Result |
+|---|---|---|---|---|
+| 3e14 | 9.26e14 | 0.32x | 6985 B | ❌ rejected (168) |
+| 3e15 | 1.17e15 | 2.56x | 6985 B | ✅ **accepted** (one-asset) |
+| 3e15 | 1.76e15 | 1.70x | 10609 B | ❌ rejected (168) — two-asset |
+| 1e16 | 1.76e15 | 5.67x | 10608 B | ❌ rejected (168) — two-asset |
+
+**CORRECTION, recorded rather than quietly edited away.** The first three rows suggested a tidy
+story — "the node wants headroom over the bare fee, and the bigger two-asset transaction outgrew the
+floor" — and that story was written into this file before the fourth row existed. **The fourth row
+refutes it.** At 1e16 the provision is 5.67x ledger-v8's estimate and 4.5x its `feesWithMargin(5)`
+figure of 2.21e15, and the node still rejects. So:
+
+- For the **one-asset** settlement, 168 was genuinely an underpaid fee, and raising the floor fixed
+  it. That result stands and is reproducible.
+- For the **two-asset** settlement, 168 has a **different, still-unidentified cause.** It is not the
+  fee, and it is not a signature/input mismatch (defect W5's shape): the per-intent dump shows
+  `seg1.guaranteed: 3 in / 2 out / 3 sig; seg2.guaranteed: 1 in / 2 out / 1 sig; seg3.dust: 3
+  spend(s)` — counts match on both segments.
+
+Two data points make a slope, and a slope makes a story. This one was wrong, and it was wrong in the
+most seductive way available: it explained the data it was built from.
+
+### S5 — the TWO-ASSET settlement is blocked on an unidentified `168`, with four causes ruled out
+
+**Status: blocked, cause unknown.** Everything up to submission works. The test token exists, is
+minted, and is spendable; the two-asset offer builds with exactly the right balance vector; the
+quote commits; the reveal verifies; the merged vector nets to zero in tradeable tokens. The node
+rejects the final submission with `1010: Invalid Transaction: Custom error: 168`.
+
+What the two-asset offer produces, which is the shape the whole protocol is about:
+
+```
+{ unshielded tNIGHT: +1000, unshielded TESTUSD: -41440 }
+```
+
+That is `zswap-offer-files` SKILL.md §2's tNIGHT/USDM example down to the numbers.
+
+**Ruled out by measurement, not by argument** — recorded so the next session starts past them:
+
+| Hypothesis | How it was killed |
+|---|---|
+| Underpaid fee | Provisioned `1e16` = **5.67x** ledger-v8's estimate (1.76e15) and **4.5x** its `feesWithMargin(5)` (2.21e15). Still rejected |
+| TESTUSD is not really spendable | A plain TESTUSD self-transfer was **accepted on-chain** (`pnpm run probe-testusd`). It is an ordinary UTXO |
+| Signature/input count mismatch (defect W5's shape) | Per-intent dump: `seg1: 3 in / 2 out / 3 sig; seg2: 1 in / 1 out / 1 sig`. Counts match |
+| Signatures invalidated by segment renumbering during merge | Verified offline against `Intent.signatureData(n)` for every segment (`pnpm run probe-merge-sigs`): seg1's signatures are VALID at 1 and invalid elsewhere, seg2's is VALID at 2. And the balancing tx is **already at segment 2 before the merge** — nothing is renumbered |
+
+**The one structural difference that remains,** and the place to look next: in the *accepted*
+one-asset settlement the taker's balancing half was `0 in / 1 out / 0 sig` — it only ever created an
+output. In the two-asset case the taker must **spend** TESTUSD to pay, so both halves carry signed
+unshielded inputs. No merged settlement with unshielded inputs on *both* sides has ever been
+accepted by this node. Whether that is a real ledger constraint, a `balanceFinalizedTransaction`
+limitation, or something else entirely is **not established** — and the tempting inference that it
+is a constraint is exactly the kind of story S4's correction warns about.
+
+Error code 168 is defined in the Midnight node runtime and cannot be resolved locally. **Asking
+upstream what 168 means is now the cheapest available next step, and probably the right one** —
+four rounds of hypothesis-and-measure have cost far more than one answer would.
+
+Probes kept in the repo, all of which submit nothing except where noted:
+`pnpm run probe-swap` (initSwap semantics), `pnpm run probe-testusd` (spendability — this one DOES
+submit), `pnpm run probe-merge-sigs` (offline signature verification).
 
 Three follow-ups this leaves open:
 
@@ -492,6 +561,47 @@ Two honest caveats on the demonstration: it ran with one wallet playing both rol
 one-asset offer. Neither affects the mechanism above — the balancing draws on the caller's own coins
 and signs only the caller's own half either way — but neither has been run with two distinct wallets
 or two distinct assets. See task 2.6's limits.
+
+---
+
+## The mainnet second asset
+
+`contracts/src/TestToken.compact` is **testnet scaffolding and must never reach Mainnet.**
+`scripts/deploy-test-token.ts` hard-refuses `MN_NETWORK=mainnet`, and the `tNIGHT/TESTUSD` entry in
+`packages/sdk/src/terms.ts` is marked Preprod-only. Deleting the *use* is not enough; the
+deployment must not exist.
+
+**The good news, and it is the reason the test token was worth building:** nothing in the
+settlement path knows what it is trading. `SwapLeg.token` is a bare `RawTokenType`, `offers.ts`
+never names an asset, and the balance-vector check is per-token arithmetic. The TESTUSD run pushed a
+**non-native, contract-derived token type** through construction, proving, binding, the encrypted
+reveal, `balanceFinalizedTransaction` and submission without a single line of asset-specific code.
+So Mainnet's second leg is **a token type in config**, not a rewrite.
+
+What actually has to happen for M4 (task 4.3):
+
+1. **Obtain the real asset's `RawTokenType` on Mainnet** and put it in config beside the pair code.
+2. **Add the Mainnet pair code** to `PAIR_CODES` and remove `tNIGHT/TESTUSD`.
+3. **Re-run the equivalent of `e2e-settle`** against it. Nothing here is proven for Mainnet.
+
+Three things that are genuinely open, and should not be discovered late:
+
+- **Nobody has verified that USDM exists on Midnight Mainnet as an unshielded ledger token.** Every
+  doc in this repo — `CONTRACTS.md`, `ARCHITECTURE.md`, `RELAY.md`, `FRONTEND.md`, `GRANT.md` —
+  names tNIGHT/USDM as the first pair, but that is a **design assumption inherited from Pass 1**, not
+  a checked fact, and this session did not check it. If USDM is not natively available, the options
+  are a bridged asset, a different counter-asset, or shipping without that pair — all of which are
+  product decisions, not implementation details. **Resolve this before M4, not during it.**
+- **`terms.ts` hardcodes 6 decimals for both price and size** (`PRICE_DECIMALS`, `SIZE_DECIMALS`).
+  tNIGHT's base unit is the Star at 1e6, and TESTUSD was defined to match, so the exactness check in
+  `e2e-settle` passes trivially. A real stablecoin need not use 6. **Decimals are a per-asset
+  property being treated as a global constant** — that is a latent rounding bug for any pair whose
+  legs disagree, and exactly the class of error that surfaces as a balance vector which doesn't
+  quite net to zero.
+- **The shielded leg is still unexercised.** TESTUSD is unshielded, like tNIGHT, so both legs are
+  signature-authorized and carry no ZK proof — which is why offer construction measures 7–16 ms.
+  A Mainnet pair with a shielded leg would prove, and that number would change completely. It is
+  still the open question behind the warm pool (task 2.8).
 
 ---
 
