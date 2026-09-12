@@ -162,9 +162,25 @@ export async function createHeadlessWallet(
     // the chain's live LedgerParameters instead of provisioning against a static guess; tracked in
     // docs/ROADMAP.md S4.
     //
-    // Unlike feeBlocksMargin (an EXPONENT — see below), this is a linear SPECK amount, so raising
-    // it is safe: it buys fee headroom and nothing else. Unused provision is not spent.
-    additionalFeeOverhead: 10_000_000_000_000_000n,
+    // CORRECTION to an earlier version of this comment, which said raising this "is safe: it buys
+    // fee headroom and nothing else." That is wrong. This value is also the MINIMUM DUST A WALLET
+    // MUST HOLD BEFORE IT CAN TRANSACT AT ALL: the dust balancer provisions at least this much, so
+    // a wallet below it fails with "Insufficient Funds: could not balance dust" no matter how
+    // cheap the transaction really is.
+    //
+    // That bit on a freshly funded Preview wallet, which had accrued 5.34 DUST against this 10-DUST
+    // (1e16 SPECK) floor and could not deploy or call anything until generation caught up. DUST
+    // accrues from registered NIGHT over ~a week to cap, so a high floor directly delays how soon a
+    // new wallet — or a new dealer node — becomes operational.
+    //
+    // It remains true that this is a linear SPECK amount rather than an exponent like
+    // feeBlocksMargin, so it is safe in the sense of not blowing up super-linearly. It is not free.
+    // Set to 3e15 (3 DUST): the only value ever observed to get a settlement ACCEPTED (the
+    // one-asset Preprod run). 1e16 was tried to chase the two-asset rejection and did not fix it —
+    // that turned out not to be a fee problem at all (S5) — while costing 10 DUST of minimum
+    // balance per transaction, which on a fresh wallet accruing ~2 DUST/min stalls any multi-step
+    // script partway through.
+    additionalFeeOverhead: 3_000_000_000_000_000n,
     feeBlocksMargin: 5,
   };
 
@@ -354,6 +370,19 @@ export async function createHeadlessWallet(
     if (nightUtxos.length === 0) {
       throw new Error('No unregistered NIGHT UTXOs found — wallet may not be funded yet');
     }
+
+    // BOOTSTRAP: the registration transaction itself costs a fee, and a freshly-faucet-funded
+    // wallet has ZERO DUST — so registering is chicken-and-egg unless you wait for the UTXOs'
+    // PROJECTED generation to cover their own registration. The SDK provides exactly that pairing
+    // (`estimateRegistration` -> `waitForGeneratedDust` -> register), and skipping it fails with
+    // "Insufficient generated dust to cover registration fee (have X, need Y)".
+    //
+    // This was invisible on Preprod because that wallet already held DUST before this code ran; it
+    // surfaced immediately on a clean Preview wallet. Waiting costs a few minutes on a new wallet
+    // and returns instantly on one that already generates.
+    const { fee } = await facade.estimateRegistration(nightUtxos);
+    console.log(`[dust] registration fee ${fee} SPECKs; waiting for projected generation to cover it`);
+    await facade.waitForGeneratedDust(nightUtxos, fee, { timeoutMs: 30 * 60 * 1000 });
 
     const recipe = await facade.registerNightUtxosForDustGeneration(
       nightUtxos,

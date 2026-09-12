@@ -1,7 +1,9 @@
-// Faucet helper — Preprod only. The faucet itself is a web UI
-// (https://faucet.preprod.midnight.network), not a scriptable API we know of, so this script
-// prints the address to paste in and then polls the indexer + wallet until funds and DUST are
-// both confirmed. See midnight-deployment SKILL.md §5.
+// Faucet helper. The faucet is a CAPTCHA-gated web UI, not a scriptable API, so this script prints
+// the address to paste in and then polls until funds and DUST are both confirmed.
+// See midnight-deployment SKILL.md §5.
+//
+// The URL is derived from the network, not hardcoded: naming Preprod's faucet unconditionally
+// would send you to fund an address on the wrong chain when MN_NETWORK=preview.
 
 import { loadChainConfig, requireWalletSeed } from '../packages/sdk/src/config.js';
 import { initNetworkId, createHeadlessWallet } from '../packages/sdk/src/wallet.js';
@@ -10,8 +12,14 @@ const chain = loadChainConfig();
 initNetworkId(chain.network);
 const seed = requireWalletSeed();
 
+const FAUCETS: Partial<Record<typeof chain.network, string>> = {
+  preprod: 'https://midnight-tmnight-preprod.nethermind.dev/',
+  preview: 'https://midnight-tmnight-preview.nethermind.dev/',
+};
+
 const wallet = await createHeadlessWallet(seed, chain);
-console.log('1. Go to https://faucet.preprod.midnight.network');
+console.log(`network: ${chain.network}`);
+console.log('1. Go to ' + (FAUCETS[chain.network] ?? '(no known faucet for this network)'));
 console.log('2. Paste this UNSHIELDED address and request unshielded tNIGHT + tDUST:');
 console.log('   ' + wallet.unshieldedAddress);
 console.log('\nWaiting for wallet sync...');
