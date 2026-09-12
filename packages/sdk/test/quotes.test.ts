@@ -6,7 +6,8 @@
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { sealQuote, quoteIdFor, buildReveal, verifyReveal } from '../src/quotes.js';
-import { encodeTerms, type QuoteTerms } from '../src/terms.js';
+import { encodeTerms, notionalOf, type QuoteTerms } from '../src/terms.js';
+import { minBondForNotional, maxNotionalForBond, minChallengeBond, CHALLENGE_BOND_FLOOR } from '../src/bonding.js';
 import { schnorrPublicKey, schnorrSign, freshNonce } from '../src/schnorr.js';
 import { deriveQuoteId, dealerCommitment } from '../src/domain.js';
 import { computeSlashSharesFor } from './helpers.js';
@@ -107,6 +108,57 @@ describe('verifyReveal', () => {
     const reveal = buildReveal(sealed, SK, 'offer-b64', FUTURE);
     const otherCommitment = sealQuote(TERMS, RFQ, 1n).commitment;
     expect(verifyReveal(reveal, otherCommitment, PK).valid).toBe(false);
+  });
+
+  // M2 task 2.9. The contract cannot open the hiding commitment, so it cannot tie the notional a
+  // dealer declares to `commitQuote` to the size they seal. This check is the only thing that does.
+  it('accepts a reveal whose size matches the on-chain notional', () => {
+    const sealed = sealQuote(TERMS, RFQ, 1n);
+    const reveal = buildReveal(sealed, SK, 'offer-b64', FUTURE);
+    expect(verifyReveal(reveal, sealed.commitment, PK, sealed.notional)).toEqual({ valid: true });
+  });
+
+  it('REJECTS an honest-looking reveal when the dealer under-declared notional on-chain', () => {
+    // Signature valid, commitment opens — and still unsafe: the bond cap was checked against a
+    // smaller size than the dealer is actually quoting.
+    const sealed = sealQuote(TERMS, RFQ, 1n);
+    const reveal = buildReveal(sealed, SK, 'offer-b64', FUTURE);
+    const res = verifyReveal(reveal, sealed.commitment, PK, sealed.notional - 1n);
+    expect(res.valid).toBe(false);
+    expect(res.reason).toMatch(/notional/);
+  });
+});
+
+describe('bond sizing — mirrors OTCProtocol.compact (CONTRACTS.md §7, §7a)', () => {
+  it('notionalOf is the tNIGHT size in base units', () => {
+    expect(notionalOf({ ...TERMS, size: '0.001' })).toBe(1000n);
+    expect(sealQuote(TERMS, RFQ, 1n).notional).toBe(1_000_000_000n);
+  });
+
+  it('notionalOf refuses a pair whose base leg is not the bond asset — that needs an oracle', () => {
+    expect(() => notionalOf({ ...TERMS, pair: 'USDM/tNIGHT' })).toThrow(/oracle/);
+  });
+
+  it('minBondForNotional is the exact ceiling of notional / 20', () => {
+    expect(minBondForNotional(1000n)).toBe(50n);
+    expect(minBondForNotional(1001n)).toBe(51n);
+    expect(minBondForNotional(1n)).toBe(1n);
+    for (const n of [1n, 19n, 20n, 21n, 999n, 1_000_000_007n]) {
+      const bond = minBondForNotional(n);
+      expect(maxNotionalForBond(bond)).toBeGreaterThanOrEqual(n);
+      expect(maxNotionalForBond(bond - 1n)).toBeLessThan(n);
+    }
+  });
+
+  it('minBondForNotional rejects a non-positive notional, as commitQuote does', () => {
+    expect(() => minBondForNotional(0n)).toThrow();
+  });
+
+  it('minChallengeBond is max(floor, ceil(2% of notional))', () => {
+    expect(minChallengeBond(1000n)).toBe(20n);
+    expect(minChallengeBond(1001n)).toBe(21n);
+    expect(minChallengeBond(20_000n)).toBe(400n);
+    expect(minChallengeBond(10n)).toBe(CHALLENGE_BOND_FLOOR); // 0.2 rounds up to 1 = the floor
   });
 });
 

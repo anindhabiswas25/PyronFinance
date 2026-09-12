@@ -12,6 +12,7 @@ export type Quote = { dealerCmt: Uint8Array;
                       commitment: Uint8Array;
                       validUntil: bigint;
                       rfqId: Uint8Array;
+                      notional: bigint;
                       resolved: boolean
                     };
 
@@ -48,7 +49,8 @@ export type ImpureCircuits<PS> = {
   commitQuote(context: __compactRuntime.CircuitContext<PS>,
               rfqId_0: Uint8Array,
               commitment_0: Uint8Array,
-              validUntil_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+              validUntil_0: bigint,
+              notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
                           quoteId_0: Uint8Array,
                           bondAmount_0: bigint,
@@ -88,7 +90,8 @@ export type ProvableCircuits<PS> = {
   commitQuote(context: __compactRuntime.CircuitContext<PS>,
               rfqId_0: Uint8Array,
               commitment_0: Uint8Array,
-              validUntil_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+              validUntil_0: bigint,
+              notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
                           quoteId_0: Uint8Array,
                           bondAmount_0: bigint,
@@ -131,7 +134,8 @@ export type Circuits<PS> = {
   commitQuote(context: __compactRuntime.CircuitContext<PS>,
               rfqId_0: Uint8Array,
               commitment_0: Uint8Array,
-              validUntil_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+              validUntil_0: bigint,
+              notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
                           quoteId_0: Uint8Array,
                           bondAmount_0: bigint,

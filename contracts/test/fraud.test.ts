@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, taker, prover, bytes32, T0,
   CHALLENGE_WINDOW, DEALER_SK, TAKER_ADDR, PROVER_ADDR, QUOTE_SK, QUOTE_PK,
-  SLASH_TAKER_BPS, SLASH_PROVER_BPS,
+  SLASH_TAKER_BPS, SLASH_PROVER_BPS, NOTIONAL
 } from './harness.js';
 import { deriveQuoteId, deriveChallengeId } from '../../packages/sdk/src/domain.js';
 import { sealQuote } from '../../packages/sdk/src/quotes.js';
@@ -29,7 +29,7 @@ function committed(bond = BOND) {
   const sim = new OTCSim();
   const cmt = bondDealer(sim, bond);
   const sealed = sealQuote(REAL_TERMS, RFQ, BigInt(T0 + 600));
-  sim.call(dealer(DEALER_SK), 'commitQuote', sealed.rfqId, sealed.commitment, sealed.validUntil);
+  sim.call(dealer(DEALER_SK), 'commitQuote', sealed.rfqId, sealed.commitment, sealed.validUntil, NOTIONAL);
   return { sim, cmt, sealed, quoteId: deriveQuoteId(cmt, sealed.rfqId, sealed.commitment) };
 }
 
@@ -140,7 +140,7 @@ describe('submitFraudProofTimeout — Class B', () => {
     const sim = new OTCSim();
     const cmt = bondDealer(sim, BOND);
     const commitment = bytes32(2);
-    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, commitment, BigInt(T0 + 600));
+    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, commitment, BigInt(T0 + 600), NOTIONAL);
     const quoteId = deriveQuoteId(cmt, RFQ, commitment);
     sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
     return { sim, cmt, quoteId, challengeId: deriveChallengeId(quoteId, TAKER_ADDR) };

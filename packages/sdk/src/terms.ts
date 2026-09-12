@@ -47,6 +47,28 @@ function toFixedPointBigInt(decimalStr: string, decimals: number): bigint {
   return negative ? -value : value;
 }
 
+/** The asset bonds are posted in. Notional must be denominated in it so the contract's bond cap
+ *  needs no oracle (docs/CONTRACTS.md §7). */
+export const BOND_ASSET = 'tNIGHT';
+
+/** A quote's notional in bond-asset base units — the value `commitQuote` checks against
+ *  `bond * 20` and stores on-chain.
+ *
+ *  Only defined for pairs whose BASE leg is the bond asset: there `size` is already tNIGHT, and
+ *  SIZE_DECIMALS (6) equals tNIGHT's base-unit exponent, so the fixed-point size IS the notional. A
+ *  pair with neither leg in the bond asset would need an oracle, which §7 puts out of scope — so it
+ *  throws rather than guess. */
+export function notionalOf(terms: QuoteTerms): bigint {
+  const [base] = terms.pair.split('/');
+  if (base !== BOND_ASSET) {
+    throw new Error(
+      `cannot size a bond for pair ${terms.pair}: its base leg is not ${BOND_ASSET}, and pricing ` +
+        'notional in the bond asset would need an oracle (docs/CONTRACTS.md §7)',
+    );
+  }
+  return encodeTerms(terms)[3];
+}
+
 /** Encodes quote terms into the Vector<4, Field> the contract's commitment/reveal circuits see. */
 export function encodeTerms(terms: QuoteTerms): bigint[] {
   const pairCode = PAIR_CODES[terms.pair];

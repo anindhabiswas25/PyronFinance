@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  OTCSim, bondDealer, dealer, taker, bytes32, T0, DEALER_SK, TAKER_ADDR,
+  OTCSim, bondDealer, dealer, taker, bytes32, T0, DEALER_SK, TAKER_ADDR, NOTIONAL
 } from './harness.js';
 import { deriveQuoteId } from '../../packages/sdk/src/domain.js';
 
@@ -24,7 +24,7 @@ const POLICY_NAMED_RECIPIENT = 1n; // 0x0001 — the only shape in scope for M3
 function settledTrade() {
   const sim = new OTCSim();
   const cmt = bondDealer(sim);
-  sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600));
+  sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), NOTIONAL);
   const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
   sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, bytes32(0xab));
   return { sim, cmt, quoteId };
@@ -74,7 +74,7 @@ describe('attachDisclosureNote', () => {
   it('rejects a note for a quote that has not settled', () => {
     const sim = new OTCSim();
     const cmt = bondDealer(sim);
-    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600));
+    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), NOTIONAL);
     const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
 
     const msg = sim.expectRevert(taker(TAKER_ADDR), 'attachDisclosureNote',

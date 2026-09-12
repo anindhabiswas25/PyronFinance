@@ -35,13 +35,14 @@ import { buildOTCProviders, OTC_PRIVATE_STATE_ID } from '../packages/sdk/src/pro
 import { compiledOTCContract } from '../packages/sdk/src/contract.js';
 import { schnorrPublicKey } from '../packages/sdk/src/schnorr.js';
 import { dealerCommitment, deriveQuoteId } from '../packages/sdk/src/domain.js';
-import { postBond } from '../packages/sdk/src/bonding.js';
+import { postBond, minBondForNotional } from '../packages/sdk/src/bonding.js';
+import { notionalOf } from '../packages/sdk/src/terms.js';
 import { sealQuote, commitQuote, buildReveal, verifyReveal } from '../packages/sdk/src/quotes.js';
 import { recordSettlement } from '../packages/sdk/src/fraud.js';
 import { generateEncKeypair, encryptReveal, decryptReveal, plaintextToTerms } from '../packages/sdk/src/reveal-channel.js';
 import { buildAndProveOffer, settleFromOffer, balanceKey } from '../packages/sdk/src/offers.js';
 import { usdmFor, USDM_GATEWAY_BY_NETWORK } from '../packages/sdk/src/assets.js';
-import { queryLatestContractState } from '../packages/sdk/src/indexer.js';
+import { queryLatestContractState, queryLedgerParameters } from '../packages/sdk/src/indexer.js';
 import { ledger as otcLedger } from '../contracts/managed/otc-protocol/contract/index.js';
 
 function randomBytes32(): Uint8Array {
@@ -183,7 +184,13 @@ const contract = await findDeployedContract(providers, {
 // the wallet. That belongs in DEALER-NODE.md §5 at M3.
 // ---------------------------------------------------------------------------
 console.log('\n[1/6] postBond...');
-const bondAmount = 1n; // PLACEHOLDER_MIN_BOND — docs/CONTRACTS.md §7, deliberately unset
+// The bond must cover the quote it backs: notional <= bond * 20 (docs/CONTRACTS.md §7). The notional
+// is the tNIGHT leg, i.e. GIVE_UNITS — derived from the same terms that get committed below, so the
+// two cannot disagree.
+// Exact decimal string from exact base units — never via a float (zswap-offer-files SKILL.md §7).
+const TERMS_SIZE = `${GIVE_UNITS / DECIMALS}.${(GIVE_UNITS % DECIMALS).toString().padStart(6, '0')}`;
+const bondAmount = minBondForNotional(notionalOf({ pair: PAIR, side: 'sell', price: PRICE, size: TERMS_SIZE }));
+console.log(`  notional ${GIVE_UNITS} -> minimum bond ${bondAmount}`);
 await postBond(contract, bondAmount, quotePk);
 console.log('  bond posted.');
 
@@ -229,7 +236,9 @@ if (
 console.log('\n[3/6] commitQuote...');
 const rfqId = randomBytes32();
 const validUntil = BigInt(Math.floor(Date.now() / 1000) + VALIDITY_SECS);
-const terms = { pair: PAIR, side: 'sell' as const, price: PRICE, size: SIZE };
+// TERMS_SIZE, not the SIZE constant: the committed size must equal the bonded notional and the
+// offer's tNIGHT leg, including when E2E_GIVE_UNITS overrides the default.
+const terms = { pair: PAIR, side: 'sell' as const, price: PRICE, size: TERMS_SIZE };
 const sealed = sealQuote(terms, rfqId, validUntil);
 const commitStart = Date.now();
 await commitQuote(contract, sealed);
@@ -251,7 +260,12 @@ console.log(`  reveal ciphertext: ${message.ciphertext.length} base64 chars`);
 // --- everything below this line is the TAKER, holding only the wire message ---
 const { plaintext } = decryptReveal(message, takerEnc.sk, dealerEnc.pk);
 const takerView = { ...reveal, terms: plaintextToTerms(plaintext), offerFile: plaintext.offerFile };
-const check = verifyReveal(takerView, sealed.commitment, quotePk);
+// The taker reads the commitment and declared notional from the CHAIN, not from the dealer: the
+// notional check is the only thing that ties the bond cap to the size actually being quoted.
+const onChain = await queryLatestContractState(chain.indexerHttp, contractAddress);
+if (!onChain) throw new Error('contract state not found when verifying the reveal');
+const onChainQuote = otcLedger(onChain.data).quotes.lookup(quoteId);
+const check = verifyReveal(takerView, onChainQuote.commitment, quotePk, onChainQuote.notional);
 if (!check.valid) throw new Error(`Taker rejected the reveal: ${check.reason}`);
 console.log('  taker verified: signature valid, reveal opens the on-chain commitment, not expired.');
 
@@ -259,11 +273,15 @@ console.log('  taker verified: signature valid, reveal opens the on-chain commit
 // [5/6] The taker settles from the dealer's bytes alone. No further action by the dealer.
 // ---------------------------------------------------------------------------
 console.log('\n[5/6] Settling (taker, unilaterally, from the Offer File)...');
+// Live parameters, so the node's time-to-dismiss rule (Custom error 168, ROADMAP S5) is checked
+// locally before submitting rather than discovered as an opaque rejection.
+const { params: ledgerParameters } = await queryLedgerParameters(chain.indexerHttp);
 const settleStart = Date.now();
 const settlement = await settleFromOffer({
   wallet,
   offerFileBase64: plaintext.offerFile,
   expiresAt: plaintext.expiresAt,
+  ledgerParameters,
 });
 const settleMs = Date.now() - settleStart;
 console.log(`  settled in ${settleMs} ms. tx: ${settlement.txId}`);
@@ -298,7 +316,7 @@ const quote = ledgerState.quotes.lookup(quoteId);
 console.log('  settled counter (expect 1):', settledCount);
 console.log('  slashed counter (expect 0):', slashedCount);
 console.log('  quote.resolved (expect true):', quote.resolved);
-console.log('  bond.amount  (expect 1, untouched):', bond.amount);
+console.log(`  bond.amount  (expect ${bondAmount}, untouched):`, bond.amount);
 console.log('  bond.active  (expect true):', bond.active);
 console.log('  bond.liveQuotes (expect 0):', bond.liveQuotes);
 

@@ -50,8 +50,13 @@ const PROOF_GRACE_PERIOD:   Uint<64> = 3600;   // 1 h for a watchdog to land a p
 const BOND_WITHDRAW_DELAY:  Uint<64> = 86400;  // 24 h timelock
 const TIME_SLACK:           Uint<64> = 300;    // 5 min — added during M1 build; see note below
 
-const MIN_BOND: Uint<128> = /* set per-deployment; see §7 */;
-const MIN_CHALLENGE_BOND: Uint<128> = /* see §5.2 */;
+// Bond sizing (§7, §7a) — implemented in M2 task 2.9. There is NO flat MIN_BOND: the per-quote
+// notional cap subsumes it. (This block previously declared MIN_BOND / MIN_CHALLENGE_BOND as
+// unset placeholders; they shipped as PLACEHOLDER_* = 1 until 2026-09-13.)
+const NOTIONAL_CAP_K:       Uint<8>   = 20;   // commitQuote: notional <= bond * 20
+const CHALLENGE_BOND_PCT:   Uint<8>   = 2;    // openSettlementChallenge: bond >= 2% of notional ...
+const CHALLENGE_BOND_DENOM: Uint<8>   = 100;
+const CHALLENGE_BOND_FLOOR: Uint<128> = 1;    // ... and >= the floor. The floor AMOUNT is OPEN (M4 4.1)
 ```
 
 > **On the 60/10/30 split.** The chosen policy was "majority to taker, remainder burned," with the
@@ -153,7 +158,7 @@ protocol lives in the *quote reveal channel* and in *Zswap settlement* — not h
 | `topUpBond` | added amount, dealer commitment | dealer secret key |
 | `requestBondWithdrawal` | dealer commitment, request timestamp | dealer secret key |
 | `withdrawBond` | amount, recipient address | dealer secret key |
-| `commitQuote` | dealer commitment, **commitment hash**, validity window, rfqId | **the price**, size, the nonce, the Offer File |
+| `commitQuote` | dealer commitment, **commitment hash**, validity window, rfqId, **notional (= size)** — see §7 for why that is not a new leak | **the price**, the nonce, the Offer File |
 | `openSettlementChallenge` | quoteId, taker payout address, challenge bond | taker's other activity, the quoted price |
 | `recordSettlement` | quoteId, dealer commitment | the executed price, the counterparty relationship |
 | `submitFraudProofMismatch` | quoteId, **revealed terms**, nonce, signature | — (fraud proof necessarily reveals the terms) |
@@ -181,7 +186,7 @@ than exists:
 export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   assert(!bonds.member(cmt), "Dealer already bonded; use topUpBond");
-  assert(disclose(amount) >= MIN_BOND, "Bond below minimum");
+  assert(disclose(amount) > 0, "Bond must be positive"); // no flat minimum — the cap is per quote, §7
   receiveUnshielded(default<Bytes<32>>, disclose(amount));
   bonds.insert(cmt, Bond {
     amount: disclose(amount), quotePk: disclose(quotePk),
@@ -229,11 +234,16 @@ export circuit withdrawBond(recipient: UserAddress): [] {
 ### 5.2 Quoting and settlement
 
 ```compact
-export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: Uint<64>): [] {
+// UPDATED in M2 task 2.9: takes `notional` (bond-asset base units) and stores it on the Quote.
+export circuit commitQuote(
+  rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: Uint<64>, notional: Uint<128>
+): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   const b = bonds.lookup(cmt);
   assert(b.active, "Dealer not active (withdrawing or unbonded)");
-  assert(b.amount >= MIN_BOND, "Bond fell below minimum after slashing");
+  // Per-quote notional cap, §7. Replaces "bond fell below minimum": a slashed bond backs nothing.
+  assert(disclose(notional) > 0, "Notional must be positive");
+  assert(disclose(notional) <= b.amount * NOTIONAL_CAP_K, "Notional exceeds bond cap");
   // Cap validity: an unbounded window would let a dealer sit on a free option indefinitely,
   // and would force BOND_WITHDRAW_DELAY to be unbounded too.
   const validUntilPub = disclose(validUntil);
@@ -250,7 +260,7 @@ export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: 
   assert(!quotes.member(qid), "Duplicate quote");
   quotes.insert(qid, Quote { dealerCmt: cmt, commitment: disclose(commitment),
                              validUntil: disclose(validUntil), rfqId: disclose(rfqId),
-                             resolved: false });
+                             notional: disclose(notional), resolved: false });
   bonds.insert(cmt, Bond { ...b, liveQuotes: (b.liveQuotes + 1) as Uint<32> });
 }
 
@@ -261,7 +271,10 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
   const q = quotes.lookup(disclose(quoteId));
   assert(!q.resolved, "Quote already resolved");
   assert(!blockTimeGte(q.validUntil), "Quote expired — nothing to honor");
-  assert(disclose(bondAmount) >= MIN_CHALLENGE_BOND, "Challenge bond too small");
+  // max(floor, 2% of notional), §7a — checked without division, rounding against the challenger.
+  assert(disclose(bondAmount) >= CHALLENGE_BOND_FLOOR, "Challenge bond below floor");
+  assert(disclose(bondAmount) * CHALLENGE_BOND_DENOM >= q.notional * CHALLENGE_BOND_PCT,
+         "Challenge bond below 2% of notional");
   receiveUnshielded(default<Bytes<32>>, disclose(bondAmount));
   const claimedNow = disclose(now);
   assert(blockTimeGte(claimedNow), "claimed time is in the future");
@@ -500,6 +513,26 @@ below it, loss leaks straight through to the taker.
 For a tNIGHT/USDM quote the tNIGHT leg is the notional. A pair with neither leg in the bond asset
 would need an oracle and is therefore out of scope until `MIN_BOND` is revisited for Mainnet (4.1).
 
+### Implemented (M2 task 2.9, 2026-09-13) — and the one gap it leaves
+
+`commitQuote` takes `notional`, asserts `0 < notional <= bond * 20`, and stores it on the `Quote`.
+The cap is **per quote, not cumulative**: two quotes may each use the full cap. Aggregate exposure
+across live quotes is the Dealer Node's `max_total_notional` risk limit, not a contract rule — pinned
+by a test so a change is deliberate. The SDK derives `notional` from the quote terms
+(`notionalOf` in `packages/sdk/src/terms.ts`), and refuses pairs whose base leg is not tNIGHT.
+
+**The gap: the contract cannot tie `notional` to the sealed size.** The commitment is hiding, so
+the circuit cannot open it at commit time. A dealer could declare a small notional to slip under the
+cap and then reveal a larger size. That is caught **client-side**: `verifyReveal` takes the on-chain
+notional and rejects a reveal whose size differs, and the relay aggregator rejects any quote whose
+on-chain notional is not the size the RFQ asked for. A taker using the reference SDK never trades
+against an under-declared quote.
+
+**Open, not decided:** whether an under-declared notional should also be **slashable**. It would be
+objectively provable exactly like Class A — a dealer-signed reveal that *opens* the commitment but
+whose size ≠ the on-chain notional — so `submitFraudProofMismatch` could be extended to cover it.
+That changes the slashing rule, so it is surfaced in `ROADMAP.md` rather than built.
+
 ---
 
 ## 7a. `MIN_CHALLENGE_BOND`: ~2% of notional, with a floor (decided 2026-09-12)
@@ -517,8 +550,15 @@ notional)`.
 > enforcement entirely, which silently converts Class-B protection into a large-taker-only feature
 > and quietly re-introduces the last-look exposure this protocol exists to remove.
 
-Both constants remain `PLACEHOLDER_*` in `OTCProtocol.compact` until the settlement path exists and
-real trades can calibrate the floor (M4 task 4.1 finalises them for real-value NIGHT).
+**Implemented (M2 task 2.9, 2026-09-13).** `openSettlementChallenge` asserts
+`bond >= CHALLENGE_BOND_FLOOR` and `bond * 100 >= notional * 2`, reading `notional` from the stored
+`Quote`. The 2% rounds **up** (2% of 1001 requires 21, not 20), so rounding never favours the
+challenger. `PLACEHOLDER_MIN_CHALLENGE_BOND` is gone.
+
+**The floor's amount is still open.** It is set to 1 base unit, which makes it inert on testnet so
+the scaling rule is what gets exercised. M4 task 4.1 sets the real value against real-value NIGHT;
+until then this is not a Mainnet parameter. Note also that the Class-B decision still open in
+`ROADMAP.md` may shrink or remove this circuit entirely.
 
 ---
 

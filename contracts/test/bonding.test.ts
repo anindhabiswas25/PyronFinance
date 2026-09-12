@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, bytes32, T0,
-  BOND_WITHDRAW_DELAY, TIME_SLACK, DEALER_SK, QUOTE_PK,
+  BOND_WITHDRAW_DELAY, TIME_SLACK, DEALER_SK, QUOTE_PK, NOTIONAL
 } from './harness.js';
 import { dealerCommitment } from '../../packages/sdk/src/domain.js';
 
@@ -34,10 +34,10 @@ describe('postBond — permissionless entry', () => {
     expect(msg).toMatch(/already bonded/);
   });
 
-  it('rejects a bond below the minimum', () => {
+  it('rejects a zero bond — there is no flat minimum, but a bond must back something', () => {
     const sim = new OTCSim();
     const msg = sim.expectRevert(dealer(DEALER_SK), 'postBond', 0n, QUOTE_PK);
-    expect(msg).toMatch(/Bond below minimum/);
+    expect(msg).toMatch(/Bond must be positive/);
   });
 
   it('starts settled and slashed counters at zero', () => {
@@ -145,7 +145,7 @@ describe('withdrawBond — timelock and outstanding obligations', () => {
   it('blocks withdrawal while a quote is still live', () => {
     const sim = new OTCSim();
     bondDealer(sim);
-    sim.call(dealer(DEALER_SK), 'commitQuote', bytes32(1), bytes32(2), BigInt(T0 + 600));
+    sim.call(dealer(DEALER_SK), 'commitQuote', bytes32(1), bytes32(2), BigInt(T0 + 600), NOTIONAL);
     sim.call(dealer(DEALER_SK), 'requestBondWithdrawal', BigInt(T0));
 
     sim.advanceTo(T0 + BOND_WITHDRAW_DELAY);

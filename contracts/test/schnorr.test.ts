@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, prover, bytes32, T0,
-  DEALER_SK, TAKER_ADDR, PROVER_ADDR, QUOTE_SK, QUOTE_PK,
+  DEALER_SK, TAKER_ADDR, PROVER_ADDR, QUOTE_SK, QUOTE_PK, NOTIONAL
 } from './harness.js';
 import { deriveQuoteId } from '../../packages/sdk/src/domain.js';
 import { sealQuote } from '../../packages/sdk/src/quotes.js';
@@ -37,7 +37,7 @@ function circuitAcceptsSignature(sk: bigint, tamper?: (s: { announcement: unknow
   const sim = new OTCSim();
   const cmt = bondDealer(sim);
   const sealed = sealQuote(REAL, bytes32(1), BigInt(T0 + 600));
-  sim.call(dealer(DEALER_SK), 'commitQuote', sealed.rfqId, sealed.commitment, sealed.validUntil);
+  sim.call(dealer(DEALER_SK), 'commitQuote', sealed.rfqId, sealed.commitment, sealed.validUntil, NOTIONAL);
   const quoteId = deriveQuoteId(cmt, sealed.rfqId, sealed.commitment);
 
   const terms = encodeTerms(FRAUD);
