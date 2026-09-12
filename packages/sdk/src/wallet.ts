@@ -45,6 +45,18 @@ export interface HeadlessWallet {
   facade: WalletFacade;
   walletAndMidnightProvider: WalletProvider & MidnightProvider;
   unshieldedAddress: string;
+  /** Raw 32-byte unshielded address, hex. This — not the bech32m `unshieldedAddress` — is what
+   *  Zswap offer outputs are keyed on (`TokenTransfer.receiverAddress.data`), and what
+   *  `recordSettlement`'s `recipient: Bytes<32>` takes. Kept separate so the two are never
+   *  confused: a bech32m string passed where raw bytes are expected is defect D2's shape. */
+  unshieldedAddressHex: string;
+  /** Secret keys `facade.initSwap`/`balanceUnboundTransaction` require. Offer construction needs
+   *  the wallet precisely because ledger-v8 exposes no public constructor for a user-owned
+   *  ZswapInput — see packages/sdk/src/offers.ts §"Why the wallet is required". */
+  secretKeys: { shieldedSecretKeys: ledger.ZswapSecretKeys; dustSecretKey: ledger.DustSecretKey };
+  /** Signs one transaction segment with the unshielded keystore. Always pass this to
+   *  `facade.signRecipe` — never hand-roll an intent walk (defect W5). */
+  signFn: (payload: Uint8Array) => ledger.Signature;
   waitForSync(): Promise<void>;
   waitForUnshieldedBalance(): Promise<bigint>;
   waitForDust(): Promise<void>;
@@ -116,7 +128,19 @@ export async function createHeadlessWallet(
   // completely unreasonable margin here." Do not raise it casually to buy fee headroom; 5 is the
   // documented value.
   const costParameters = {
-    additionalFeeOverhead: 300_000_000_000_000n,
+    // Raised from the skill's documented 3e14 after it stopped covering real Preprod fees.
+    //
+    // additionalFeeOverhead is what the DUST balancer provisions on top of its own fee estimate,
+    // and it behaves as a flat floor: a settlement built by `balanceFinalizedTransaction` came out
+    // with a DUST surplus of exactly 300000000000001 — this value plus one — while ledger-v8's own
+    // estimate for the same transaction was 926290000000001, and 1173940000000001 an hour later.
+    // The node rejected those settlements with `1010: Invalid Transaction: Custom error: 168`.
+    // The one settlement that DID land was submitted when the required fee was still under the
+    // 3e14 floor, which is why this looked like flakiness rather than under-provisioning.
+    //
+    // Unlike feeBlocksMargin (an EXPONENT — see below), this is a linear SPECK amount, so raising
+    // it is safe: it buys fee headroom and nothing else. Unused provision is not spent.
+    additionalFeeOverhead: 3_000_000_000_000_000n,
     feeBlocksMargin: 5,
   };
 
@@ -310,6 +334,9 @@ export async function createHeadlessWallet(
     facade,
     walletAndMidnightProvider,
     unshieldedAddress: publicKey.address,
+    unshieldedAddressHex: publicKey.addressHex,
+    secretKeys: { shieldedSecretKeys, dustSecretKey },
+    signFn,
     waitForSync,
     waitForUnshieldedBalance,
     waitForDust,

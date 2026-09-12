@@ -3,7 +3,13 @@
 > **Re-read this file at the start of every session before doing any work.**
 > It is the live record of what is done, what is in progress, and what decisions are still open.
 
-**Last updated:** 2026-09-12 — **M1 is complete on Preprod.** The contract is deployed, verified by
+**Last updated:** 2026-09-12 — **M1 complete, and M2 task 2.6 has settled the protocol's first
+complete trade on-chain** (`pnpm run e2e-settle`). `offers.ts` is no longer a stub, and the open
+question "can the taker settle unilaterally from a pre-proved Offer File?" is answered: **yes** —
+see the finding near the end of this file, and read task 2.6's stated limits before quoting the
+result anywhere.
+
+**M1 is complete on Preprod.** The contract is deployed, verified by
 indexer read-back, and `pnpm run e2e-fraud` has executed the full fraud path on-chain: bond posted →
 quote committed → deliberately mismatched reveal → fraud proof → **bond slashed to 0, dealer
 deactivated, slashed counter 1, quote resolved**. Tasks 1.0–1.10 are all done, including 1.7 and the
@@ -38,7 +44,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.3 built and tested in simulation (191 tests); 2.4–2.9 not started, blocked per scope below |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.3 built and tested in simulation; **2.6 settlement executed on-chain** (`pnpm run e2e-settle`), 2.8 partially measured; 2.4/2.5/2.7/2.9 not started |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -87,12 +93,12 @@ typical bonding circuit) — Schnorr verification plus the challenge-reduction r
   behavior of `WalletFacade.init`'s factory functions, whether the `signTransactionIntents`
   bug-workaround from the skill still applies to this version)." **Both** named suspicions were
   real — W1 and W5 in the defect table at the top of this file.
-- `packages/sdk/src/offers.ts` (Zswap Offer File construction) is **still an intentional stub**, and
-  is now the largest remaining piece of unwritten M1-adjacent code. The blocker it cited (no running
-  proof server) is gone, so this can and should be built for real — it gates 2.6 settlement. Building
-  it blind against types alone was judged too likely to be silently wrong for something this
-  security-sensitive (a malformed Offer File either fails safely or, worse, appears to work until
-  settlement). Flagged rather than guessed.
+- `packages/sdk/src/offers.ts` (Zswap Offer File construction) **was** an intentional stub —
+  **resolved 2026-09-12 under task 2.6**, built for real and executed on-chain. The judgement that
+  kept it a stub was correct: building it blind against types alone would have been silently wrong.
+  `initSwap`'s `desiredInputs` reads equally well as "spend" or "receive", and the stub's
+  `proofServerUrl`-and-no-wallet signature was the wrong shape entirely — a user-owned `ZswapInput`
+  has no public constructor, so the wallet must build the half. See task 2.6 below.
 
 **Previously blocked on network access — RESOLVED 2026-09-12.** A funded Preprod wallet and a local
 proof server both now exist, and the full sequence has been run:
@@ -179,9 +185,9 @@ quietly absorbed. **Do this first; do not build around it.**
 | 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ✅ Built and tested in simulation — see below |
 | 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ⬜ Not started — blocked on a live indexer per CLAUDE.md scope note |
 | 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ Not started — blocked on a wallet |
-| 2.6 | Zswap settlement path from the taker's selection | ⬜ |
+| 2.6 | Zswap settlement path from the taker's selection | ✅ **On-chain on Preprod and reproduced** (`pnpm run e2e-settle`): offer built, proved, bound, revealed point-to-point, settled by the taker, `settled` counter 1. `offers.ts` is no longer a stub. Read the limits and S4 below before quoting this |
 | 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | ⬜ |
-| 2.8 | **Measure real proof-generation + commit latency on Preprod** | ⬜ |
+| 2.8 | **Measure real proof-generation + commit latency on Preprod** | 🟡 First real settlement-path numbers below; the warm-pool/ladder numbers still need M3 |
 | 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ⬜ |
 
 **What "built and tested in simulation" means here, precisely** — same discipline M1 used
@@ -223,11 +229,160 @@ has an uncommitted diff (deferred sync — `waitForSync()` no longer runs at con
 before this session started. It's unrelated to M2 and was left untouched and uncommitted — flagging
 it here so it isn't mistaken for dropped work.
 
+### Task 2.6 — the settlement path, built and executed (2026-09-12)
+
+`packages/sdk/src/offers.ts` was M1's last documented stub. It is now real, and
+`pnpm run e2e-settle` has run the complete happy path on Preprod: bond posted → Offer File built,
+signed, proved and bound → quote committed → honest reveal delivered point-to-point encrypted →
+**taker settled the Offer File** → `recordSettlement`. Verified by indexer read-back: `settled` 1,
+`slashed` 0, `quote.resolved` true, `bond.amount` 1 and `bond.active` true (untouched), and
+`bond.liveQuotes` back to 0. This is the first complete trade the protocol has executed.
+
+**Phase 0 first, and it earned its place.** `WalletFacade.initSwap`'s `desiredInputs` reads either
+way, and a wrong guess yields an offer that looks correct and fails at settlement — so it was
+determined empirically (`scripts/probe-swap-semantics.ts`, kept in the repo) before anything was
+built on it:
+
+- `desiredInputs` = tokens this wallet **SPENDS** → positive delta. `desiredOutputs` = coins
+  **created**, unfunded by this half, `receiverAddress` being your own address → negative delta,
+  i.e. what you **RECEIVE**. Measured: `{NIGHT:1000}` + `[{NIGHT:700→self}]` → `+300`.
+- `desiredInputs.unshielded` must be **present even when empty** (`{}`). The facade builds an
+  unshielded leg only when the key is defined; omitting it while supplying unshielded outputs drops
+  the leg and dies with "Unexpected transaction state."
+- Balance-vector keys are **tagged objects** (`{tag:'unshielded',raw}` / `{tag:'shielded',raw}` /
+  `{tag:'dust'}`), not `RawTokenType` strings. Shielded and unshielded balances of the same token
+  are distinct entries and do not offset each other.
+- Two independently-built **unproven** halves cannot be merged: both land at intent segment 1 and
+  `merge` refuses with "key (segment_id) collision during intents merge: 1". That dead end is what
+  led to `balanceFinalizedTransaction`, which is the correct API and the one the answer below rests on.
+
+**Defects this found — same discipline as W1–W5, all of them past `tsc` and a green suite:**
+
+| # | Defect | Why it stayed hidden |
+|---|---|---|
+| S1 | `SignatureEnabled`'s deserialize marker is `'signature'`, not `'signature-enabled'` | Wrong marker surfaces as a WASM `Invalid signature value.` from inside `Transaction.deserialize` — reads like a corrupt payload, not a wrong argument |
+| S2 | The nets-to-zero guard checked the **DUST** entry too, and refused every valid settlement | A ready-to-submit settlement deliberately carries a DUST surplus — that surplus *is* the fee. Only a live run has a fee |
+| S3 | Submission gated on a fee estimate at all — **neither available estimate is trustworthy** | `facade.calculateTransactionFee` returned `300000000000001`, which is `additionalFeeOverhead` (3e14) + 1 — exactly what the dust balancer had already provisioned, so the check is vacuous and can never fail. `tx.fees(LedgerParameters.initialParameters())` returned `926290000000001` for the *same* transaction, but those are static defaults rather than the live chain's parameters, and gating on them refused a settlement the node had already accepted. The guard now reports both and hard-fails only when **no** DUST was provisioned |
+
+S2 and S3 were both guards **this session wrote**, and both would have been invisible without the
+chain. Noted because the pattern is the lesson: the checks are as untested as the code they check.
+S3 is also a correction to this session's own first fix — "use `facade.calculateTransactionFee`"
+was written into these docs before a second live run showed that number to be the configured
+overhead echoed back, not a fee.
+
+**A dead end worth recording so nobody re-walks it:** closing the fee gap by re-balancing DUST
+against the merged, proven transaction —
+`balanceFinalizedTransaction(merged, …, { tokenKindsToBalance: ['dust'] })` — **hangs
+indefinitely** on an already-dust-balanced transaction. Killed after ~20 minutes with no output.
+
+### S4 — `Custom error: 168` is an UNDERPAID FEE, and the default `additionalFeeOverhead` no longer covers Preprod
+
+The single most useful thing this task learned, because it looked exactly like flakiness for hours.
+
+After the first settlement landed, every later run was rejected with an opaque
+`1010: Invalid Transaction: Custom error: 168` and a multi-kilobyte byte dump naming nothing. The
+diagnosis came from making `settleFromOffer` report its own numbers on rejection:
+
+```
+fee 300000000000001, DUST provisioned 300000000000001,
+ledger-default fee estimate 1173940000000001, 6985 bytes
+structure: seg1.guaranteed: 1 in / 1 out / 1 sig;
+           seg2.guaranteed: 0 in / 1 out / 0 sig;
+           seg3.dust: 2 spend(s)
+```
+
+The structure was correct — the dealer's half at segment 1, the taker's balancing half at segment 2,
+DUST at segment 3, signature counts matching input counts. **The fee was not.** `additionalFeeOverhead`
+in `packages/sdk/src/wallet.ts` was the skill's documented `3e14`, and the DUST balancer treats it as
+a flat floor: every settlement came out provisioned at exactly `300000000000001` SPECKs, that value
+plus one. Meanwhile ledger-v8's own estimate for the same transaction was `926290000000001`, and
+`1173940000000001` an hour later — **the required fee was rising past the floor.**
+
+The one settlement that landed was submitted while the real fee was still under `3e14`. That is the
+whole explanation for "worked once, never again," and it is why it presented as flakiness.
+
+**Fix: `additionalFeeOverhead` raised `3e14` → `3e15`** (`packages/sdk/src/wallet.ts`), after which
+the settlement went through on the first attempt with `DUST provisioned 3000000000000001`. Unlike
+`feeBlocksMargin` — an exponent the ledger explicitly warns about — this is a linear SPECK amount,
+so raising it only buys headroom.
+
+Three follow-ups this leaves open:
+
+- **`3e15` is a measured-once value, not a tuned one.** It clears today's fee by ~2.5x. It is not a
+  ceiling anyone has reasoned about, and it should be revisited alongside `MIN_BOND` at M4.
+- **A flat overhead floor is the wrong shape.** The right fix is reading the chain's live
+  `LedgerParameters` rather than over-provisioning against a static guess; `initialParameters()` is
+  not them.
+- **Two hypotheses were tested and are WRONG** — recorded so nobody re-walks them. (a) *Stale coin
+  selection*: the bond spends the smallest UTXO first, so offer construction might pick a spent coin.
+  Building the offer before the bond (so `initSwap` books its inputs) is correct regardless and was
+  kept, but it did not fix 168. (b) *Stale dust TTL*: the dust intent's TTL matched the offer's
+  expiry exactly, to the second.
+
+### Reliability: the path works, but Preprod is unreliable underneath it
+
+The settlement path is now reproducible — it ran clean again after the fee fix. What is **not**
+reliable is the network under it. During this session Preprod's indexer served a trivial
+`{ block { height } }` query in **30.8 s**, and several runs logged `Wallet.Sync` failures from all
+three sub-wallets at startup, before any protocol step; one run hung ~20 minutes with no output and
+had to be killed, and a later `recordSettlement` stalled for over ten minutes after its settlement
+had already been accepted on-chain.
+
+None of that is protocol behaviour, but it sets the floor on what a dealer node can promise.
+**`DEALER-NODE.md`'s challenge-response timing assumes the operator can see the chain and act within
+a window** — worth revisiting at M3 against these numbers rather than against optimistic ones.
+
+**Known limits — do not overstate this result.**
+
+- **One asset, not two.** Preprod has only native unshielded tNIGHT; USDM does not exist there, and
+  no substitute is obtainable — shielded tNIGHT genuinely *is* a separate balance-vector entry
+  (probe 6 builds `{unshielded:+1000, shielded:-900}` cleanly), but neither the wallet SDK nor
+  ledger-v8 exposes any unshielded → shielded conversion, so a faucet-funded wallet can never
+  acquire a shielded balance to pay with. The settled offer was therefore `{unshielded tNIGHT:
+  +1000}`, and `terms.ts` carries a clearly-marked Preprod-only `tNIGHT/tNIGHT` pair for it. The
+  nets-to-zero rule is per-token-independent arithmetic, so the two-asset case differs only by
+  having a second entry — **but that is an argument, not a live run.** See the open decision below.
+- **One wallet, both roles**, as `e2e-fraud.ts` already does. The settling side never touches the
+  dealer's keys (`signRecipe` on a `FINALIZED_TRANSACTION` recipe signs only the *balancing*
+  transaction), so the mechanism does not depend on it — but a genuinely two-wallet run has not
+  happened, and the taker would need its own DUST to submit.
+- `topUpBond`, `requestBondWithdrawal`, `withdrawBond`, `openSettlementChallenge`,
+  `releaseExpiredQuote`, `submitFraudProofTimeout` and `attachDisclosureNote` **remain unexecuted
+  on-chain** regardless of green tests.
+
+**Noise, not a defect:** every on-chain call logs `Failed to upsert history entry … Cannot read
+properties of undefined (reading 'upsert')` from `wallet-sdk-dust-wallet`'s transaction-history
+code. It is non-fatal and does not affect balances or submission. Untriaged.
+
+### Task 2.8 — first settlement-path latency numbers (Preprod, local proof server)
+
+Measured by `pnpm run e2e-settle`, three runs. **These are real numbers and the bad one is
+published as a bad number**, per `GRANT.md` risk 2.
+
+| Step | Measured |
+|---|---|
+| Offer File build + sign + prove + bind | **7–16 ms** |
+| `commitQuote` (prove + balance + submit + confirm) | **18.8 s** (also 23.2 s, 24.4 s, 24.6 s) |
+| Settle (balance + prove + submit) | **16.9 s**, and **23.6 s** on the reproduced run |
+| Deploy proof (from M1) | 0.691 s |
+
+Both a first and a reproduced run are included; the spread between them is network, not work.
+
+**The 7 ms deserves scrutiny, not celebration.** A purely *unshielded* offer carries no ZK proof at
+all — unshielded offers are signature-authorized, and proving cost lives in the *shielded* leg. So
+this number says almost nothing about a real tNIGHT/USDM offer, and it does **not** vindicate the
+warm pool; it does not test it. The warm pool's premise (proving is too slow for the quote hot path)
+is still unmeasured for a shielded offer, and remains an M3 question.
+
+What the numbers *do* say clearly: the chain-confirmation legs dominate, at ~17–25 s each. The
+commit→confirm→reveal round trip the design already flagged as chain-bound is the real latency, not
+proving.
+
 **Definition of done:** one full sealed-bid RFQ cycle — including at least two competing dealer
 commitments — runs end to end on Preprod and is demoable.
 
-Task 2.8 gates every performance claim in `GRANT.md`. Until it produces a number, no latency figure
-goes in any external material.
+Task 2.8 gates every performance claim in `GRANT.md`. No latency figure goes in any external
+material beyond the measured table above.
 
 ---
 
@@ -283,19 +438,60 @@ DUST-generation/registration process.
 | **Bond sizing** | Per-quote notional cap, `k = 20` (bond >= 5% of notional). No flat `MIN_BOND` floor | `CONTRACTS.md` §7 |
 | **`commitQuote` may see quote size** | Yes. Not a new leak: RFQ gossip already publishes `size` and `rfqId` is already on-chain, so size is already derivable. Price stays sealed | `CONTRACTS.md` §7 |
 | **`MIN_CHALLENGE_BOND`** | `max(floor, 2% of notional)`. Corrects `FRONTEND.md`'s 25%-of-notional example | `CONTRACTS.md` §7a |
+| **Taker CAN settle unilaterally from a pre-proved Offer File** | **Yes — demonstrated on-chain.** See the finding below; it changes what Class B is *for* | `ROADMAP.md` (this file), `offers.ts` |
 
 ## Decisions still open
 
 | Question | Needed by | Notes |
 |---|---|---|
 | Binding `recordSettlement` to a Zswap tx hash | Post-M4 | Closes the self-attested settled-counter gap (`CONTRACTS.md` §5.2) |
-| **Does a pre-proved Offer File let the taker settle unilaterally?** | M2 (2.6) | If the dealer's reveal carries a complete, pre-proved half of the Zswap swap, the taker can settle without the dealer acting — and most of Class B (challenges, `submitFraudProofTimeout`, challenge bonds) becomes dead weight. Hashflow's RFQ needs no bonds at all for exactly this reason. What would remain is not "dealer stalls" but "dealer spent that inventory elsewhere first." **Answered by building `offers.ts`, not by further design discussion.** Surfaced 2026-09-12 |
+| **What Class B is still for, given unilateral settlement works** | M2/M3 | **The underlying question is ANSWERED — see the finding below.** What is now open is the consequence: how much of `openSettlementChallenge` / `submitFraudProofTimeout` / challenge bonds / `DEALER-NODE.md` §6 survives, and whether the remaining failure mode ("dealer spent that inventory elsewhere first") is better handled by challenges or by something cheaper. **Not decided here** — it touches `ARCHITECTURE.md`, `CONTRACTS.md` and `DEALER-NODE.md`, and is the owner's call. Surfaced 2026-09-12 |
+| **Second asset for a genuine two-token settlement** | M2/M3 | The on-chain settlement was one-asset because Preprod has one asset (see task 2.6 limits). Options: (a) accept the arithmetic argument and wait for a real pair; (b) deploy a throwaway test-token Compact contract purely to mint a second asset for the e2e — a real scope addition, but it would turn the strongest claim in the project from an argument into a live run. **Not decided** |
 | Sybil-resistant relay discovery | Post-M4 | `peer_announce` is spammable; stake-weighting would reintroduce permissioning |
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
 | **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
 | **Slash arithmetic overflow (D7)** | M4 (4.1) | `b.amount * 6000` can overflow `Uint<128>` for absurd bond sizes. Unreachable at realistic values; settle alongside `MIN_BOND` |
 | **Fraud proofs have no upper time bound** | M2 | `submitFraudProofMismatch` can be submitted arbitrarily late while a quote stays unresolved. `releaseExpiredQuote` lets a dealer close their own window after `PROOF_GRACE_PERIOD`, which bounds it in practice, but nothing forces it |
 | `TIME_SLACK` (300s) for caller-supplied `now` in `requestBondWithdrawal`/`openSettlementChallenge` | M1 (surfaced) | Not pre-approved — needed because Compact can't read block time as a value, only compare against it. A caller-supplied, chain-bounded `now` was the only viable design found; 300s is a placeholder guess, not tuned |
+
+---
+
+## Finding: the taker CAN settle unilaterally (2026-09-12)
+
+The question this roadmap said would be "answered by building `offers.ts`, not by further design
+discussion" has been answered by building `offers.ts`. **Yes. The taker settles alone.**
+
+The mechanism, verified on-chain:
+
+1. The dealer builds a half via `facade.initSwap`, **signs it, proves it and binds it**
+   (`signRecipe` → `finalizeRecipe`) before ever quoting. The result is a `FinalizedTransaction`:
+   inert, serializable bytes — 728 base64 characters for the settled offer.
+2. Those bytes ride inside the encrypted point-to-point reveal and reach exactly one taker.
+3. The taker calls `facade.balanceFinalizedTransaction(dealerHalf, takerKeys, { ttl })`. The
+   dealer's half already states exactly what it is short of, so the taker's wallet covers that
+   shortfall from its own coins and routes the dealer's surplus to itself. **No counter-half is
+   negotiated and the dealer takes no further action.**
+4. `signRecipe` on a `FINALIZED_TRANSACTION` recipe signs only the *balancing* transaction and
+   leaves the dealer's proved half untouched — so the taker never needs, and never gets, the
+   dealer's keys.
+
+**What this means for Class B.** Class B exists for "dealer silently fails to honor a live quote."
+If the taker holds a complete, pre-proved, bound half, the dealer *cannot* stall: there is nothing
+left for the dealer to do. The residual failure is narrower and different in kind — **the dealer
+spent that inventory elsewhere first**, so the offer's inputs are already consumed and the
+settlement simply fails. That is not "refusing to honor a quote"; it is double-spending one's own
+warm-pool inventory, and it is detectable by the taker immediately rather than after a timeout.
+
+This is exactly the reason Hashflow's RFQ model needs no bonds. It does **not** make our bonds
+pointless — Class A (commitment mismatch) is untouched, and the double-spend case still wrongs a
+taker who relied on a live quote — but it does mean `openSettlementChallenge`,
+`submitFraudProofTimeout`, challenge bonds and `DEALER-NODE.md` §6 are now solving a materially
+smaller problem than the design assumed. **Surfaced, not decided** (see "Decisions still open").
+
+Two honest caveats on the demonstration: it ran with one wallet playing both roles, and with a
+one-asset offer. Neither affects the mechanism above — the balancing draws on the caller's own coins
+and signs only the caller's own half either way — but neither has been run with two distinct wallets
+or two distinct assets. See task 2.6's limits.
 
 ---
 

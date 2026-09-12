@@ -111,6 +111,16 @@ holds a self-contained, non-repudiable proof of fraud. Anyone can submit it. The
 signature and the hash inequality and slashes. No interpretation, no arbitration, no trust.
 
 **Class B — Failure to honor a live quote (not directly observable on-chain).**
+
+> ⚠️ **This section's premise is narrower than it was written to be — see `docs/ROADMAP.md`'s
+> "the taker CAN settle unilaterally" finding (2026-09-12, demonstrated on-chain).** A dealer's
+> pre-proved, bound Offer File is settleable by the taker alone, so a dealer holding a live quote
+> **cannot** "simply go silent": there is nothing left for them to do. The residual failure is
+> narrower and different in kind — the dealer **spent that inventory elsewhere first**, so the
+> offer's inputs are already consumed and settlement fails immediately rather than after a timeout.
+> How much of the challenge apparatus below survives that is an **open decision**, tracked in
+> `ROADMAP.md`. The text below is left intact pending that decision — do not treat it as settled.
+
 A dealer who simply goes silent when a taker tries to settle produces *no* on-chain evidence. The
 chain cannot observe an off-chain omission. This is the honest difficulty at the center of the
 design, and we resolve it by converting an unobservable off-chain omission into an observable
