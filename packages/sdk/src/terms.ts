@@ -13,6 +13,19 @@ export const SIZE_DECIMALS = 6;
 // config, not a migration. Extend this table as new pairs are added.
 export const PAIR_CODES: Record<string, bigint> = {
   'tNIGHT/USDM': 1n,
+  // PREPROD TEST PAIR ONLY — degenerate on purpose, and it must never be offered on Mainnet.
+  //
+  // Preprod has exactly one asset: native unshielded tNIGHT. USDM does not exist there, and nothing
+  // else can be obtained: shielded tNIGHT IS a distinct entry in the Zswap balance vector
+  // (`Transaction.imbalances` keys by a tagged token type, so `{tag:'shielded', raw}` and
+  // `{tag:'unshielded', raw}` never offset each other — verified in scripts/probe-swap-semantics.ts
+  // probe 6), but neither the wallet SDK nor ledger-v8 exposes any unshielded -> shielded
+  // conversion, so a shielded balance cannot be created from a faucet-funded wallet at all.
+  //
+  // This pair exists so `pnpm run e2e-settle` can exercise the real settlement path end to end on a
+  // real chain. Every mechanism it proves is asset-independent; what it does NOT prove is a
+  // second balance-vector entry. See docs/ROADMAP.md task 2.6.
+  'tNIGHT/tNIGHT': 2n,
 };
 
 export interface QuoteTerms {

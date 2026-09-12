@@ -18,7 +18,9 @@
     "deploy": "tsx --env-file=.env scripts/deploy.ts",
     "init": "tsx --env-file=.env scripts/init.ts",
     "e2e-fraud": "tsx --env-file=.env scripts/e2e-fraud.ts",
-    "status": "tsx --env-file=.env scripts/status.ts"
+    "status": "tsx --env-file=.env scripts/status.ts",
+    "probe-swap": "tsx --env-file=.env scripts/probe-swap-semantics.ts",
+    "e2e-settle": "tsx --env-file=.env scripts/e2e-settle.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
