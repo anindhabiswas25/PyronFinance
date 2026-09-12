@@ -456,25 +456,69 @@ than the sole defense.
 
 ---
 
-## 7. Open parameter: `MIN_BOND`
+## 7. Bond sizing: per-quote notional cap (decided 2026-09-12)
 
-Deliberately left unset in this spec. The right value is an economic judgment that needs Preprod
-data, not a number invented now.
+**Decision: design (2), the per-quote notional cap, with `k = 20`.** `commitQuote` takes the quote
+notional and rejects it unless `notional <= bond * 20` — equivalently, a dealer must bond at least
+5% of anything they quote. `MIN_BOND` as a flat floor is **not** adopted; the cap subsumes it.
 
-The binding constraint: **a bond must exceed the maximum profit from defecting on the largest quote
-it backs.** That profit is roughly `size × adverse_price_move` over the quote window. A 15-minute
-window on a volatile pair can move 1–2%, so a bond credibly backing a 100k notional quote wants to be
-in the low thousands, not tens.
+### Why the cap, when §7 previously deferred it
 
-Two candidate designs, to be decided with M2 data:
+The deferral rested on one objection: the cap "requires `commitQuote` to see the quote *size*, which
+leaks size while keeping price hidden." **That leak is already paid for elsewhere**, so it is not a
+cost of this design:
 
-1. **Flat `MIN_BOND` floor** — simple, but either over-collateralizes small dealers or
-   under-collateralizes large quotes.
-2. **Per-quote notional cap** — `commitQuote` rejects quotes whose notional exceeds `bond × k`. Scales
-   correctly and needs no oracle if notional is denominated in the bond asset. **Currently preferred.**
+- `RELAY.md` and `packages/relay-node/src/schema.ts` gossip the RFQ as `{rfqId, pair, side, size}` —
+  publicly, to every relay and every dealer.
+- `commitQuote` already stores `rfqId: disclose(rfqId)` on-chain in the `Quote` struct.
 
-Design (2) requires `commitQuote` to see the quote *size*, which leaks size while keeping price
-hidden. Whether that trade is acceptable is an M2 decision, recorded here so it is made deliberately.
+Anyone can therefore already join on-chain `rfqId` → gossiped RFQ → size. Disclosing size to the
+circuit reveals nothing a relay observer cannot already derive. **Price remains sealed either way,
+and price was always the protected quantity.** If a future design sends RFQs point-to-point instead
+of gossiping them, this reasoning expires and the tradeoff becomes real again — revisit it then.
+
+### Why k = 20
+
+A bond must do two jobs, and the stricter one binds. Deterrence needs `bond > dealer's gain from
+defecting`. Compensation needs the *wronged taker* made whole — and under the 60/10/30 split (§2) the
+taker receives only **0.6 × bond**:
+
+```
+0.6 * bond  >=  notional * adverse_move
+bond        >=  notional * adverse_move / 0.6
+```
+
+With `MAX_QUOTE_VALIDITY` = 900 s and this section's original 1–2% volatility estimate, a 2% move
+gives `notional <= bond * 30`; a 3% stress case gives `bond * 20`. **k = 20 is the stress case**, and
+it cross-checks against this section's own independent estimate — "a bond credibly backing a 100k
+notional quote wants to be in the low thousands": 100k / 20 = 5,000.
+
+Above ~1× the payout cap, extra bond stops reducing taker loss, so there is no reason to go higher;
+below it, loss leaks straight through to the taker.
+
+**Denomination:** `notional` must be expressed in the bond asset (tNIGHT), so no oracle is needed.
+For a tNIGHT/USDM quote the tNIGHT leg is the notional. A pair with neither leg in the bond asset
+would need an oracle and is therefore out of scope until `MIN_BOND` is revisited for Mainnet (4.1).
+
+---
+
+## 7a. `MIN_CHALLENGE_BOND`: ~2% of notional, with a floor (decided 2026-09-12)
+
+The challenge bond is forfeited to the dealer if they *do* settle (§5.2), so it prices griefing. It
+must be high enough that spamming challenges is unprofitable, and low enough that a wronged taker
+still enforces their own trade.
+
+**A flat value cannot satisfy both.** Any amount small enough for a 1,000-notional taker is
+negligible against a 1,000,000 notional trade. Scale it: `challenge_bond = max(floor, 0.02 *
+notional)`.
+
+> **This corrects `FRONTEND.md` Screen 3**, which illustrated a **250 tNIGHT challenge bond on a
+> 1,000 tNIGHT trade — 25% of notional.** That is not anti-griefing; it prices small takers out of
+> enforcement entirely, which silently converts Class-B protection into a large-taker-only feature
+> and quietly re-introduces the last-look exposure this protocol exists to remove.
+
+Both constants remain `PLACEHOLDER_*` in `OTCProtocol.compact` until the settlement path exists and
+real trades can calibrate the floor (M4 task 4.1 finalises them for real-value NIGHT).
 
 ---
 

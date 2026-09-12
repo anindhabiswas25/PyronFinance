@@ -169,7 +169,7 @@ After `Select`, the client attempts Zswap settlement. If the dealer does not com
 │  You can open an on-chain challenge. They have 10        │
 │  minutes to settle or their bond is slashed.             │
 │                                                          │
-│  Challenge bond   250 tNIGHT                             │
+│  Challenge bond    20 tNIGHT  (2% of trade)              │
 │    · Returned if they fail to settle (you were right)    │
 │    · Forfeited to the dealer if they do settle           │
 │                                                          │
@@ -180,6 +180,13 @@ After `Select`, the client attempts Zswap settlement. If the dealer does not com
 The forfeit condition must be stated plainly, before the click. This is the anti-griefing mechanism
 (`CONTRACTS.md` §5.2), and a user who does not understand they can lose the challenge bond will feel
 cheated by correct protocol behavior.
+
+**The bond scales with notional (`CONTRACTS.md` §7a): `max(floor, 2% of notional)`.** Show the
+percentage next to the amount, as above — a taker needs to see that it is proportional, not a flat
+toll. This example previously showed 250 tNIGHT on a 1,000 tNIGHT trade; at 25% of notional that
+priced small takers out of enforcing their own trades, which would have quietly made Class-B
+protection a large-taker-only feature and handed small takers back the last-look exposure this
+protocol exists to remove.
 
 ---
 

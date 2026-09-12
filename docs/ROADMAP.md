@@ -280,15 +280,16 @@ DUST-generation/registration process.
 | Disclosure at M3 | Named recipient (`0x0001`) only; others deferred, field reserved | `DISCLOSURE.md` |
 | First pair | tNIGHT/USDM, generic pair encoding | `CONTRACTS.md` |
 | Class-B fraud detection | Optimistic challenge + taker challenge bond | `ARCHITECTURE.md` |
+| **Bond sizing** | Per-quote notional cap, `k = 20` (bond >= 5% of notional). No flat `MIN_BOND` floor | `CONTRACTS.md` §7 |
+| **`commitQuote` may see quote size** | Yes. Not a new leak: RFQ gossip already publishes `size` and `rfqId` is already on-chain, so size is already derivable. Price stays sealed | `CONTRACTS.md` §7 |
+| **`MIN_CHALLENGE_BOND`** | `max(floor, 2% of notional)`. Corrects `FRONTEND.md`'s 25%-of-notional example | `CONTRACTS.md` §7a |
 
 ## Decisions still open
 
 | Question | Needed by | Notes |
 |---|---|---|
-| `MIN_BOND` sizing and design | M2 (2.9) | Flat floor vs. per-quote notional cap; the cap leaks quote size |
-| `MIN_CHALLENGE_BOND` | M2 | Must price griefing without excluding small takers |
-| Whether `commitQuote` may see quote size | M2 (2.9) | Required by the notional-cap design; a real privacy tradeoff |
 | Binding `recordSettlement` to a Zswap tx hash | Post-M4 | Closes the self-attested settled-counter gap (`CONTRACTS.md` §5.2) |
+| **Does a pre-proved Offer File let the taker settle unilaterally?** | M2 (2.6) | If the dealer's reveal carries a complete, pre-proved half of the Zswap swap, the taker can settle without the dealer acting — and most of Class B (challenges, `submitFraudProofTimeout`, challenge bonds) becomes dead weight. Hashflow's RFQ needs no bonds at all for exactly this reason. What would remain is not "dealer stalls" but "dealer spent that inventory elsewhere first." **Answered by building `offers.ts`, not by further design discussion.** Surfaced 2026-09-12 |
 | Sybil-resistant relay discovery | Post-M4 | `peer_announce` is spammable; stake-weighting would reintroduce permissioning |
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
 | **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
