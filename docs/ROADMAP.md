@@ -584,24 +584,70 @@ What actually has to happen for M4 (task 4.3):
 2. **Add the Mainnet pair code** to `PAIR_CODES` and remove `tNIGHT/TESTUSD`.
 3. **Re-run the equivalent of `e2e-settle`** against it. Nothing here is proven for Mainnet.
 
-Three things that are genuinely open, and should not be discovered late:
+### USDM is real, and the pair assumption checks out (verified 2026-09-13)
 
-- **Nobody has verified that USDM exists on Midnight Mainnet as an unshielded ledger token.** Every
-  doc in this repo — `CONTRACTS.md`, `ARCHITECTURE.md`, `RELAY.md`, `FRONTEND.md`, `GRANT.md` —
-  names tNIGHT/USDM as the first pair, but that is a **design assumption inherited from Pass 1**, not
-  a checked fact, and this session did not check it. If USDM is not natively available, the options
-  are a bridged asset, a different counter-asset, or shipping without that pair — all of which are
-  product decisions, not implementation details. **Resolve this before M4, not during it.**
-- **`terms.ts` hardcodes 6 decimals for both price and size** (`PRICE_DECIMALS`, `SIZE_DECIMALS`).
-  tNIGHT's base unit is the Star at 1e6, and TESTUSD was defined to match, so the exactness check in
-  `e2e-settle` passes trivially. A real stablecoin need not use 6. **Decimals are a per-asset
-  property being treated as a global constant** — that is a latent rounding bug for any pair whose
-  legs disagree, and exactly the class of error that surfaces as a balance vector which doesn't
-  quite net to zero.
-- **The shielded leg is still unexercised.** TESTUSD is unshielded, like tNIGHT, so both legs are
+The Pass 1 assumption that this protocol's first pair is tNIGHT/USDM was inherited, never checked.
+**It is now checked, and it holds** — better than expected:
+
+- **USDM is Cardano's fiat-backed stablecoin**, issued by **Moneta Digital** (formerly Mehen
+  Finance), a US-regulated MSB, FinCEN-registered and MiCA-compliant, backed 1:1 by USD deposits
+  and money-market funds.
+- **It is live on Midnight**, moving natively between Cardano and Midnight over a VIA Labs
+  lock-and-mint bridge — not a wrapper asset.
+- **On Midnight it is an UNSHIELDED LEDGER TOKEN**, not a contract-internal balance map. An
+  independent developer write-up pays with it via a "native unshielded USDM transfer via
+  `wallet.transferTransaction`", and deliberately keeps it out of contract custody ("unshielded
+  token custody inside a contract buys nothing here and costs a lot of circuit complexity").
+  **That is exactly the shape `TestToken.compact` mints**, which is what makes TESTUSD a faithful
+  stand-in rather than a convenient fiction — and it means the settlement path already built is the
+  right one for the real asset.
+
+Identifiers (Midnight mainnet):
+
+```
+USDM token color (RawTokenType)  8c2c22bc0c37fa999d0611cb5c570f587938ac5ffc8b0925143dad4c0764e94b
+USDM gateway contract            65023744190a4fc7c8ac9a3dfbc8cfc28f63d2aaa431ceda1d88fdb9a096a6a1
+decimals                         6
+```
+
+**"Token color" is Zswap's word for a token type** — the same 64-hex `RawTokenType` that
+`SwapLeg.token` takes. The Mainnet second leg really is one config value.
+
+**USDM uses 6 decimals, matching `terms.ts`'s `PRICE_DECIMALS`/`SIZE_DECIMALS`, and tNIGHT's Star is
+1e6 too.** So the hardcoded-decimals concern does not bite for this pair. It stays a latent bug for
+any future pair whose legs disagree — decimals are a per-asset property treated as a global
+constant — but it does not block tNIGHT/USDM.
+
+### The network trap: Midnight PREPROD is not a USDM network
+
+**This repo runs on Midnight Preprod. USDM is not there.** The bridge supports two pairings, and
+the naming collides in the worst possible way:
+
+| Pairing | Cardano side | **Midnight side** | USDM token color |
+|---|---|---|---|
+| testnet | **Preprod** | **Preview** | `003bacd9a361ba0d425e408776020e40271375e8b8de42d73eec046a44947d73` |
+| mainnet | Mainnet | mainnet | `8c2c22bc0c37fa999d0611cb5c570f587938ac5ffc8b0925143dad4c0764e94b` |
+
+"Preprod" is the **Cardano** side of the testnet pairing; the **Midnight** side is **Preview**.
+Reading "Preprod" and assuming it means our network is the obvious mistake, and it would surface
+only after wiring a token type that does not exist on the chain we are on.
+
+Consequences:
+
+- **TestToken stays necessary** — it is the only way to get a second asset on Midnight Preprod,
+  where the contract, the funded wallet and every script currently live.
+- **Testing against real USDM means moving to Midnight Preview**: redeploy `OTCProtocol`, fund from
+  the Preview faucet, bridge tUSDM from Cardano Preprod, resync. Milestone-sized, not a config flip.
+- **It would not dodge S5.** USDM on Preview is an unshielded ledger token exactly like TESTUSD, so
+  a two-asset settlement there has the same shape now being rejected with `168`. Moving networks
+  buys a *real* asset, not a fix.
+
+### Still open
+
+- **The shielded leg is unexercised.** Both tNIGHT and USDM are unshielded, so both legs are
   signature-authorized and carry no ZK proof — which is why offer construction measures 7–16 ms.
-  A Mainnet pair with a shielded leg would prove, and that number would change completely. It is
-  still the open question behind the warm pool (task 2.8).
+  That number says nothing about a shielded pair, and it is still the open question behind the warm
+  pool (task 2.8).
 
 ---
 
