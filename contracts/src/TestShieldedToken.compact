@@ -1,0 +1,48 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+// ═════════════════════════════════════════════════════════════════════════
+// TestShieldedToken — TESTNET SCAFFOLDING. NEVER DEPLOY THIS TO MAINNET.
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Not part of the OTC protocol. Exists for one measurement: M2 task 2.8.
+//
+// Every offer this project has built so far is UNSHIELDED. Unshielded offers
+// are signature-authorized and carry no ZK proof, which is why "offer build +
+// prove" measured 7–16 ms — a number that says nothing about the warm pool's
+// premise, because proving cost lives in the SHIELDED leg. A faucet-funded
+// wallet cannot acquire a shielded balance (no unshielded -> shielded
+// conversion is exposed), so this contract mints one.
+//
+// Kept separate from TestToken.compact on purpose: changing TestToken would
+// mean redeploying it, and its token type is derived from its contract
+// address, so the TESTUSD balance the Preprod wallet already holds would stop
+// being the pair's second leg.
+//
+// Signature, confirmed against compactc 0.30.0's own error message:
+//   mintShieldedToken(domainSep: Bytes<32>, amount: Uint<64>, nonce: Bytes<32>,
+//                     recipient: Either<ZswapCoinPublicKey, ContractAddress>)
+
+pure circuit DOMAIN_SEP(): Bytes<32> { return pad(32, "otc:testshusd:v1"); }
+
+// Fat-finger guard, not an economic parameter — same reasoning as TestToken.
+pure circuit MAX_MINT_PER_CALL(): Uint<64> { return 1000000000000; }
+
+export ledger mintCount: Counter;
+
+// Permissionless faucet. `nonce` must be fresh per mint: two shielded coins
+// with the same (type, value, nonce, recipient) would share a commitment.
+// The caller supplies it because a circuit has no source of randomness.
+export circuit mint(amount: Uint<64>, nonce: Bytes<32>, recipient: ZswapCoinPublicKey): [] {
+  const amt = disclose(amount);
+  assert(amt > 0, "Mint amount must be positive");
+  assert(amt <= MAX_MINT_PER_CALL(), "Mint amount exceeds per-call cap");
+  mintShieldedToken(
+    DOMAIN_SEP(),
+    amt,
+    disclose(nonce),
+    left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient))
+  );
+  mintCount.increment(1);
+}

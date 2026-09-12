@@ -7,12 +7,17 @@
 trade on-chain** (`pnpm run e2e-settle`), `offers.ts` is no longer a stub, and the open question
 "can the taker settle unilaterally from a pre-proved Offer File?" is answered: **yes**.
 
-**Two things to read before quoting any of this.** The settled trade was **one-asset** — Preprod has
-only tNIGHT. A second asset now exists (`contracts/src/TestToken.compact`, deployed and minted on
-Preprod), the two-asset offer builds with exactly the right balance vector, and the taker can spend
-that asset — but the two-asset **settlement is blocked** by an unidentified node rejection with four
-candidate causes already ruled out. See **S4** (a fee floor, and a correction to a wrong story this
-file previously told) and **S5** (the blocker) under task 2.6.
+**Update 2026-09-13 (later the same day) — S5 is RESOLVED, and S4 was wrong.** `Custom error: 168`
+is not a fee at all. It is the node's **time-to-dismiss** anti-DoS rule (`MalformedError::FeeCalculation`
+→ `OutsideTimeToDismiss`), established from node 1.0.2 / ledger 8.1.2 source and confirmed against
+the live node in both directions. A **two-asset settlement then landed on Preprod through the full
+protocol path** (`pnpm run e2e-settle`, settled counter 1). See S5. Also done this session: **2.4**
+multi-relay aggregation with client-side chain verification, and **2.9** real bond sizing in the
+contract (redeployed to Preprod). **2.8** shielded-offer latency: see task 2.8.
+
+Previously this paragraph read: *"The settled trade was one-asset … the two-asset settlement is
+blocked by an unidentified node rejection with four candidate causes already ruled out."* Kept for
+the record; the resolution is in S5.
 
 **M1 is complete on Preprod.** The contract is deployed, verified by
 indexer read-back, and `pnpm run e2e-fraud` has executed the full fraud path on-chain: bond posted →
@@ -21,8 +26,14 @@ deactivated, slashed counter 1, quote resolved**. Tasks 1.0–1.10 are all done,
 on-chain half of 1.9, which had been blocked since 2026-08-27.
 
 ```
-preprod  539d3ea689983058059137f4c6d0ee234ae29b585f7f222919a2013800ee2225
+preprod  f365d5622e2609e007416eb6c5966ce9d96517787cdb032ac6fdc1d301414cf5   (2.9 bond sizing, 2026-09-13 — current)
+preprod  539d3ea689983058059137f4c6d0ee234ae29b585f7f222919a2013800ee2225   (M1, superseded: pre-2.9 circuits)
+preview  f25703438d00441deadba817aa60e42637f304598b3f90e15ca5cfb9e9a74c04   (pre-2.9 circuits — STALE, needs redeploy)
 ```
+
+**The Preview deployment does not match the current compiled contract.** 2.9 changed `commitQuote`'s
+and `openSettlementChallenge`'s signatures and regenerated every verifier key. Scripts run against
+Preview will fail until `pnpm run deploy` is rerun there.
 
 Five defects stood between "the wallet path compiles and typechecks" and "it works against a chain."
 None were caught by `tsc` or the 211-test simulation suite; each required a live run. This is the
@@ -49,7 +60,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.3 built and tested in simulation; **2.6 settlement executed on-chain** (`pnpm run e2e-settle`), 2.8 partially measured; 2.4/2.5/2.7/2.9 not started |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured (see 2.8); **frontend 2.5/2.7 not started** |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -188,12 +199,12 @@ quietly absorbed. **Do this first; do not build around it.**
 | 2.1 | `packages/relay-node` per `docs/RELAY.md`: envelope, validation, gossip, dedup, rate limits | ✅ Built and tested in simulation — see below |
 | 2.2 | `schema.ts` shared between relay-node and SDK | ✅ `packages/relay-node/src/schema.ts`; relay-node depends on `@otc/sdk`'s `schnorr.ts` for signing/encoding, not the reverse |
 | 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ✅ Built and tested in simulation — see below |
-| 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ⬜ Not started — blocked on a live indexer per CLAUDE.md scope note |
+| 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ✅ `packages/sdk/src/relay-client.ts` (`RelayAggregator`, `verifyQuoteRef`, `indexerChainReader`). 20 tests over real relay sockets, with the compiled contract simulator as the chain; 15 of them are negative cases (each a lie a relay or dealer can tell). **Not yet run against a live indexer or remote relays** — see below |
 | 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ Not started — blocked on a wallet |
-| 2.6 | Zswap settlement path from the taker's selection | 🟡 **One-asset settlement on-chain and reproduced** (`settled` counter 1); `offers.ts` is no longer a stub. **Two-asset settlement is BLOCKED** on an unidentified node rejection — see S5. Read S4/S5 before quoting this |
+| 2.6 | Zswap settlement path from the taker's selection | ✅ **Two-asset settlement on-chain** on Preprod through the full protocol path (bond → commit → encrypted reveal verified against on-chain notional → unilateral taker settlement → `recordSettlement`, settled counter 1). S5 resolved. Still one wallet in both roles |
 | 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | ⬜ |
-| 2.8 | **Measure real proof-generation + commit latency on Preprod** | 🟡 First real settlement-path numbers below; the warm-pool/ladder numbers still need M3 |
-| 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ⬜ |
+| 2.8 | **Measure real proof-generation + commit latency on Preprod** | ✅ **Shielded offer proving measured** (`pnpm run probe-shielded-latency`): cold 6.4 s, steady-state median 3.1 s per offer, and **no speedup from concurrency**. Table below. Ladder sizing against these numbers is M3 |
+| 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ✅ Decided 2026-09-12, **implemented 2026-09-13**: `commitQuote(…, notional)` enforces `notional <= bond * 20`; `openSettlementChallenge` enforces `max(floor, 2%)`. `PLACEHOLDER_*` removed. Redeployed to Preprod; `e2e-settle` and `e2e-fraud` rerun against it. Challenge-bond **floor amount still open** (M4 4.1) |
 
 **What "built and tested in simulation" means here, precisely** — same discipline M1 used
 (§ "Compilation is not verification" below):
@@ -280,7 +291,20 @@ against the merged, proven transaction —
 `balanceFinalizedTransaction(merged, …, { tokenKindsToBalance: ['dust'] })` — **hangs
 indefinitely** on an already-dust-balanced transaction. Killed after ~20 minutes with no output.
 
-### S4 — `Custom error: 168` is an UNDERPAID FEE, and the default `additionalFeeOverhead` no longer covers Preprod
+### S4 — ~~`Custom error: 168` is an UNDERPAID FEE~~ — WRONG, corrected by S5 below
+
+> **SECOND CORRECTION, 2026-09-13.** The heading of this section was false, and so is its first
+> claim below that "for the one-asset settlement, 168 was genuinely an underpaid fee." 168 is
+> `MalformedError::FeeCalculation`, raised when the ledger's **time-to-dismiss** check fails. An
+> underpaid fee is a different code (138). The live fee on this chain is **1 SPECK**. Read S5 for
+> the evidence. The original text is left intact below, because the way it went wrong is the lesson:
+> it was built on the one variable that was being changed (`additionalFeeOverhead`), while the
+> variable that mattered (how many UTXOs and DUST coins each run happened to select) was never
+> recorded. **What made the one-asset settlement start passing after the overhead change is NOT
+> established.** Those transactions no longer exist to measure.
+>
+> Original heading: *"`Custom error: 168` is an UNDERPAID FEE, and the default `additionalFeeOverhead`
+> no longer covers Preprod"*.
 
 The single most useful thing this task learned, because it looked exactly like flakiness for hours.
 
@@ -335,9 +359,71 @@ figure of 2.21e15, and the node still rejects. So:
 Two data points make a slope, and a slope makes a story. This one was wrong, and it was wrong in the
 most seductive way available: it explained the data it was built from.
 
-### S5 — the TWO-ASSET settlement is blocked on an unidentified `168`, with four causes ruled out
+### S5 — the TWO-ASSET settlement: RESOLVED 2026-09-13
 
-**Status: blocked, cause unknown.** Everything up to submission works. The test token exists, is
+**Status: resolved.** The cause is identified from source, reproduced offline, confirmed against the
+node in both directions, and a two-asset settlement has landed on-chain.
+
+**What 168 is.** Preview and Preprod run **node 1.0.2** (`system_version` RPC → `1.0.2-eb71e64e`),
+tag `node-1.0.2`, which pins **midnight-ledger `=8.1.2`**, the same ledger this SDK uses.
+
+- `ledger/src/versions/common/types.rs`: `MalformedError::FeeCalculation => 168`.
+- `conversions.rs`: every `MalformedTransaction::FeeCalculation(..)` maps to it.
+- ledger `verify.rs`: raised when `self.fees(params, /*enforce_time_to_dismiss*/ true)` fails.
+- `FeeCalculationError` has two cases, `BlockLimitExceeded` and **`OutsideTimeToDismiss`** (`structure.rs`
+  `cost()`). The transaction's modelled `validation_cost` (compute ÷ `parallelism_factor` 4) plus
+  its guaranteed `application_cost` must not exceed `max(time_to_dismiss_per_byte × size,
+  min_time_to_dismiss)`. Live values are **2 µs/byte** and a **15 ms** floor.
+
+**Why nothing local caught it.** The dust wallet sizes fees with `feesWithMargin`, which calls
+`cost(params, false)` with time-to-dismiss **not enforced**. `offers.ts`'s second opinion used
+`initialParameters()`, which is also unenforced and whose cost constants differ from the live chain's.
+The live chain's fee, meanwhile, is `fees(live, true) = 1 SPECK`: live `overall_price` is ~5.4e-18,
+against 10 in `initialParameters()`. **No DUST provision could ever have fixed this**, which is why 1e16 did not.
+
+**Evidence** (`pnpm run probe-fee-calc` runs the node's check locally against live `LedgerParameters`
+read from the indexer, then optionally submits):
+
+| Run | Merged shape | Size | Dismiss cost | Allowed | Local | **Node** |
+|---|---|---|---|---|---|---|
+| A | two-asset; dealer 3 in; taker 1 in; DUST 3 | 10528 B | 26.6 ms | 20.9 ms | FAIL | **rejected** |
+| B | two-asset; dealer **1 in**; taker 1 in; DUST 3; give 400 | 10342 B | 19.6 ms | 20.7 ms | PASS | **accepted — `SUCCESS`, block 2522557** |
+| A′ | two-asset; dealer 4 in; taker 2 in; DUST 4 | 13688 B | 33.0 ms | 27.4 ms | FAIL | **rejected, `Custom error 168`** |
+| e2e | full protocol path, give 400 (new contract) | — | — | — | PASS (guard) | **accepted; settled counter 1** |
+
+Run B's settlement tx hash is `8b6d787294b95b9aa65b35af048c8984b25947c1c580c9d417db7701ea03209f`
+(Preprod indexer, `transactionResult.status: SUCCESS`).
+
+**What the four ruled-out hypotheses missed, and the "structural difference" too.** The problem was
+never the second asset, and never unshielded inputs on both sides. With the same fragmented wallet,
+the **one-asset** merged settlement also fails the check (25.9 ms vs 20.4 ms allowed). What decides
+it is **how many UTXOs coin selection pulls in**. Each unshielded input adds signature verification
+and UTXO-tree application cost; each DUST spend adds a proof verification. That depends on the
+wallet's coin fragmentation, not on the trade. The Preprod wallet had fragmented into many small
+UTXOs over repeated runs, and the dealer half alone reached 4 inputs, which **already fails on its
+own** (932 B, 17.7 ms vs 15 ms). No taker could have settled that offer.
+
+**Two things this does NOT establish.** (1) Why raising `additionalFeeOverhead` appeared to fix
+the one-asset case in S4. (2) Whether overhead affects the DUST spend count: runs at 3e15 and 1e13
+both spent 3 DUST coins. Do not infer either.
+
+**What changed in code:**
+- `checkTimeToDismiss(tx, liveParams)` in `offers.ts`, and `queryLedgerParameters` in `indexer.ts`.
+- `settleFromOffer` gates submission on the node's rule when given `ledgerParameters`. It fails
+  locally with the numbers, not with an opaque 1010.
+- `buildAndProveOffer` refuses a dealer half that already fails the rule. That half is unsettleable,
+  and quoting behind it binds the dealer to a trade that cannot happen.
+- `e2e-settle` passes live parameters and supports `E2E_GIVE_UNITS`.
+
+**Consequence for the Dealer Node (M3):** a warm pool must back offers with **few, large UTXOs**,
+and should consolidate fragmented inventory, not just track its value. See `DEALER-NODE.md` §5.
+
+---
+
+*The original S5 write-up follows unchanged. Its analysis was careful and still wrong about where
+to look, so it is kept.*
+
+**Original status: blocked, cause unknown.** Everything up to submission works. The test token exists, is
 minted, and is spendable; the two-asset offer builds with exactly the right balance vector; the
 quote commits; the reveal verifies; the merged vector nets to zero in tradeable tokens. The node
 rejects the final submission with `1010: Invalid Transaction: Custom error: 168`.
@@ -447,6 +533,47 @@ What the numbers *do* say clearly: the chain-confirmation legs dominate, at ~17�
 commit→confirm→reveal round trip the design already flagged as chain-bound is the real latency, not
 proving.
 
+**Additional on-chain legs, 2026-09-13 (Preprod, new 2.9 contract):** `commitQuote` **53.2 s**
+(bad; during the same window Preprod's indexer was timing out on connect). Two-asset settle
+(balance + prove + submit) **22.0 s**. Mints of the shielded test token 21.7 s and 25.0 s; a third
+mint stalled behind `Wallet.Sync` failures for over 8 minutes before its coin appeared.
+
+### Task 2.8 — SHIELDED offer proving, measured 2026-09-13
+
+Every number above was for an unshielded offer, which carries no ZK proof. To measure a real one,
+`contracts/src/TestShieldedToken.compact` (testnet scaffolding) mints shielded coins to the wallet.
+`scripts/probe-shielded-latency.ts` then times `initSwap` → `signRecipe` → `finalizeRecipe` for an
+offer giving 1000 shielded units for 400 unshielded tNIGHT. That offer's vector is
+`{shielded:+1000, unshielded tNIGHT:-400}`, with the shielded Zswap offer present. Local proof
+server `midnightntwrk/proof-server:8.1.0` in Docker on the developer's Apple-silicon Mac, one run.
+
+| Offer | initSwap | sign | prove + bind | **Total** | Size |
+|---|---|---|---|---|---|
+| Unshielded baseline (same run) | 5 ms | 4 ms | 5 ms | **14 ms** | 666 B |
+| Shielded, cold (first proof) | 22 ms | 1 ms | 6438 ms | **6461 ms** | 10503 B |
+| Shielded, sequential ×5 | 24–36 ms | 2–3 ms | 2884–3710 ms | **median 3136 ms** (min 2915, max 3737) | 10503 B |
+| Shielded, 2 requested concurrently | 54–55 ms | 2–3 ms | 3530 / 5806 ms | **5864 ms wall for 2** | 10503 B |
+
+What this says:
+
+- **Proving is ~200× the unshielded cost and dominates offer construction** — ~3 s steady state, ~6.5 s
+  cold. The warm pool's premise ("proving is too slow for the quote hot path") is **confirmed** for
+  shielded offers. It was never true for unshielded ones.
+- **Concurrency buys nothing.** Two offers requested in parallel took 5.9 s wall, the same as two in
+  sequence. The proof server serialises. A warm pool refills at **~3 s per offer, full stop**, so a
+  ladder of N price points costs ~3N s to refill on one proof server. A 20-point ladder is ~1 minute
+  of proving per refresh or mid move. Scaling that means more proof servers, not more requests.
+- **A shielded half is ~16× the size of an unshielded one** (10.5 KB vs 666 B). Time-to-dismiss
+  (S5) allows more for larger transactions, but the shielded offer's proof-verification cost was
+  **not** checked against it here. **Unmeasured — check before quoting a shielded pair.**
+- **Chain confirmation still dominates end to end.** A ~3 s proof sits beside a 19–53 s
+  `commitQuote`. The latency to attack is still the commit→confirm→reveal round trip.
+
+Limits: one machine, one run, one offer shape (one shielded input and one unshielded output). None
+of these offers was settled; they were built, proved and reverted. The live pair, tNIGHT/USDM, is
+unshielded on both legs, so this measures the protocol's *capacity* for shielded pairs, not the
+current one.
+
 **Definition of done:** one full sealed-bid RFQ cycle — including at least two competing dealer
 commitments — runs end to end on Preprod and is demoable.
 
@@ -515,7 +642,9 @@ DUST-generation/registration process.
 |---|---|---|
 | Binding `recordSettlement` to a Zswap tx hash | Post-M4 | Closes the self-attested settled-counter gap (`CONTRACTS.md` §5.2) |
 | **What Class B is still for, given unilateral settlement works** | M2/M3 | **The underlying question is ANSWERED — see the finding below.** What is now open is the consequence: how much of `openSettlementChallenge` / `submitFraudProofTimeout` / challenge bonds / `DEALER-NODE.md` §6 survives, and whether the remaining failure mode ("dealer spent that inventory elsewhere first") is better handled by challenges or by something cheaper. **Not decided here** — it touches `ARCHITECTURE.md`, `CONTRACTS.md` and `DEALER-NODE.md`, and is the owner's call. Surfaced 2026-09-12 |
-| **Second asset for a genuine two-token settlement** | M2/M3 | The on-chain settlement was one-asset because Preprod has one asset (see task 2.6 limits). Options: (a) accept the arithmetic argument and wait for a real pair; (b) deploy a throwaway test-token Compact contract purely to mint a second asset for the e2e — a real scope addition, but it would turn the strongest claim in the project from an argument into a live run. **Not decided** |
+| ~~Second asset for a genuine two-token settlement~~ | — | **Closed 2026-09-13.** Option (b) was taken (`TestToken.compact`), and a two-asset settlement has now landed on-chain (S5). Real USDM on Preview remains untested because the wallet holds none; bridging it needs a human |
+| **Should an under-declared `notional` be slashable?** | M3 | `commitQuote` cannot tie the declared notional to the hidden sealed size. It is caught client-side today (`verifyReveal`, `verifyQuoteRef`). A signed reveal that opens the commitment but whose size ≠ on-chain notional is objectively provable, so `submitFraudProofMismatch` *could* slash it. That changes the slashing rule. **Surfaced 2026-09-13, not decided** (`CONTRACTS.md` §7) |
+| **Challenge-bond floor amount** | M4 (4.1) | The formula `max(floor, 2%)` is implemented; the floor is 1 base unit (inert) on testnet. Also depends on the Class-B decision above |
 | Sybil-resistant relay discovery | Post-M4 | `peer_announce` is spammable; stake-weighting would reintroduce permissioning |
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
 | **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
@@ -644,10 +773,9 @@ Consequences:
 
 ### Still open
 
-- **The shielded leg is unexercised.** Both tNIGHT and USDM are unshielded, so both legs are
-  signature-authorized and carry no ZK proof — which is why offer construction measures 7–16 ms.
-  That number says nothing about a shielded pair, and it is still the open question behind the warm
-  pool (task 2.8).
+- ~~**The shielded leg is unexercised.**~~ **Measured 2026-09-13** (task 2.8 above): a shielded offer
+  proves in ~3.1 s steady state, 6.4 s cold, and the proof server does not parallelise. Settling a
+  shielded offer on-chain is still unexercised.
 
 ---
 

@@ -301,7 +301,26 @@ shielded leg with. The warm pool's premise is still unmeasured.
 What the numbers do establish: **the chain-confirmation legs dominate**, at ~17–25 s each. The
 latency to attack is the commit→confirm→reveal round trip, not proving.
 
-M2 task 2.8 remains open for the shielded/warm-pool numbers.
+### VERIFIED — shielded offer proving (2026-09-13, `pnpm run probe-shielded-latency`)
+
+Minted shielded coins from `contracts/src/TestShieldedToken.compact` (testnet only). Timed on a
+local proof server, one run:
+
+| Offer | prove + bind | Total | Size |
+|---|---|---|---|
+| unshielded baseline | 5 ms | 14 ms | 666 B |
+| shielded, cold | 6438 ms | 6461 ms | 10503 B |
+| shielded, steady state ×5 | 2884–3710 ms | median 3136 ms | 10503 B |
+| shielded ×2 requested concurrently | 3530 / 5806 ms | 5864 ms wall | — |
+
+- **The warm pool's premise holds for shielded offers**, and only for them.
+- **The proof server does not parallelise.** Size refill capacity at ~3 s per offer per proof server.
+- **A shielded half is ~16× larger.** Its time-to-dismiss headroom (§2) is unmeasured; check it
+  before quoting a shielded pair.
+- **Shielded minting signature:** `mintShieldedToken(domainSep: Bytes<32>, amount: Uint<64>,
+  nonce: Bytes<32>, recipient: Either<ZswapCoinPublicKey, ContractAddress>)`. Confirmed from the
+  compiler's own type error. Use a fresh nonce per mint. The wallet does see the coins, but on
+  Preprod one mint took >8 min to appear behind `Wallet.Sync` failures.
 
 Mitigations, in order of preference:
 
