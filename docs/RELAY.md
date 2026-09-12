@@ -326,6 +326,24 @@ Aggregation:
    involvement at all. Relays are an optimization for *discovery*, and the protocol degrades to
    direct dealer contact rather than failing.
 
+**Reference implementation (M2 task 2.4):** `RelayAggregator` and `verifyQuoteRef` in
+`packages/sdk/src/relay-client.ts`. Points worth copying into any independent client:
+
+- **Refuse, don't warn,** below two connected relays (`InsufficientRelaysError`), and expose
+  per-relay connection status.
+- **Key received `quote_ref`s by envelope `id`, not by `quoteId`.** A relay that rewrites a genuine
+  reference (say, pointing `dealerEndpoint` at itself) produces a different content-addressed `id`.
+  Keyed by `quoteId`, whichever copy arrived first would win; keyed by `id`, both are kept, the
+  tampered one fails its signature, and the genuine one survives.
+- **The signature is what authenticates the off-chain fields.** `dealerEndpoint` and `dealerEncPk`
+  are not on the chain; they are trustworthy only because the on-chain `quotePk` signed them.
+- **Also check the chain's `notional` equals the RFQ's `size`** (`CONTRACTS.md` §7). Size is public
+  already, so this leaks nothing, and it stops a dealer answering an RFQ with a quote for a
+  different trade or under-declaring notional to dodge the bond cap.
+- **A failing chain read must surface as an error, not a rejection.** "Could not verify" and
+  "verified false" are different outcomes, and a client that conflates them lets an indexer outage
+  silently empty the quote list.
+
 ### Censorship resistance, honestly stated
 
 Multi-relay querying resists *individual* relay censorship. It does not resist a taker who is
