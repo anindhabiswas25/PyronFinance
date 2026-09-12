@@ -132,16 +132,54 @@ authority it already is — but capture both numbers plus the per-intent input/o
 in the rejection message, because a node rejection is an opaque
 `1010: Invalid Transaction: Custom error: <n>` and a multi-kilobyte byte dump, naming none of it.
 
-> **`Custom error: 168` means the fee is too low.** Established the hard way: settlements were
-> rejected with 168 for hours while looking like flakiness. `additionalFeeOverhead` behaves as a
-> **flat floor** on what the DUST balancer provisions — at the documented `3e14` every settlement
-> came out provisioned at exactly `300000000000001`, while the real fee had risen to `9.3e14` and
-> then `1.17e15`. The one settlement that landed was submitted while the real fee was still under
-> the floor. Raising `additionalFeeOverhead` to `3e15` fixed it immediately. Unlike
-> `feeBlocksMargin` (an exponent), this is a linear SPECK amount, so raising it is safe.
+> ~~**`Custom error: 168` means the fee is too low.**~~ **WRONG — corrected 2026-09-13, kept here
+> so nobody re-walks it.** The old text said raising `additionalFeeOverhead` from 3e14 to 3e15 fixed
+> 168 because the fee had outgrown the floor. That was a story built from two data points.
 >
-> This is a symptom of provisioning against a static guess. The real fix is reading the chain's live
-> `LedgerParameters`.
+> ### VERIFIED — what 168 actually is
+>
+> Read from source, then confirmed against a live node **in both directions**:
+>
+> - Midnight Preview/Preprod run **node 1.0.2** (`system_version` RPC), which pins
+>   **midnight-ledger 8.1.2**, the same ledger as this SDK. Its `ledger/src/versions/common/types.rs`
+>   maps **`MalformedError::FeeCalculation => 168`**.
+> - ledger `verify.rs` raises that when **`tx.fees(params, enforceTimeToDismiss = true)` fails**.
+>   `FeeCalculationError` has two cases, `BlockLimitExceeded` and **`OutsideTimeToDismiss`**.
+> - **An underpaid fee is a different code:** `BalanceCheckOverspend` = 138. No amount of DUST fixes 168.
+> - `OutsideTimeToDismiss` is an **anti-DoS rule**. The transaction's modelled validation cost
+>   (compute ÷ `parallelism_factor`) plus its guaranteed application cost must not exceed
+>   `max(time_to_dismiss_per_byte × size, min_time_to_dismiss)`. Live values are 2 µs/byte and a
+>   15 ms floor. Every unshielded input, signature and DUST spend adds modelled time, so **a merged
+>   settlement, carrying both parties' inputs plus the DUST spends, is exactly where it bites**.
+> - **Neither wallet estimate can see it.** The dust wallet prices fees with `feesWithMargin`, which
+>   calls `cost(params, false)`, with time-to-dismiss *not* enforced.
+> - **The live fee is tiny.** `tx.fees(liveParams, true)` returned **1 SPECK** on both networks
+>   (2026-09-13). The chain's live `overall_price` is ~5.4e-18, versus 10 in `initialParameters()`.
+>
+> Measured on Preprod (`pnpm run probe-fee-calc`, local verdict vs node verdict):
+>
+> | Merged shape | Size | Dismiss cost | Allowed | Local | Node |
+> |---|---|---|---|---|---|
+> | two-asset, dealer 3 in, DUST 3 spends | 10528 B | 26.6 ms | 20.9 ms | FAIL | **rejected** |
+> | two-asset, dealer **1 in**, DUST 3 spends | 10342 B | 19.6 ms | 20.7 ms | PASS | **accepted, SUCCESS on-chain** |
+>
+> The two-asset shape itself was never the problem. The **one-asset** shape with the same fragmented
+> wallet also fails the local check (25.9 ms vs 20.4 ms). What moved the verdict was **how many
+> UTXOs coin selection pulled in**, which a wallet's coin fragmentation decides, not the trade.
+>
+> **What this does NOT establish:** why raising `additionalFeeOverhead` appeared to fix the one-asset
+> settlement in S4. Those transactions no longer exist to measure, and both runs above spent 3 DUST
+> coins at either overhead. Do not infer that overhead drives the DUST spend count.
+>
+> **Rules that follow:**
+>
+> - Run the node's check locally before submitting: `checkTimeToDismiss(tx, liveParams)` in
+>   `offers.ts`, with live parameters from `queryLedgerParameters` (indexer.ts). `settleFromOffer`
+>   does this when given `ledgerParameters`. Its verdict matched the node on every submission tried.
+> - **Never use `initialParameters()` for this.** Its cost constants differ from the live chain's.
+> - A dealer's warm pool should prefer offers backed by **few, large UTXOs**. An offer that sweeps
+>   many small coins can make every settlement of it undeliverable, and the dealer is still bound by
+>   the quote.
 
 ## 2a. VERIFIED — the taker settles UNILATERALLY
 

@@ -4,6 +4,7 @@
 // for "give me the latest state."
 
 import { ContractState } from '@midnight-ntwrk/compact-runtime';
+import { LedgerParameters } from '@midnight-ntwrk/ledger-v8';
 
 function fromHex(hex: string): Uint8Array {
   const normalized = hex.startsWith('0x') ? hex.slice(2) : hex;
@@ -50,6 +51,19 @@ export async function queryLatestContractState(
   );
   const contractAction = data?.contractAction as { state?: string } | undefined;
   return contractAction?.state ? ContractState.deserialize(fromHex(contractAction.state)) : null;
+}
+
+/** The chain's LIVE ledger parameters, as of the indexer's latest block — the same source the dust
+ *  wallet syncs them from. Not `LedgerParameters.initialParameters()`, which is a static default:
+ *  on 2026-09-13 both Preview and Preprod differed from it in every cost-model constant that the
+ *  node's time-to-dismiss check uses (docs/ROADMAP.md S5). */
+export async function queryLedgerParameters(
+  indexerHttpUrl: string,
+): Promise<{ height: number; params: LedgerParameters }> {
+  const data = await gqlQuery(indexerHttpUrl, `query { block { height ledgerParameters } }`, {});
+  const block = data?.block as { height: number; ledgerParameters: string } | undefined;
+  if (!block?.ledgerParameters) throw new Error('indexer returned no block ledgerParameters');
+  return { height: block.height, params: LedgerParameters.deserialize(fromHex(block.ledgerParameters)) };
 }
 
 /** Polls for the contract to appear on the indexer after a deploy — indexer lag is typically

@@ -79,6 +79,10 @@ export interface HeadlessWallet {
 export interface HeadlessWalletOptions {
   /** Set false to ignore any on-disk snapshot and force a full genesis sync. Default true. */
   persistState?: boolean;
+  /** Overrides the DUST balancer's flat overhead (SPECKs). Exposed because this value changes how
+   *  many DUST coins a transaction spends, and every DUST spend adds a proof verification to the
+   *  node's time-to-dismiss check — see the `additionalFeeOverhead` note below and ROADMAP S5. */
+  additionalFeeOverhead?: bigint;
 }
 
 /** Builds and starts a headless (Node.js) wallet from a hex seed, wired for use as both
@@ -180,7 +184,7 @@ export async function createHeadlessWallet(
     // that turned out not to be a fee problem at all (S5) — while costing 10 DUST of minimum
     // balance per transaction, which on a fresh wallet accruing ~2 DUST/min stalls any multi-step
     // script partway through.
-    additionalFeeOverhead: 3_000_000_000_000_000n,
+    additionalFeeOverhead: options.additionalFeeOverhead ?? 3_000_000_000_000_000n,
     feeBlocksMargin: 5,
   };
 
