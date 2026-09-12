@@ -33,11 +33,23 @@ pure circuit PROOF_GRACE_PERIOD(): Uint<64> { return 3600; }
 pure circuit BOND_WITHDRAW_DELAY(): Uint<64> { return 86400; }
 pure circuit TIME_SLACK(): Uint<64> { return 300; }
 
-// MIN_BOND / MIN_CHALLENGE_BOND are deliberately unset in the spec (CONTRACTS.md §7) —
-// they need M2 Preprod data. These are placeholders, not real values; do not use in
-// any deployment beyond internal Preprod testing.
-pure circuit PLACEHOLDER_MIN_BOND(): Uint<128> { return 1; }
-pure circuit PLACEHOLDER_MIN_CHALLENGE_BOND(): Uint<128> { return 1; }
+// Bond sizing — docs/CONTRACTS.md §7 and §7a (decided 2026-09-12, implemented M2 task 2.9).
+//
+// §7: per-quote notional cap. commitQuote rejects any quote whose notional exceeds
+// bond * NOTIONAL_CAP_K, i.e. a dealer must bond at least 5% of what they quote. There is
+// deliberately NO flat MIN_BOND floor: the cap subsumes it (a zero bond can quote nothing).
+// Notional is denominated in the bond asset (tNIGHT base units), so no oracle is needed.
+pure circuit NOTIONAL_CAP_K(): Uint<8> { return 20; }
+//
+// §7a: challenge bond = max(CHALLENGE_BOND_FLOOR, 2% of notional). The 2% is checked without
+// division as bondAmount * CHALLENGE_BOND_DENOM >= notional * CHALLENGE_BOND_PCT, which rounds
+// in the dealer's favour (the taker must post at least the exact 2%, never a rounded-down one).
+pure circuit CHALLENGE_BOND_PCT(): Uint<8> { return 2; }
+pure circuit CHALLENGE_BOND_DENOM(): Uint<8> { return 100; }
+// OPEN VALUE, NOT A DECISION: the floor's *existence* is decided (§7a); its *amount* is not, and
+// is explicitly deferred to M4 task 4.1 against real-value NIGHT. 1 base unit makes the floor
+// inert on testnet so the scaling rule is what the tests exercise. Do not ship this to Mainnet.
+pure circuit CHALLENGE_BOND_FLOOR(): Uint<128> { return 1; }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Ledger structs
@@ -57,6 +69,7 @@ export struct Quote {
   commitment: Bytes<32>,      // persistentCommit(terms, nonce) — NOT a bare hash
   validUntil: Uint<64>,
   rfqId: Bytes<32>,
+  notional: Uint<128>,        // bond-asset base units; public — see CONTRACTS.md §7 for why that leaks nothing new
   resolved: Boolean,          // settled or slashed; terminal
 }
 
@@ -125,7 +138,9 @@ pure circuit deriveChallengeId(quoteId: Bytes<32>, taker: Bytes<32>): Bytes<32> 
 export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   assert(!bonds.member(cmt), "Dealer already bonded; use topUpBond");
-  assert(disclose(amount) >= PLACEHOLDER_MIN_BOND(), "Bond below minimum"); // see docs/CONTRACTS.md §7
+  // No flat minimum (CONTRACTS.md §7): what a bond may back is enforced per quote in commitQuote.
+  // A zero bond is still refused — it could back nothing and would only create a dealer record.
+  assert(disclose(amount) > 0, "Bond must be positive");
   receiveUnshielded(default<Bytes<32>>, disclose(amount));
   bonds.insert(cmt, Bond {
     amount: disclose(amount),
@@ -182,12 +197,22 @@ export circuit withdrawBond(recipient: Bytes<32>): [] {
 // 5.2 Quoting and settlement
 // ─────────────────────────────────────────────────────────────────────────
 
-export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: Uint<64>): [] {
+// `notional` is the quote size in bond-asset base units. It is NOT bound to the sealed commitment
+// in-circuit — the commitment is hiding, so the circuit cannot open it. A dealer who under-declares
+// notional to slip past the cap is caught by the taker, whose client checks the revealed size
+// against this on-chain value before trusting the quote (packages/sdk/src/quotes.ts verifyReveal).
+export circuit commitQuote(
+  rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: Uint<64>, notional: Uint<128>
+): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   assert(bonds.member(cmt), "Not a dealer");
   const b = bonds.lookup(cmt);
   assert(b.active, "Dealer not active (withdrawing or unbonded)");
-  assert(b.amount >= PLACEHOLDER_MIN_BOND(), "Bond fell below minimum after slashing");
+  // Per-quote notional cap — CONTRACTS.md §7. Replaces the old flat "bond fell below minimum"
+  // check: a slashed bond (amount 0) can back no notional at all.
+  const notionalPub = disclose(notional);
+  assert(notionalPub > 0, "Notional must be positive");
+  assert(notionalPub <= b.amount * NOTIONAL_CAP_K(), "Notional exceeds bond cap (bond must be >= 5% of notional)");
   // Validity window must be in the future and capped — an unbounded window would let a
   // dealer sit on a free option indefinitely, and would force BOND_WITHDRAW_DELAY to be
   // unbounded too. `!blockTimeGte(t)` is the clean "block time < t" idiom (no separate
@@ -211,6 +236,7 @@ export circuit commitQuote(rfqId: Bytes<32>, commitment: Bytes<32>, validUntil: 
     commitment: disclose(commitment),
     validUntil: disclose(validUntil),
     rfqId: disclose(rfqId),
+    notional: notionalPub,
     resolved: false,
   });
   bonds.insert(cmt, Bond { ...b, liveQuotes: (b.liveQuotes + 1) as Uint<32> });
@@ -224,7 +250,12 @@ export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>
   const q = quotes.lookup(qidPub);
   assert(!q.resolved, "Quote already resolved");
   assert(!blockTimeGte(q.validUntil), "Quote expired — nothing to honor");
-  assert(disclose(bondAmount) >= PLACEHOLDER_MIN_CHALLENGE_BOND(), "Challenge bond too small");
+  // max(floor, 2% of notional) — CONTRACTS.md §7a. Scaled so griefing a large quote costs
+  // proportionally, while a small taker is never priced out of enforcing their own trade.
+  const challengeBond = disclose(bondAmount);
+  assert(challengeBond >= CHALLENGE_BOND_FLOOR(), "Challenge bond below floor");
+  assert(challengeBond * CHALLENGE_BOND_DENOM() >= q.notional * CHALLENGE_BOND_PCT(),
+         "Challenge bond below 2% of notional");
   receiveUnshielded(default<Bytes<32>>, disclose(bondAmount));
   const claimedNow = disclose(now);
   assert(blockTimeGte(claimedNow), "claimed time is in the future");

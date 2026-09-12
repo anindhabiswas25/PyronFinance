@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, taker, bytes32, T0,
   CHALLENGE_WINDOW, PROOF_GRACE_PERIOD, BOND_WITHDRAW_DELAY,
-  DEALER_SK, TAKER_ADDR, QUOTE_PK,
+  DEALER_SK, TAKER_ADDR, QUOTE_PK, NOTIONAL
 } from './harness.js';
 import { deriveQuoteId, deriveChallengeId } from '../../packages/sdk/src/domain.js';
 
@@ -18,7 +18,7 @@ function bondedWithQuote(windowSecs = 600) {
   const sim = new OTCSim();
   const cmt = bondDealer(sim);
   const validUntil = BigInt(T0 + windowSecs);
-  sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, validUntil);
+  sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, validUntil, NOTIONAL);
   return { sim, cmt, quoteId: deriveQuoteId(cmt, RFQ, COMMITMENT), validUntil };
 }
 
@@ -74,6 +74,45 @@ describe('openSettlementChallenge — Class B', () => {
       taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0 + 601),
     );
     expect(msg).toMatch(/Quote expired/);
+  });
+
+  it('rejects a challenge bond below 2% of notional (NOTIONAL 1000 needs 20)', () => {
+    const { sim, cmt, quoteId } = bondedWithQuote();
+    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 19n, BigInt(T0));
+    expect(msg).toMatch(/below 2% of notional/);
+    expect(sim.ledger.bonds.lookup(cmt).openChallenges).toBe(0n);
+  });
+
+  it('accepts a challenge bond of exactly 2% of notional', () => {
+    const { sim, quoteId } = bondedWithQuote();
+    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 20n, BigInt(T0));
+    expect(sim.ledger.challenges.lookup(deriveChallengeId(quoteId, TAKER_ADDR)).bondAmount).toBe(20n);
+  });
+
+  it('rounds the 2% requirement UP, never in the challenger\'s favour', () => {
+    // 2% of 1001 is 20.02: a bond of 20 is short of it and must be refused.
+    const sim = new OTCSim();
+    const cmt = bondDealer(sim);
+    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), 1001n);
+    const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
+    sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 20n, BigInt(T0));
+    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 21n, BigInt(T0));
+  });
+
+  it('scales with notional — a flat bond that griefs a small quote is too small for a large one', () => {
+    const sim = new OTCSim();
+    const cmt = bondDealer(sim, 1000n);
+    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), 20_000n);
+    const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
+    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
+    expect(msg).toMatch(/below 2% of notional/);
+    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 400n, BigInt(T0));
+  });
+
+  it('rejects a zero challenge bond at the floor', () => {
+    const { sim, quoteId } = bondedWithQuote();
+    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 0n, BigInt(T0));
+    expect(msg).toMatch(/below floor/);
   });
 
   it('rejects a duplicate challenge from the same taker', () => {

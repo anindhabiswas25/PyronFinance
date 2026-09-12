@@ -13,7 +13,7 @@ import { buildOTCProviders, OTC_PRIVATE_STATE_ID } from '../packages/sdk/src/pro
 import { compiledOTCContract } from '../packages/sdk/src/contract.js';
 import { schnorrPublicKey, freshNonce } from '../packages/sdk/src/schnorr.js';
 import { dealerCommitment, deriveQuoteId } from '../packages/sdk/src/domain.js';
-import { postBond } from '../packages/sdk/src/bonding.js';
+import { postBond, minBondForNotional } from '../packages/sdk/src/bonding.js';
 import { sealQuote, commitQuote, buildReveal } from '../packages/sdk/src/quotes.js';
 import { encodeTerms } from '../packages/sdk/src/terms.js';
 import { submitFraudProofMismatch } from '../packages/sdk/src/fraud.js';
@@ -55,17 +55,22 @@ const contract = await findDeployedContract(providers, {
   initialPrivateState: { dealerSecretKey: dealerSk, takerAddress: dealerSk }, // single wallet, both roles
 });
 
+// Size is small on purpose: the bond must now cover the quote (docs/CONTRACTS.md §7, bond >= 5% of
+// notional), and a testnet wallet's DUST and tNIGHT are better spent on runs than on bonds.
+// 0.001 tNIGHT = 1000 base units of notional -> a 50-unit bond.
+const realTerms = { pair: 'tNIGHT/USDM', side: 'sell' as const, price: '0.0412', size: '0.001' };
+const rfqId = randomBytes32();
+const now = BigInt(Math.floor(Date.now() / 1000));
+const validUntil = now + 300n; // 5 min — within MAX_QUOTE_VALIDITY (900s)
+const sealed = sealQuote(realTerms, rfqId, validUntil);
+
 console.log('\n[1/5] postBond...');
-const bondAmount = 1n; // PLACEHOLDER_MIN_BOND — see docs/CONTRACTS.md §7, deliberately unset
+const bondAmount = minBondForNotional(sealed.notional);
+console.log(`  notional ${sealed.notional} -> minimum bond ${bondAmount}`);
 await postBond(contract, bondAmount, quotePk);
 console.log('Bond posted.');
 
 console.log('\n[2/5] commitQuote (real terms)...');
-const rfqId = randomBytes32();
-const now = BigInt(Math.floor(Date.now() / 1000));
-const validUntil = now + 300n; // 5 min — within MAX_QUOTE_VALIDITY (900s)
-const realTerms = { pair: 'tNIGHT/USDM', side: 'sell' as const, price: '0.0412', size: '1000.0' };
-const sealed = sealQuote(realTerms, rfqId, validUntil);
 await commitQuote(contract, sealed);
 const quoteId = deriveQuoteId(dealerCmt, sealed.rfqId, sealed.commitment);
 console.log('Quote committed. quoteId:', Buffer.from(quoteId).toString('hex'));
@@ -74,7 +79,7 @@ console.log('\n[3/5] Building a DELIBERATELY MISMATCHED reveal (Class A fraud)..
 // Sign different terms than what was committed to — this is the fraud we're proving the
 // contract catches. A real dealer would never do this; this script exists to verify the
 // slashing path works, not to demonstrate normal operation.
-const fraudulentTerms = { pair: 'tNIGHT/USDM', side: 'sell' as const, price: '0.0999', size: '1000.0' };
+const fraudulentTerms = { pair: 'tNIGHT/USDM', side: 'sell' as const, price: '0.0999', size: '0.001' };
 const fraudulentSealed = { ...sealed, terms: fraudulentTerms, encodedTerms: encodeTerms(fraudulentTerms) };
 const reveal = buildReveal(fraudulentSealed, quoteSk, 'unused-offer-file-b64', Math.floor(Date.now() / 1000) + 300);
 console.log('Reveal signed over mismatched terms (price 0.0999 vs committed 0.0412).');

@@ -115,6 +115,13 @@
             "type-name": "Uint",
             "maxval": 18446744073709551615
           }
+        },
+        {
+          "name": "notional",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 340282366920938463463374607431768211455
+          }
         }
       ],
       "result-type": {
