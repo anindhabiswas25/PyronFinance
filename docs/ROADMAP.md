@@ -3,12 +3,32 @@
 > **Re-read this file at the start of every session before doing any work.**
 > It is the live record of what is done, what is in progress, and what decisions are still open.
 
-**Last updated:** 2026-08-28 — M2.1–2.3 (relay node, shared schema, encrypted reveal channel) built
-and tested in simulation (191 tests total: 122 from M1 + 69 new). Stopped for confirmation before
-2.4/2.5 per scope. M1 status below is unchanged from the prior session: contract **executed and
-tested in simulation** (122 tests). Six defects found and fixed, two of which made the protocol
-non-functional. Tasks 1.0–1.6, 1.8, 1.10 complete; 1.9 complete in simulation; 1.7 and on-chain 1.9
-remain blocked on a funded Preprod wallet + local proof server.
+**Last updated:** 2026-09-12 — **M1 is complete on Preprod.** The contract is deployed, verified by
+indexer read-back, and `pnpm run e2e-fraud` has executed the full fraud path on-chain: bond posted →
+quote committed → deliberately mismatched reveal → fraud proof → **bond slashed to 0, dealer
+deactivated, slashed counter 1, quote resolved**. Tasks 1.0–1.10 are all done, including 1.7 and the
+on-chain half of 1.9, which had been blocked since 2026-08-27.
+
+```
+preprod  539d3ea689983058059137f4c6d0ee234ae29b585f7f222919a2013800ee2225
+```
+
+Five defects stood between "the wallet path compiles and typechecks" and "it works against a chain."
+None were caught by `tsc` or the 211-test simulation suite; each required a live run. This is the
+same lesson as the six simulator defects below, one level further out — see "Compilation is not
+verification", which now extends to "a green simulation suite is not chain integration."
+
+| # | Defect | Why it stayed hidden |
+|---|---|---|
+| W1 | `facade.start()` never called — `WalletFacade.init()` only wires sub-wallets, it does not begin syncing | `waitForSync()` hung forever; no error, just one `isSynced:false` event |
+| W2 | dust wallet OOM: 3.0.0 hardcodes `batchSize = 10` + 4 ms spacing; applied ~306 ev/s vs ~430 ev/s inbound, so the queue grew unbounded | Looked like "needs more RAM" — died at 47 s on 2 GB **and** at 26 min on 6 GB |
+| W3 | `costParameters` became required in dust 4.x | Typechecks; throws `undefined (reading 'feeBlocksMargin')` mid-balance, only with a synced funded wallet |
+| W4 | `DustWalletState.walletBalance()` → `.balance()` | Reached via `as any`, so the rename threw ~20 min into a run, after a submitted tx |
+| W5 | Stale local `signTransactionIntents()` workaround, kept after the SDK bug it worked around was fixed, and it never signed dust registrations | Node rejected `postBond` with `1010: Invalid Transaction: Custom error: 192` (`InputsSignaturesLengthMismatch`). Invisible to deploy, which moves no unshielded funds — only a `receiveUnshielded` circuit exposes it |
+
+**First real performance numbers** (partial input to 2.8): proof generation **0.691 s**; cold wallet
+sync **~20 min** (~1.5 M events from genesis) vs **~8 s** restored from a snapshot. The cold-sync cost
+is why `packages/sdk/src/wallet-state.ts` exists.
 
 ---
 
@@ -17,7 +37,7 @@ remain blocked on a funded Preprod wallet + local proof server.
 | Milestone | Scope | Status |
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
-| **M1** | Core protocol contract on Preprod | 🟡 Contract executed & tested in simulation (122 tests, 11 circuits); on-chain deploy blocked on funded wallet + proof server |
+| **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
 | **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.3 built and tested in simulation (191 tests); 2.4–2.9 not started, blocked per scope below |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
@@ -35,15 +55,15 @@ Build and deploy `OTCProtocol.compact` per `docs/CONTRACTS.md`.
 | # | Task | Status |
 |---|---|---|
 | 1.0 | **Resolve the Schnorr polyfill risk** (`CONTRACTS.md` §9.1) — blocks 1.5 | ✅ Resolved — works, needs a range-checked reduction gadget (see below) |
-| 1.1 | Toolchain: Compact compiler, Docker proof server, pnpm + Turborepo skeleton | ✅ pnpm + turbo (now actually installed — `turbo.json` was previously dead config) + vitest + root tsconfig; Docker proof server not started (needed for 1.7+) |
+| 1.1 | Toolchain: Compact compiler, Docker proof server, pnpm + Turborepo skeleton | ✅ pnpm + turbo + vitest + root tsconfig; proof server running (`midnightntwrk/proof-server:8.1.0` — see image warning above) |
 | 1.2 | Ledger + structs + domain-separated derivations | ✅ `contracts/src/OTCProtocol.compact` |
-| 1.3 | Bonding circuits: `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` | ✅ Compiles; not yet run against live Preprod |
-| 1.4 | Quote circuits: `commitQuote`, `openSettlementChallenge`, `recordSettlement` | ✅ Compiles; not yet run against live Preprod |
-| 1.5 | Fraud circuits: `submitFraudProofMismatch`, `submitFraudProofTimeout`, `slashBond` | ✅ Compiles; not yet run against live Preprod |
+| 1.3 | Bonding circuits: `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` | ✅ `postBond` executed on Preprod; the other three still simulation-only |
+| 1.4 | Quote circuits: `commitQuote`, `openSettlementChallenge`, `recordSettlement` | ✅ `commitQuote` executed on Preprod; challenge/settlement still simulation-only |
+| 1.5 | Fraud circuits: `submitFraudProofMismatch`, `submitFraudProofTimeout`, `slashBond` | ✅ `submitFraudProofMismatch` executed on Preprod and slashed a real bond; timeout path still simulation-only |
 | 1.6 | `attachDisclosureNote` (contract side only; client flow is M3) | ✅ Compiles |
-| 1.7 | Deploy + init scripts, Preprod config, faucet funding | 🟡 Code-complete, typechecked (`scripts/deploy.ts`, `scripts/init.ts`, `scripts/fund.ts`) — **never executed**, blocked on a funded wallet |
+| 1.7 | Deploy + init scripts, Preprod config, faucet funding | ✅ **Executed.** `fund` → `deploy` → `init` all ran on Preprod; `init` passes all 7 fresh-state checks. Adds `pnpm run status` for wallet/DUST/deployment visibility |
 | 1.8 | `packages/sdk` — bonding, quote commit/reveal, fraud proofs, Zswap offer helpers | ✅ Code-complete, fully typechecked against real installed packages — bonding/quotes/fraud verified; Zswap offer construction (`offers.ts`) is a documented stub pending a live proof server |
-| 1.9 | Scripted E2E test: bond → commit → mismatched reveal → fraud proof → slash verified | ✅ **In simulation** (`contracts/test/fraud.test.ts`) incl. negative cases; on-chain run still blocked on 1.7 |
+| 1.9 | Scripted E2E test: bond → commit → mismatched reveal → fraud proof → slash verified | ✅ **On-chain on Preprod** (`pnpm run e2e-fraud`): bond → 0, active → false, slashed → 1, quote resolved. Negative cases remain in simulation (`contracts/test/fraud.test.ts`) |
 | 1.10 | Resolve `CONTRACTS.md` §9.2–9.5; update `.claude/skills/compact-contracts/SKILL.md` in place | ✅ Done — all five items resolved (see skill file §4, §9) |
 
 **All 10 circuits compile cleanly and generate real prover/verifier keys** (`contracts/managed/otc-protocol/`).
@@ -61,22 +81,32 @@ typical bonding circuit) — Schnorr verification plus the challenge-reduction r
   be stale in several places — see `.claude/skills/midnight-js/SKILL.md` §12.5 for the corrections
   found: `WalletFacade.init`'s real factory-function construction pattern, `levelPrivateStateProvider`'s
   new at-rest-encryption requirement, `PublicKey.address` vs. `.toAddress()`, and others).
-- **None of the wallet/deploy/transaction-submission path has been executed once.** Everything from
-  `createHeadlessWallet` onward — wallet sync, balancing, proving, submission — is verified only by
-  reading the installed `.d.ts` files and getting the types to line up, not by running it. A live run
-  against a funded wallet and a running proof server could still surface real bugs the type system
-  can't catch (e.g. runtime behavior of `WalletFacade.init`'s factory functions, whether the
-  `signTransactionIntents` bug-workaround from the skill still applies to this version).
-- `packages/sdk/src/offers.ts` (Zswap Offer File construction) is an intentional stub — the exact
-  ledger-v8 offer-construction call sequence needs a running proof server to pin down safely; building
+- **The wallet/deploy/transaction path has now been executed on Preprod** (2026-09-12), superseding
+  this section's original warning that it never had been. That warning called its shot exactly:
+  it predicted live runs "could still surface real bugs the type system can't catch (e.g. runtime
+  behavior of `WalletFacade.init`'s factory functions, whether the `signTransactionIntents`
+  bug-workaround from the skill still applies to this version)." **Both** named suspicions were
+  real — W1 and W5 in the defect table at the top of this file.
+- `packages/sdk/src/offers.ts` (Zswap Offer File construction) is **still an intentional stub**, and
+  is now the largest remaining piece of unwritten M1-adjacent code. The blocker it cited (no running
+  proof server) is gone, so this can and should be built for real — it gates 2.6 settlement. Building
   it blind against types alone was judged too likely to be silently wrong for something this
   security-sensitive (a malformed Offer File either fails safely or, worse, appears to work until
   settlement). Flagged rather than guessed.
 
-**Blocked on network access:** 1.7 and 1.9 need a funded Preprod wallet seed (the Preprod faucet
-hit its 24h rate limit on 2026-08-27) and a running local proof server, neither available in this
-environment. Not fabricating credentials or skipping this — flagging it for the owner. Once both
-exist: `pnpm generate-seed` → fund the printed address → `pnpm deploy` → `pnpm init` → `pnpm e2e-fraud`.
+**Previously blocked on network access — RESOLVED 2026-09-12.** A funded Preprod wallet and a local
+proof server both now exist, and the full sequence has been run:
+`pnpm generate-seed` → fund the printed address → `pnpm run fund` → `pnpm run deploy` →
+`pnpm run init` → `pnpm run e2e-fraud`. Use `pnpm run status` at any point to see NIGHT balance,
+DUST balance and the current deployment.
+
+Two things that cost real time and are easy to repeat:
+
+- **Fund the address `pnpm run print-address` prints**, not a browser-wallet address. The first
+  faucet request went to a different wallet; the tx succeeded, so nothing looked wrong until an
+  indexer query showed this wallet had zero UTXOs.
+- **The faucet is CAPTCHA-gated** (Cloudflare Turnstile on `POST /drips`). It cannot be scripted;
+  a human has to request funds.
 
 **Proof server image — get this exactly right:**
 
