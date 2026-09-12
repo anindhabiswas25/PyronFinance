@@ -41,46 +41,6 @@ export function generateNewSeedHex(): string {
   return Buffer.from(seed).toString('hex');
 }
 
-/** Workaround for a wallet SDK bug where signRecipe hardcodes 'pre-proof', causing failures
- *  when signing proven (UnboundTransaction) intents. See midnight-js SKILL.md §8. Call with
- *  proofMarker='proof' for baseTransaction, 'pre-proof' for balancingTransaction. UNVERIFIED
- *  against this installed version — the skill's workaround predates the WalletFacade.init
- *  rewrite discovered above; keep but re-test once a live proof server is available. */
-function signTransactionIntents(
-  tx: { intents?: Map<number, any> },
-  signFn: (payload: Uint8Array) => ledger.Signature,
-  proofMarker: 'proof' | 'pre-proof',
-): void {
-  if (!tx.intents || tx.intents.size === 0) return;
-  for (const segment of tx.intents.keys()) {
-    const intent = tx.intents.get(segment);
-    if (!intent) continue;
-
-    const cloned = (ledger.Intent as any).deserialize(
-      'signature',
-      proofMarker,
-      'pre-binding',
-      intent.serialize(),
-    );
-
-    const signature = signFn(cloned.signatureData(segment));
-
-    if (cloned.fallibleUnshieldedOffer) {
-      const sigs = cloned.fallibleUnshieldedOffer.inputs.map(
-        (_: unknown, i: number) => cloned.fallibleUnshieldedOffer!.signatures.at(i) ?? signature,
-      );
-      cloned.fallibleUnshieldedOffer = cloned.fallibleUnshieldedOffer.addSignatures(sigs);
-    }
-    if (cloned.guaranteedUnshieldedOffer) {
-      const sigs = cloned.guaranteedUnshieldedOffer.inputs.map(
-        (_: unknown, i: number) => cloned.guaranteedUnshieldedOffer!.signatures.at(i) ?? signature,
-      );
-      cloned.guaranteedUnshieldedOffer = cloned.guaranteedUnshieldedOffer.addSignatures(sigs);
-    }
-    tx.intents.set(segment, cloned);
-  }
-}
-
 export interface HeadlessWallet {
   facade: WalletFacade;
   walletAndMidnightProvider: WalletProvider & MidnightProvider;
@@ -297,17 +257,25 @@ export async function createHeadlessWallet(
       }
       return (latestSyncedState.shielded as any).encryptionPublicKey.toHexString();
     },
+    // Signing goes through facade.signRecipe, NOT a hand-rolled intent walk. This file previously
+    // carried a signTransactionIntents() workaround for a wallet-SDK bug where signRecipe hardcoded
+    // the 'pre-proof' marker. That bug is fixed as of wallet-sdk-facade 4.1.0: signRecipe now uses
+    // signUnboundTransaction for the base transaction and signUnprovenTransaction for the balancing
+    // one, and additionally signs a dust registration when present — which the workaround never did.
+    //
+    // Keeping the workaround cost us a live failure that only appears on transactions carrying
+    // unshielded inputs: the node rejected postBond with "1010: Invalid Transaction: Custom error:
+    // 192" (MalformedError::InputsSignaturesLengthMismatch — fewer signatures than unshielded
+    // inputs). Deploy was unaffected because it moves no unshielded funds, so this stayed hidden
+    // until the first receiveUnshielded circuit was called.
     async balanceTx(tx: any, ttl?: Date) {
       const recipe = await facade.balanceUnboundTransaction(
         tx,
         { shieldedSecretKeys, dustSecretKey },
         { ttl: ttl ?? new Date(Date.now() + 30 * 60 * 1000) },
       );
-      signTransactionIntents((recipe as any).baseTransaction, signFn, 'proof');
-      if ((recipe as any).balancingTransaction) {
-        signTransactionIntents((recipe as any).balancingTransaction, signFn, 'pre-proof');
-      }
-      return facade.finalizeRecipe(recipe as any);
+      const signed = await facade.signRecipe(recipe, signFn);
+      return facade.finalizeRecipe(signed);
     },
     submitTx(tx: any) {
       return facade.submitTransaction(tx) as any;
