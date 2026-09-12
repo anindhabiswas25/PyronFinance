@@ -147,15 +147,31 @@ is genuinely unsolved and we do not claim otherwise.
 ### 2. Commit-then-reveal latency — unvalidated, and gating our own claims
 
 The mechanism inserts proof generation and a chain confirmation between "dealer decides a price" and
-"taker sees it." **We do not yet know the real end-to-end number on Preprod.**
+"taker sees it."
+
+**Measured on Preprod (M2 task 2.8, one developer machine, local proof server — not a benchmark):**
+
+| Step | Measured |
+|---|---|
+| Build + prove an **unshielded** Offer File | 6–16 ms (no ZK proof involved) |
+| Build + prove a **shielded** Offer File | ~3.1 s median steady state, 6.4 s cold; **no gain from parallel requests** |
+| `commitQuote` (prove + submit + chain confirmation) | 18.8–24.6 s typical; **53.2 s** observed on a degraded network |
+| Taker settlement (balance + prove + submit) | 16.9–23.6 s |
+
+The end-to-end quote round trip is therefore **tens of seconds, dominated by chain confirmation**,
+not by proving. For shielded pairs, proving adds ~3 s per pre-proved offer and bounds how fast a
+dealer can refill a warm pool. These are the numbers, including the bad ones; see `ROADMAP.md`
+task 2.8 for conditions and limits.
 
 If it is slow enough, dealers must widen spreads to cover the risk of being bound across a longer
 window — which would make the venue less competitive precisely because of the mechanism that makes it
 trustworthy. The mitigation is the Dealer Node's warm pool of pre-proved Offer Files, which amortizes
 proving out of the hot path; whether that suffices is an empirical question.
 
-**No performance claim appears in any external material until M2 measures this on Preprod.** If the
-number is bad, it goes in the writeup as a bad number.
+**No performance claim appears in any external material beyond the measured table above.** Where a
+number is bad, it is published as a bad number. Whether tens of seconds of binding latency leaves
+dealers able to quote competitively is **still unvalidated**. The table measures the mechanism, not
+market viability.
 
 ### 3. Optimistic challenge assumes a live, uncensored dealer
 

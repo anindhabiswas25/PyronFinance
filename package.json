@@ -24,7 +24,10 @@
     "compact:testtoken": "compact compile contracts/src/TestToken.compact contracts/managed/test-token",
     "deploy-test-token": "tsx --env-file=.env scripts/deploy-test-token.ts",
     "probe-testusd": "tsx --env-file=.env scripts/probe-testusd-spend.ts",
-    "probe-merge-sigs": "tsx --env-file=.env scripts/probe-merge-signatures.ts"
+    "probe-merge-sigs": "tsx --env-file=.env scripts/probe-merge-signatures.ts",
+    "probe-fee-calc": "tsx --env-file=.env scripts/probe-fee-calculation.ts",
+    "compact:testshieldedtoken": "compact compile contracts/src/TestShieldedToken.compact contracts/managed/test-shielded-token",
+    "probe-shielded-latency": "tsx --env-file=.env scripts/probe-shielded-latency.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
