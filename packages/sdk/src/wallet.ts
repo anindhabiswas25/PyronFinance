@@ -130,13 +130,27 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
     dust: (config: any) => DustWallet(config).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
   });
 
+  // WalletFacade.init() only wires the sub-wallets together — it does NOT start syncing.
+  // facade.start() is what actually calls shielded/unshielded/dust.start(), which kicks off the
+  // indexer subscriptions. Without this, facade.state() emits exactly one isSynced:false event
+  // and then never updates, no matter how long you wait (confirmed by a live run against Preprod:
+  // 8 minutes, zero further state events). Found by reading wallet-sdk-facade's dist/index.js
+  // directly — undocumented, and the stale `new WalletFacade(...); await wallet.start(...)`
+  // pattern in midnight-js SKILL.md §5 (superseded by the .init() factory-function pattern noted
+  // in this file's header) still had the start() call; it was dropped when this file switched to
+  // .init() and never added back.
+  await facade.start(shieldedSecretKeys, dustSecretKey);
+
+  // Populated by waitForSync(); read by the WalletProvider getters below. Deliberately NOT
+  // fetched during construction — createHeadlessWallet must stay fast and non-blocking so
+  // address-only use (scripts/print-address.ts, before any funding exists) doesn't hang waiting
+  // for a sync that may never produce data for a brand-new, unfunded address. Callers that need
+  // to actually transact must call `wallet.waitForSync()` first — deploy.ts/fund.ts/e2e-fraud.ts
+  // already do this.
+  let latestSyncedState: Awaited<ReturnType<typeof facade.waitForSyncedState>> | undefined;
+
   async function waitForSync(): Promise<void> {
-    await Rx.firstValueFrom(
-      facade.state().pipe(
-        Rx.throttleTime(5_000),
-        Rx.filter((s) => s.isSynced),
-      ),
-    );
+    latestSyncedState = await facade.waitForSyncedState();
   }
 
   async function waitForUnshieldedBalance(): Promise<bigint> {
@@ -161,18 +175,24 @@ export async function createHeadlessWallet(seedHex: string, chain: ChainConfig):
     );
   }
 
-  // Wait for initial sync so coinPublicKey/encryptionPublicKey are populated before the
-  // WalletProvider/MidnightProvider bridge is handed to midnight-js — those getters are called
-  // synchronously by the SDK, so they can't await a sync themselves.
-  const syncedState = await facade.waitForSyncedState();
   const signFn = (payload: Uint8Array) => unshieldedKeystore.signData(payload);
 
+  // getCoinPublicKey/getEncryptionPublicKey are called synchronously by midnight-js, so they
+  // can't await a sync themselves — callers must call wallet.waitForSync() before using
+  // walletAndMidnightProvider for any actual transaction (deploy/call), not before merely
+  // reading wallet.unshieldedAddress.
   const walletAndMidnightProvider: WalletProvider & MidnightProvider = {
     getCoinPublicKey() {
-      return (syncedState.shielded as any).coinPublicKey.toHexString();
+      if (!latestSyncedState) {
+        throw new Error('Wallet not synced yet — call wallet.waitForSync() before submitting any transaction');
+      }
+      return (latestSyncedState.shielded as any).coinPublicKey.toHexString();
     },
     getEncryptionPublicKey() {
-      return (syncedState.shielded as any).encryptionPublicKey.toHexString();
+      if (!latestSyncedState) {
+        throw new Error('Wallet not synced yet — call wallet.waitForSync() before submitting any transaction');
+      }
+      return (latestSyncedState.shielded as any).encryptionPublicKey.toHexString();
     },
     async balanceTx(tx: any, ttl?: Date) {
       const recipe = await facade.balanceUnboundTransaction(
