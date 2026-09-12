@@ -202,6 +202,11 @@ export interface BuildOfferParams {
   settlementMarginSecs?: number;
   /** Offer lifetime in seconds. Defaults to OFFER_FILE_EXPIRY_SECS. */
   lifetimeSecs?: number;
+  /** The chain's LIVE ledger parameters. When supplied, the half is refused if it ALREADY fails the
+   *  node's time-to-dismiss rule on its own — measured on Preprod: a 4-input dealer half (932 B,
+   *  17.7 ms vs a 15 ms allowance) is unsettleable by any taker, since balancing only adds cost.
+   *  Handing such an offer out behind a live quote binds the dealer to a trade that cannot happen. */
+  ledgerParameters?: ledger.LedgerParameters;
 }
 
 /** Constructs, signs and locally proves one half of a swap, and returns it as transportable bytes.
@@ -214,7 +219,7 @@ export interface BuildOfferParams {
  *  be canonical, and non-canonical bytes would make an honest dealer fail to open their own
  *  commitment, slashing them for nothing (zswap-offer-files SKILL.md §6). */
 export async function buildAndProveOffer(params: BuildOfferParams): Promise<ProvedOffer> {
-  const { wallet, give, want, validitySecs, settlementMarginSecs, lifetimeSecs } = params;
+  const { wallet, give, want, validitySecs, settlementMarginSecs, lifetimeSecs, ledgerParameters } = params;
 
   if (give.amount <= 0n) throw new OfferError('give.amount must be positive');
   if (want && want.amount <= 0n) throw new OfferError('want.amount must be positive');
@@ -265,6 +270,18 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
     // Proves and binds. After this the half is inert, transferable bytes — the property that makes
     // this protocol possible at all (zswap-offer-files SKILL.md §1).
     const finalized = await wallet.facade.finalizeRecipe(signed);
+    if (ledgerParameters) {
+      // Necessary, not sufficient: passing here does not guarantee the MERGED settlement passes —
+      // the taker's inputs and the DUST spends add cost — but failing here guarantees it cannot.
+      const dismiss = checkTimeToDismiss(finalized, ledgerParameters);
+      if (!dismiss.ok) {
+        throw new OfferError(
+          `offer half already fails the node's time-to-dismiss rule (Custom error 168) and could never ` +
+            `settle: ${dismiss.reason}\n  structure: ${describeIntents(finalized)}\n  ` +
+            'Coin selection pulled in too many inputs; back the quote with fewer, larger UTXOs.',
+        );
+      }
+    }
     return {
       offerFileBase64: serializeOffer(finalized),
       provedAt: Math.floor(Date.now() / 1000),
@@ -342,6 +359,43 @@ export interface SettleParams {
   expiresAt?: number;
   /** Set false to build and check the settlement without submitting it. */
   submit?: boolean;
+  /** The chain's LIVE ledger parameters (`queryLedgerParameters` in indexer.ts). When supplied, the
+   *  node's own time-to-dismiss check is run locally before submission, so a settlement the node
+   *  would reject with `Custom error: 168` fails here with the numbers instead. Strongly
+   *  recommended — see `checkTimeToDismiss`. */
+  ledgerParameters?: ledger.LedgerParameters;
+}
+
+export type DismissCheck =
+  | { ok: true; fee: bigint }
+  | { ok: false; reason: string };
+
+/** THE CHECK BEHIND `1010: Invalid Transaction: Custom error: 168` — established from source and
+ *  confirmed against a live node in both directions (docs/ROADMAP.md S5).
+ *
+ *  Midnight node 1.0.2 maps `MalformedError::FeeCalculation` to u8 168. ledger 8.1.2 raises it in
+ *  `verify.rs` when `tx.fees(params, enforceTimeToDismiss = true)` fails. Despite the name it is
+ *  NOT an underpaid fee (that is 138, BalanceCheckOverspend) and no amount of DUST fixes it. The
+ *  failing case is `OutsideTimeToDismiss`: the transaction's modelled validation cost plus its
+ *  guaranteed application cost must not exceed `max(time_to_dismiss_per_byte * size,
+ *  min_time_to_dismiss)` — live values 2 µs/byte and 15 ms. It is an anti-DoS rule: a transaction
+ *  must not be expensive to reject relative to its size.
+ *
+ *  Every unshielded input, signature and DUST spend adds modelled time. A merged settlement carries
+ *  BOTH parties' inputs plus the DUST spends, so it is where this bites — and neither wallet
+ *  estimate would ever notice: the dust wallet prices fees with `feesWithMargin`, which does not
+ *  enforce time-to-dismiss.
+ *
+ *  Pass the chain's LIVE parameters. `initialParameters()` uses different cost constants. */
+export function checkTimeToDismiss(
+  tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>,
+  params: ledger.LedgerParameters,
+): DismissCheck {
+  try {
+    return { ok: true, fee: tx.fees(params, true) };
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message ?? String(err) };
+  }
 }
 
 /** Settles a dealer's Offer File: supplies the complementary half from this wallet, asserts the
@@ -354,7 +408,7 @@ export interface SettleParams {
  *  `signRecipe` on a FINALIZED_TRANSACTION recipe signs only the BALANCING transaction, leaving the
  *  dealer's proved half untouched — so the taker never needs, and never gets, the dealer's keys. */
 export async function settleFromOffer(params: SettleParams): Promise<SettlementResult> {
-  const { wallet, offerFileBase64, expiresAt, submit = true } = params;
+  const { wallet, offerFileBase64, expiresAt, submit = true, ledgerParameters } = params;
 
   // Expiry first: it is the cheapest check and the one that does not need the bytes to be valid.
   const nowSecs = Math.floor(Date.now() / 1000);
@@ -424,6 +478,22 @@ export async function settleFromOffer(params: SettleParams): Promise<SettlementR
       'no DUST was provisioned for the settlement fee — refusing to submit: ' +
         showVector(mergedBalanceVector),
     );
+  }
+
+  // The node's time-to-dismiss rule, run locally. Unlike the fee estimates above this IS gated on:
+  // its verdict matched the node's on every submission tried (ROADMAP S5), and a failure here is
+  // deterministic for these exact bytes — resubmitting cannot help, only a smaller shape can.
+  if (ledgerParameters) {
+    const dismiss = checkTimeToDismiss(merged, ledgerParameters);
+    if (!dismiss.ok) {
+      await wallet.facade.revert(recipe).catch(() => undefined);
+      throw new OfferError(
+        'settlement would be rejected by the node with Custom error 168 (FeeCalculation / ' +
+          `OutsideTimeToDismiss): ${dismiss.reason}\n  structure: ${describeIntents(merged)}\n  ` +
+          'Not a fee problem — more DUST will not help. The merged transaction carries too many ' +
+          'inputs/signatures/DUST spends for its size; a quote sized to need fewer UTXOs settles.',
+      );
+    }
   }
 
   if (!submit) {

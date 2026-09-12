@@ -197,6 +197,28 @@ So the pool needs an explicit reserve — a minimum count and value of unshielde
 available to offer construction, sized to cover the node's worst-case concurrent on-chain
 obligations. Not yet designed; **do not size a warm pool before this exists.**
 
+**Back offers with FEW, LARGE UTXOs — or no taker can settle them.** Found resolving ROADMAP S5
+(2026-09-13). Every node enforces a time-to-dismiss rule. A transaction's modelled validation and
+guaranteed-application cost must stay under `max(2 µs × size_bytes, 15 ms)`; if not, it is rejected
+with `Custom error: 168`. Every unshielded input in an Offer File adds to that cost, and the taker's
+balancing adds its own inputs and DUST spends on top. Measured on Preprod:
+
+- A dealer half that coin selection built from **4 small UTXOs** failed the rule **on its own**
+  (932 B, 17.7 ms vs 15 ms). No taker could ever have settled it.
+- A 3-input dealer half produced a merged settlement that failed (26.6 ms vs 20.9 ms).
+- The same trade backed by **1 UTXO** settled (19.6 ms vs 20.7 ms, accepted on-chain).
+
+Consequences for the node:
+
+- **Check every half before pooling it.** Call `buildAndProveOffer` with live `ledgerParameters`;
+  it refuses a half that already fails. Passing that check is necessary, not sufficient — keep
+  headroom for the taker's side.
+- **Inventory fragmentation is a liveness risk, not bookkeeping.** Change outputs from every
+  settlement fragment the wallet. The node should consolidate small UTXOs into large ones during
+  quiet periods, as a keeper task alongside refresh.
+- **This interacts with the reserve above.** Consolidation is itself a transaction that books
+  coins. Schedule it so it never competes with a pending challenge response.
+
 That last rule is the one that converts "expiry is an annoyance" into "expiry is handled." The
 constraint the node enforces at all times:
 
