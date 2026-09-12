@@ -40,6 +40,7 @@ import { sealQuote, commitQuote, buildReveal, verifyReveal } from '../packages/s
 import { recordSettlement } from '../packages/sdk/src/fraud.js';
 import { generateEncKeypair, encryptReveal, decryptReveal, plaintextToTerms } from '../packages/sdk/src/reveal-channel.js';
 import { buildAndProveOffer, settleFromOffer, balanceKey } from '../packages/sdk/src/offers.js';
+import { usdmFor, USDM_GATEWAY_BY_NETWORK } from '../packages/sdk/src/assets.js';
 import { queryLatestContractState } from '../packages/sdk/src/indexer.js';
 import { ledger as otcLedger } from '../contracts/managed/otc-protocol/contract/index.js';
 
@@ -95,34 +96,59 @@ if (!fs.existsSync(deploymentFile)) {
 const { address: contractAddress } = JSON.parse(fs.readFileSync(deploymentFile, 'utf-8'));
 console.log('Testing against contract:', contractAddress);
 
-const tokenFile = path.resolve(import.meta.dirname, `../deployments/${chain.network}-test-token.json`);
-if (!fs.existsSync(tokenFile)) {
-  throw new Error(
-    `No TestToken deployment at ${tokenFile} — run \`pnpm run deploy-test-token\` first. ` +
-      'Without it there is no second asset on Preprod and this settles nothing worth proving.',
-  );
+// ── Resolve the counter-asset ────────────────────────────────────────────────────────────────
+// Real USDM where the network actually has it (Preview, Mainnet); the minted testnet stand-in
+// otherwise (Preprod). Both are unshielded LEDGER tokens, so the settlement path below is
+// identical either way — which is the whole point of keeping `SwapLeg.token` a bare RawTokenType.
+const usdm = usdmFor(chain.network);
+let COUNTER_ASSET: string;
+let COUNTER_SYMBOL: string;
+let PAIR: string;
+
+if (usdm) {
+  COUNTER_ASSET = usdm.tokenType;
+  COUNTER_SYMBOL = usdm.symbol;
+  PAIR = 'tNIGHT/USDM';
+  console.log(`Counter-asset: REAL ${usdm.symbol} on ${chain.network} (${usdm.decimals} decimals)`);
+  console.log('  token color:', usdm.tokenType);
+  console.log('  bridge gateway:', USDM_GATEWAY_BY_NETWORK[chain.network] ?? '(unknown)');
+} else {
+  const tokenFile = path.resolve(import.meta.dirname, `../deployments/${chain.network}-test-token.json`);
+  if (!fs.existsSync(tokenFile)) {
+    throw new Error(
+      `No USDM on Midnight ${chain.network}, and no TestToken deployment at ${tokenFile}. ` +
+        'Either set MN_NETWORK=preview (where real USDM exists) or run `pnpm run deploy-test-token`.',
+    );
+  }
+  const parsed = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
+  COUNTER_ASSET = parsed.tokenType;
+  COUNTER_SYMBOL = 'TESTUSD';
+  PAIR = 'tNIGHT/TESTUSD';
+  console.log(`Counter-asset: minted stand-in TESTUSD (no USDM on ${chain.network})`);
+  console.log('  TestToken contract:', parsed.address);
 }
-const { address: tokenAddress, tokenType: TESTUSD } = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
-console.log('TestToken (TESTUSD):', tokenAddress);
 
 const UNSHIELDED_NIGHT = balanceKey({ tag: 'unshielded', raw: NIGHT });
-const UNSHIELDED_TESTUSD = balanceKey({ tag: 'unshielded', raw: TESTUSD });
+const UNSHIELDED_COUNTER = balanceKey({ tag: 'unshielded', raw: COUNTER_ASSET });
 
 const wallet = await createHeadlessWallet(requireWalletSeed(), chain);
 await wallet.waitForSync();
 const providers = buildOTCProviders(chain, wallet);
 
-// The taker pays in TESTUSD, so it must actually hold some. Checked up front with a pointed error:
-// discovering this inside `balanceFinalizedTransaction` surfaces as an opaque insufficient-funds
-// failure from deep in the wallet SDK.
-console.log(`\nTaker needs >= ${WANT_UNITS} TESTUSD to pay with...`);
-const takerTestUsd = await wallet.waitForUnshieldedTokenBalance(TESTUSD, WANT_UNITS).catch(() => 0n);
-if (takerTestUsd < WANT_UNITS) {
+// The taker pays in the counter-asset, so it must actually hold some. Checked up front with a
+// pointed error: discovering this inside `balanceFinalizedTransaction` surfaces as an opaque
+// insufficient-funds failure from deep in the wallet SDK.
+console.log(`\nTaker needs >= ${WANT_UNITS} ${COUNTER_SYMBOL} to pay with...`);
+const takerCounter = await wallet.waitForUnshieldedTokenBalance(COUNTER_ASSET, WANT_UNITS).catch(() => 0n);
+if (takerCounter < WANT_UNITS) {
   throw new Error(
-    `Wallet holds ${takerTestUsd} TESTUSD, needs ${WANT_UNITS}. Run \`pnpm run deploy-test-token\`.`,
+    `Wallet holds ${takerCounter} ${COUNTER_SYMBOL}, needs ${WANT_UNITS}. ` +
+      (usdm
+        ? 'Bridge USDM from Cardano Preprod to this Midnight Preview address (VIA Labs USDM bridge).'
+        : 'Run `pnpm run deploy-test-token`.'),
   );
 }
-console.log('  TESTUSD balance:', takerTestUsd);
+console.log(`  ${COUNTER_SYMBOL} balance:`, takerCounter);
 
 const dealerSk = randomBytes32();
 const dealerCmt = dealerCommitment(dealerSk);
@@ -173,7 +199,7 @@ const proveStart = Date.now();
 const offer = await buildAndProveOffer({
   wallet,
   give: { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS },
-  want: { kind: 'unshielded', token: TESTUSD, amount: WANT_UNITS },
+  want: { kind: 'unshielded', token: COUNTER_ASSET, amount: WANT_UNITS },
   validitySecs: VALIDITY_SECS,
 });
 const proveMs = Date.now() - proveStart;
@@ -185,12 +211,12 @@ console.log(`  offer file: ${offer.offerFileBase64.length} base64 chars, expires
 // difference between "settlement works" and "a balance vector with two legs nets to zero".
 if (
   offer.balanceVector[UNSHIELDED_NIGHT] !== GIVE_UNITS ||
-  offer.balanceVector[UNSHIELDED_TESTUSD] !== -WANT_UNITS ||
+  offer.balanceVector[UNSHIELDED_COUNTER] !== -WANT_UNITS ||
   Object.keys(offer.balanceVector).length !== 2
 ) {
   throw new Error(
     `Offer balance vector is not the trade we asked for. Expected exactly ` +
-      `{unshielded tNIGHT: +${GIVE_UNITS}, unshielded TESTUSD: -${WANT_UNITS}}, ` +
+      `{unshielded tNIGHT: +${GIVE_UNITS}, unshielded ${COUNTER_SYMBOL}: -${WANT_UNITS}}, ` +
       `got ${showVector(offer.balanceVector)}`,
   );
 }
@@ -203,7 +229,7 @@ if (
 console.log('\n[3/6] commitQuote...');
 const rfqId = randomBytes32();
 const validUntil = BigInt(Math.floor(Date.now() / 1000) + VALIDITY_SECS);
-const terms = { pair: 'tNIGHT/TESTUSD', side: 'sell' as const, price: PRICE, size: SIZE };
+const terms = { pair: PAIR, side: 'sell' as const, price: PRICE, size: SIZE };
 const sealed = sealQuote(terms, rfqId, validUntil);
 const commitStart = Date.now();
 await commitQuote(contract, sealed);
