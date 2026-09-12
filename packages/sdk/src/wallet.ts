@@ -57,8 +57,17 @@ export interface HeadlessWallet {
   /** Signs one transaction segment with the unshielded keystore. Always pass this to
    *  `facade.signRecipe` — never hand-roll an intent walk (defect W5). */
   signFn: (payload: Uint8Array) => ledger.Signature;
+  /** Public verifying key for `signFn`'s signatures. Exposed so a transaction's signatures can be
+   *  checked OFFLINE against `Intent.signatureData(segmentId)` — a node rejection never says which
+   *  segment a signature failed on, or that a signature was the problem at all. */
+  unshieldedVerifyingKey: ledger.SignatureVerifyingKey;
   waitForSync(): Promise<void>;
   waitForUnshieldedBalance(): Promise<bigint>;
+  /** Waits until this wallet holds at least `atLeast` of a specific unshielded token type, and
+   *  returns the balance. Native tNIGHT is just one such type; contract-minted unshielded tokens
+   *  (see contracts/src/TestToken.compact) land in the same balance map under their own derived
+   *  type, which is what makes them spendable in a Zswap settlement. */
+  waitForUnshieldedTokenBalance(tokenType: string, atLeast?: bigint): Promise<bigint>;
   waitForDust(): Promise<void>;
   registerForDustGeneration(): Promise<void>;
   /** Persists sync progress so the next start resumes instead of replaying from genesis.
@@ -128,7 +137,8 @@ export async function createHeadlessWallet(
   // completely unreasonable margin here." Do not raise it casually to buy fee headroom; 5 is the
   // documented value.
   const costParameters = {
-    // Raised from the skill's documented 3e14 after it stopped covering real Preprod fees.
+    // Raised from the skill's documented 3e14 after it stopped covering real Preprod fees, then
+    // raised again for two-asset settlements (see the ratio note below).
     //
     // additionalFeeOverhead is what the DUST balancer provisions on top of its own fee estimate,
     // and it behaves as a flat floor: a settlement built by `balanceFinalizedTransaction` came out
@@ -138,9 +148,23 @@ export async function createHeadlessWallet(
     // The one settlement that DID land was submitted when the required fee was still under the
     // 3e14 floor, which is why this looked like flakiness rather than under-provisioning.
     //
+    // THE NODE WANTS HEADROOM OVER THE BARE FEE, not just the fee. Observed ratios of provisioned
+    // DUST to ledger-v8's own estimate, on real Preprod submissions:
+    //
+    //     3e15 provisioned / 1.17e15 estimated  = 2.56x  -> ACCEPTED (one-asset, 6985 bytes)
+    //     3e15 provisioned / 1.76e15 estimated  = 1.70x  -> REJECTED (two-asset, 10609 bytes)
+    //
+    // The two-asset settlement is a bigger transaction, so its fee is higher and the same flat
+    // floor no longer clears it. 1e16 restores roughly 5x headroom at today's sizes.
+    //
+    // This value is EMPIRICAL AND FRAGILE — it is a floor tuned to observed rejections, not a
+    // derivation, and it will need raising again for larger transactions. The real fix is reading
+    // the chain's live LedgerParameters instead of provisioning against a static guess; tracked in
+    // docs/ROADMAP.md S4.
+    //
     // Unlike feeBlocksMargin (an EXPONENT — see below), this is a linear SPECK amount, so raising
     // it is safe: it buys fee headroom and nothing else. Unused provision is not spent.
-    additionalFeeOverhead: 3_000_000_000_000_000n,
+    additionalFeeOverhead: 10_000_000_000_000_000n,
     feeBlocksMargin: 5,
   };
 
@@ -247,6 +271,17 @@ export async function createHeadlessWallet(
     );
   }
 
+  async function waitForUnshieldedTokenBalance(tokenType: string, atLeast = 1n): Promise<bigint> {
+    return Rx.firstValueFrom(
+      facade.state().pipe(
+        Rx.throttleTime(5_000),
+        Rx.filter((s) => s.isSynced),
+        Rx.map((s) => (s.unshielded.balances[tokenType] ?? 0n) as bigint),
+        Rx.filter((balance) => balance >= atLeast),
+      ),
+    );
+  }
+
   // DustWalletState.walletBalance(date) was renamed to .balance(date) in wallet-sdk-dust-wallet 4.x.
   // The old name was reached through an `as any`, so the rename did not fail to typecheck — it threw
   // "s.dust.walletBalance is not a function" at run time, and only after a full ~20 min genesis sync
@@ -337,8 +372,10 @@ export async function createHeadlessWallet(
     unshieldedAddressHex: publicKey.addressHex,
     secretKeys: { shieldedSecretKeys, dustSecretKey },
     signFn,
+    unshieldedVerifyingKey: unshieldedKeystore.getPublicKey(),
     waitForSync,
     waitForUnshieldedBalance,
+    waitForUnshieldedTokenBalance,
     waitForDust,
     registerForDustGeneration,
     saveState,

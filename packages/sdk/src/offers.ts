@@ -440,7 +440,10 @@ export async function settleFromOffer(params: SettleParams): Promise<SettlementR
     // otherwise reconstructing them means rebuilding the whole transaction.
     throw new OfferError(
       `settlement was rejected on submission (fee ${fee}, DUST provisioned ${dustSurplus}, ` +
-        `ledger-default fee estimate ${ledgerDefaultFee}, merged vector ${showVector(mergedBalanceVector)}, ` +
+        `ledger-default fee estimate ${ledgerDefaultFee}, ` +
+        `with-margin(1) ${ledgerFeeWithMarginOf(merged, 1)}, ` +
+        `with-margin(5) ${ledgerFeeWithMarginOf(merged, 5)}, ` +
+        `merged vector ${showVector(mergedBalanceVector)}, ` +
         `${merged.serialize().length} bytes)\n  structure: ${describeIntents(merged)}\n  ` +
         `${(err as Error).message}`,
     );
@@ -481,6 +484,17 @@ export function describeIntents(
 function ledgerDefaultFeeOf(tx: ledger.FinalizedTransaction): bigint {
   try {
     return tx.fees(ledger.LedgerParameters.initialParameters());
+  } catch {
+    return 0n;
+  }
+}
+
+/** `tx.feesWithMargin` under ledger DEFAULT parameters, at the wallet's configured
+ *  `feeBlocksMargin`. Reported alongside a rejection because the node appears to want headroom over
+ *  the bare fee, and this is the only figure that expresses how much. `margin` is an EXPONENT. */
+function ledgerFeeWithMarginOf(tx: ledger.FinalizedTransaction, margin: number): bigint {
+  try {
+    return tx.feesWithMargin(ledger.LedgerParameters.initialParameters(), margin);
   } catch {
     return 0n;
   }

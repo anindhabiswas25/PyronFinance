@@ -14,4 +14,5 @@ export * from './quotes.js';
 export * from './reveal-channel.js';
 export * from './fraud.js';
 export * from './offers.js';
+export * from './test-token.js';
 export * from './indexer.js';
