@@ -257,7 +257,7 @@ Everything on-chain goes through `packages/sdk`; the dealer node holds no bespok
 
 ```bash
 pnpm --filter dealer-node gen-key         # writes ./secrets/dealer.key (0600)
-docker run -p 6300:6300 midnightnetwork/proof-server   # local proving
+docker run -p 6300:6300 midnightntwrk/proof-server:8.1.0 midnight-proof-server -v   # local proving
 # fund the wallet from https://faucet.preprod.midnight.network
 cp dealer.example.toml dealer.toml        # set contract address + mid_price
 pnpm --filter dealer-node bond --amount 10000
