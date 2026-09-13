@@ -83,8 +83,10 @@ export interface QuoteIntent {
   notional: string;
   offerFile: string;
   offerExpiresAt: number;
-  /** Unshielded inputs the offer spends ("intentHash:outputNo"). After a restart the wallet's coin
-   *  booking is gone, so these must be kept away from new transactions until the quote is terminal. */
+  /** Unshielded inputs the offer spends ("intentHash:outputNo"). Kept so recovery can report them.
+   *  ~~After a restart the wallet's coin booking is gone~~ — corrected 2026-09-14: the wallet snapshot
+   *  KEEPS bookings across restarts (pendingUtxos is serialised; nothing expires it). The real hazard is
+   *  the reverse: a dead offer's coins stay booked forever unless reverted — see bin.ts unbookDeadOffers. */
   offerInputs: string[];
   takerEncPk: string;
   revealVia: 'direct' | 'mailbox';
