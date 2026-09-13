@@ -184,8 +184,11 @@ await commitQuote(contract, sealed);
 const quoteId = deriveQuoteId(dealerCmt, sealed.rfqId, sealed.commitment);
 console.log(`  quoteId ${hex(quoteId)}`);
 
-// Snapshot the dealer AFTER bond + commit, BEFORE settlement, so the delta isolates the trade.
-await dealerWallet.waitForSync();
+// Snapshot the dealer's balances AFTER bond + commit, BEFORE settlement, so the delta isolates the trade.
+// facade.waitForSyncedState(), NOT wallet.waitForSync(): the latter SAVES a wallet snapshot, and a
+// snapshot taken while the offer is booked keeps its coins pending in every later process if this run
+// dies before settling. That is exactly how two crashed A2 runs leaked the main wallet's TESTUSD.
+await dealerWallet.facade.waitForSyncedState();
 const dealerBefore = await balances(dealerWallet);
 const takerBefore = await balances(takerWallet);
 

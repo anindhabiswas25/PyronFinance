@@ -33,7 +33,9 @@
     "e2e-settle-2wallet": "tsx --env-file=.env scripts/e2e-settle-2wallet.ts",
     "e2e-rfq-2dealers": "tsx --env-file=.env scripts/e2e-rfq-2dealers.ts",
     "consolidate": "tsx --env-file=.env scripts/consolidate.ts",
-    "taker-pinger": "tsx --env-file=.env scripts/taker-pinger.ts"
+    "taker-pinger": "tsx --env-file=.env scripts/taker-pinger.ts",
+    "wallet-coins": "tsx --env-file=.env scripts/wallet-coins.ts",
+    "reset-unshielded-state": "tsx --env-file=.env scripts/reset-unshielded-state.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -174,10 +174,27 @@ on startup:
 | any live | resolved by someone else | close; check the bond (a slash halts quoting) |
 | expired | — | release after the grace period |
 
-**Hostage inputs.** `initSwap` books an offer's coins only in the wallet's in-memory state, which a
-restart discards. The journal stores every offer's input refs, and recovery returns the set of inputs
-backing still-settleable offers; the node must keep those coins out of new transactions until the
-quotes are terminal, or it double-spends its own live quote.
+**Booked coins survive restarts — and leak.** ~~`initSwap` books an offer's coins only in the wallet's
+in-memory state, which a restart discards.~~ **WRONG, corrected 2026-09-14** from
+`wallet-sdk-unshielded-wallet` source and confirmed on the live Preprod wallet: building a transaction
+moves its inputs into `pendingUtxos`; `Serialization.js` writes that set into the wallet snapshot;
+sync removes a pending coin only once the chain shows it **spent**; nothing expires a booking. The
+probe (`pnpm run wallet-coins`) showed the main wallet's only two TESTUSD coins PENDING in a fresh
+process, booked by dealer halves of two crashed runs that never settled.
+
+So the risk is the opposite of the one first written here. A restart does **not** expose live offers'
+coins to new transactions (they stay booked, which is safe); it **strands** the coins of offers that
+will never settle (they stay booked forever). The node therefore:
+- keeps every offer's bytes in the journal, and on startup calls `facade.revertTransaction(offer)` for
+  each offer that can no longer settle (quote terminal or abandoned, or the Offer File expired). That
+  rolls back exactly that transaction's own inputs, with no recipe needed;
+- still returns recovery's **hostage inputs** — the conservative guard, harmless now that it is known
+  the wallet also keeps them booked;
+- never calls a snapshot-saving `wallet.waitForSync()` while an offer is booked in a script that may
+  die; `facade.waitForSyncedState()` syncs without saving.
+
+When the bytes are gone (a crashed script), `pnpm run reset-unshielded-state` discards only the
+unshielded part of the snapshot, so its coins are re-derived from the chain.
 
 ---
 

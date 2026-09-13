@@ -27,6 +27,8 @@ import { indexerChainReader } from '../../sdk/src/relay-client.js';
 import { usdmFor } from '../../sdk/src/assets.js';
 import { listCoins, consolidateSmallest, registerNewNight } from '../../sdk/src/inventory.js';
 import { queryLedgerParameters } from '../../sdk/src/indexer.js';
+import { deserializeOffer } from '../../sdk/src/offers.js';
+import { TERMINAL } from './journal.js';
 import type { ChainConfig } from '../../sdk/src/config.js';
 
 const NIGHT = ledger.nativeToken().raw;
@@ -196,6 +198,7 @@ async function cmdStart(cfg: DealerConfig): Promise<void> {
   await new Promise((r) => setTimeout(r, 15_000));
   const { actions, hostageInputs } = await recover(journal, chain);
   log(`[recover] ${actions.length} action(s); ${hostageInputs.length} hostage input(s): ${actions.map((a) => `${a.action}:${a.quoteId.slice(0, 8)}`).join(' ')}`);
+  await unbookDeadOffers(wallet, journal);
   await engine.resume(actions);
 
   relays.connect();
@@ -235,6 +238,30 @@ async function cmdStart(cfg: DealerConfig): Promise<void> {
       journal.close();
       process.exit(0);
     });
+  }
+}
+
+/** A wallet snapshot KEEPS booked coins across restarts (DEALER-NODE.md §3.1, corrected 2026-09-14):
+ *  building an offer moves its inputs to `pendingUtxos`, the snapshot serialises that set, and sync only
+ *  clears a coin once it is spent. An offer that can no longer settle therefore leaks its coins forever
+ *  unless reverted. The journal holds every offer's bytes, and `revertTransaction` needs nothing else:
+ *  it rolls back the transaction's own inputs. Live offers are left booked. */
+async function unbookDeadOffers(wallet: HeadlessWallet, journal: QuoteJournal): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  let n = 0;
+  for (const rec of journal.all()) {
+    const dead = TERMINAL.has(rec.state) || rec.state === 'expired' ? now >= rec.offerExpiresAt || rec.state === 'abandoned' : false;
+    if (!dead || rec.state === 'recorded') continue; // a recorded settlement spent its inputs already
+    try {
+      await wallet.facade.revertTransaction(deserializeOffer(rec.offerFile));
+      n++;
+    } catch (err) {
+      log(`[unbook] ${rec.quoteId.slice(0, 8)}: ${(err as Error).message}`);
+    }
+  }
+  if (n) {
+    log(`[unbook] released coins booked by ${n} dead offer(s)`);
+    await wallet.saveState();
   }
 }
 

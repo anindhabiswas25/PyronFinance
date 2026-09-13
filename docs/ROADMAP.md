@@ -452,6 +452,18 @@ message, and the code sits in nested fields (the same trap `probe-fee-calc` had 
 Fixed: `nodeErrorCode()` now digs it out of every rejection. It is very likely 168, but that is inferred,
 not observed, so it is not recorded as 168.
 
+**Booked coins persist across restarts and leak — found when A2 attempt 3 (roles swapped) found the
+main wallet with 0 TESTUSD.** `pnpm run wallet-coins` listed its two TESTUSD coins (41440 and 999958560)
+as **PENDING** in a fresh process, both unspent on-chain. Read from `wallet-sdk-unshielded-wallet`:
+building a transaction moves inputs to `pendingUtxos`; `Serialization.js` writes that set into the
+snapshot; `UnshieldedState.applyUpdate` clears a pending coin only when the chain shows it spent; there
+is no TTL expiry. The A2 script had called `wallet.waitForSync()` — which **saves** a snapshot — while its
+offer was booked, then died at settlement, twice. **Correction recorded in place:** `DEALER-NODE.md`
+§3.1 and `journal.ts` had said a restart *loses* bookings; the opposite is true. Fixes: the dealer node
+reverts dead offers from their journaled bytes on startup (`facade.revertTransaction`); the A2 script
+syncs without saving while an offer is booked; `reset-unshielded-state` recovers a wallet whose leaked
+offers' bytes are gone.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
