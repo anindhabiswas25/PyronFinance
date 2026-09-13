@@ -109,6 +109,12 @@ export class QuotingEngine {
     return this.halted;
   }
 
+  /** Inputs held by offers that were handed to quotes and may still settle. The consolidation keeper
+   *  must never merge these: spending one invalidates a live quote. */
+  bookedInputs(): string[] {
+    return [...this.taken.values()].flatMap((e) => e.offer.inputs);
+  }
+
   private emit(e: QuotingEvent): void {
     this.o.onEvent?.(e);
   }

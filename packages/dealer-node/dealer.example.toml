@@ -39,12 +39,13 @@ min_utxos      = 2
 min_utxo_value = "1"
 
 [pool]
-dismiss_headroom  = 0.3                      # refuse halves using more than 70% of the time-to-dismiss allowance
+max_offer_inputs  = 1                        # refuse offer halves spending more coins: only 1-in/1-in settlements have been accepted
 consolidate_above = 8                        # merge small UTXOs when the wallet holds more than this many
 
 # One block per pair. Adding a pair is config, not code.
 [[quote_policy]]
 pair            = "tNIGHT/TESTUSD"           # Preprod stand-in; "tNIGHT/USDM" on Preview/Mainnet
+counter_token   = "53139e6d7da2e5e87d4cbfddb566d03618d6b9405b01b3b66822ee6ffb02eafc"  # Preprod TESTUSD (deployments/preprod-test-token.json)
 enabled         = true
 mid_source      = "manual"                   # manual | external | script (DEALER-NODE.md §4)
 mid_price       = "41.44"
