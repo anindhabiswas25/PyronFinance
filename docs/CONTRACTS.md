@@ -12,6 +12,14 @@ needs to be *trustless* lives here; everything else is deliberately off-chain pe
 | Slashed-funds destination | **Split: majority to the wronged taker, remainder burned** — exact fractions below |
 | Disclosure scope at M3 | **Single named recipient key only**; richer policies deferred but the field is reserved now |
 | First pair | **tNIGHT/USDM**, encoded generically so more pairs are config, not a migration |
+| **Class B** | **Removed (2026-09-14).** No `openSettlementChallenge`, `submitFraudProofTimeout`, `Challenge` ledger, `openChallenges`, challenge bonds or `CHALLENGE_WINDOW`. `recordSettlement(quoteId)` takes no other parameter. 9 circuits. See `ROADMAP.md` "Research: what Class B is still for" |
+
+> **Reading this spec after 2026-09-14.** Every Class B element below — the `Challenge` struct,
+> §5.2's `openSettlementChallenge` and challenge-answering `recordSettlement`, §5.3's
+> `submitFraudProofTimeout`, `CHALLENGE_WINDOW` in §2 and §6, and all of §7a — **describes the
+> removed design** and is kept for the record. The implemented contract is
+> `contracts/src/OTCProtocol.compact`. With `CHALLENGE_WINDOW` gone, the §6 inequality is
+> `BOND_WITHDRAW_DELAY (86400) > MAX_QUOTE_VALIDITY (900) + PROOF_GRACE_PERIOD (3600) = 4500`.
 
 ---
 

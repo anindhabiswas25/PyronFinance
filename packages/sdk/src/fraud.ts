@@ -1,7 +1,9 @@
-// Fraud-proof construction — docs/CONTRACTS.md §5.3. Both circuits are callable by anyone; no
-// caller authentication anywhere. Security comes from the asserts, not from who submits.
+// Fraud-proof construction and quote-resolution calls — docs/CONTRACTS.md §5.2–5.3. No caller
+// authentication anywhere. Security comes from the asserts, not from who submits.
+//
+// Class B (openSettlementChallenge / submitFraudProofTimeout) was REMOVED on 2026-09-14 — see
+// docs/ROADMAP.md "Research: what Class B is still for". Class A below is the only slashing path.
 
-import { deriveChallengeId } from './domain.js';
 import type { QuoteReveal } from './quotes.js';
 import type { DeployedOTCContract } from './types.js';
 
@@ -23,41 +25,10 @@ export async function submitFraudProofMismatch(
   );
 }
 
-export function challengeIdFor(quoteId: Uint8Array, takerAddr: Uint8Array): Uint8Array {
-  return deriveChallengeId(quoteId, takerAddr);
-}
-
-export async function openSettlementChallenge(
-  contract: DeployedOTCContract,
-  quoteId: Uint8Array,
-  bondAmount: bigint,
-  now: bigint = BigInt(Math.floor(Date.now() / 1000)),
-) {
-  return contract.callTx.openSettlementChallenge(quoteId, bondAmount, now);
-}
-
-/** CLASS B — failure to honor a live quote, proven by an unanswered settlement challenge.
- *  Callable by anyone once the challenge's response window has closed. */
-export async function submitFraudProofTimeout(contract: DeployedOTCContract, challengeId: Uint8Array) {
-  return contract.callTx.submitFraudProofTimeout(challengeId);
-}
-
-/** Records a settled trade, optionally answering an open challenge.
- *
- *  `recipient` is the dealer's unshielded wallet address, used to refund the taker's challenge
- *  bond when `challengeId` is supplied. It must be a real address: the dealer commitment is an
- *  identity hash, not an address, and refunding to it would burn the bond.
- */
-export async function recordSettlement(
-  contract: DeployedOTCContract,
-  quoteId: Uint8Array,
-  recipient: Uint8Array,
-  challengeId?: Uint8Array,
-) {
-  const challengeIdParam = challengeId
-    ? { is_some: true, value: challengeId }
-    : { is_some: false, value: new Uint8Array(32) };
-  return contract.callTx.recordSettlement(quoteId, challengeIdParam, recipient);
+/** Records a settled trade: resolves the quote, bumps the dealer's settled counter and frees the
+ *  live-quote slot. Dealer-attested — the contract cannot see the Zswap settlement (§5.2). */
+export async function recordSettlement(contract: DeployedOTCContract, quoteId: Uint8Array) {
+  return contract.callTx.recordSettlement(quoteId);
 }
 
 /** Releases a quote that expired unsettled, freeing the dealer's live-quote slot.

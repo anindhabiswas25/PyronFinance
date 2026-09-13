@@ -110,16 +110,29 @@ the dealer's key*, a taker holding a signed reveal whose hash differs from the o
 holds a self-contained, non-repudiable proof of fraud. Anyone can submit it. The circuit verifies the
 signature and the hash inequality and slashes. No interpretation, no arbitration, no trust.
 
-**Class B — Failure to honor a live quote (not directly observable on-chain).**
+**~~Class B — Failure to honor a live quote (not directly observable on-chain).~~ REMOVED 2026-09-14.**
 
-> ⚠️ **This section's premise is narrower than it was written to be — see `docs/ROADMAP.md`'s
-> "the taker CAN settle unilaterally" finding (2026-09-12, demonstrated on-chain).** A dealer's
-> pre-proved, bound Offer File is settleable by the taker alone, so a dealer holding a live quote
-> **cannot** "simply go silent": there is nothing left for them to do. The residual failure is
-> narrower and different in kind — the dealer **spent that inventory elsewhere first**, so the
-> offer's inputs are already consumed and settlement fails immediately rather than after a timeout.
-> How much of the challenge apparatus below survives that is an **open decision**, tracked in
-> `ROADMAP.md`. The text below is left intact pending that decision — do not treat it as settled.
+> 🛑 **Owner decision, 2026-09-14: Class B is removed from the protocol.** `openSettlementChallenge`,
+> `submitFraudProofTimeout`, challenge bonds and the dealer node's challenge loop no longer exist.
+> Why, in short (full research in `ROADMAP.md`, "Research: what Class B is still for"):
+>
+> 1. A taker holding the dealer's pre-proved, bound Offer File **settles alone** (demonstrated
+>    on-chain), so a dealer cannot "go silent" — there is nothing left for them to do.
+> 2. The residual failure — the dealer **spends the offer's inputs elsewhere first** — was never
+>    punishable by the challenge: `recordSettlement` answered a challenge with no proof that any
+>    settlement happened, because the contract cannot see Zswap.
+> 3. The challenge could still slash an **honest** dealer who missed a 600 s window during a chain
+>    stall (Preprod has stalled for 10+ minutes).
+>
+> **What replaces it.** The taker settles immediately on a verified reveal and checks the offer's
+> inputs are unspent first. If a settlement fails because the dealer spent those inputs, the taker
+> can publish the dealer-signed reveal and Offer File; anyone can verify the signature under the
+> on-chain `quotePk` and check on the indexer that the inputs were spent by another transaction
+> before `validUntil`. That is **publicly verifiable, attributable evidence feeding reputation —
+> not a slash.** It is weaker than slashing, and `GRANT.md` says so. Class A is unaffected.
+>
+> The original Class B design is kept below, struck through in intent, as a record of what was built
+> and why it did not survive.
 
 A dealer who simply goes silent when a taker tries to settle produces *no* on-chain evidence. The
 chain cannot observe an off-chain omission. This is the honest difficulty at the center of the

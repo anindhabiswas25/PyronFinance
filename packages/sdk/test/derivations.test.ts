@@ -9,7 +9,16 @@
 // through a real circuit. This file pins the functions themselves.
 
 import { describe, expect, it } from 'vitest';
-import { dealerCommitment, deriveQuoteId, deriveChallengeId } from '../src/domain.js';
+import { dealerCommitment, deriveQuoteId } from '../src/domain.js';
+import { persistentHash, CompactTypeBytes, CompactTypeVector } from '@midnight-ntwrk/compact-runtime';
+
+/** A two-input hash under a DIFFERENT domain, standing in for any other derivation. The Class B
+ *  challenge id used to fill this role; it was removed with Class B on 2026-09-14. */
+function otherDomain(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const tag = new Uint8Array(32);
+  tag.set(new TextEncoder().encode('otc:other:v1'));
+  return persistentHash(new CompactTypeVector(3, new CompactTypeBytes(32)), [tag, a, b]);
+}
 import { encodeTerms, PAIR_CODES, PRICE_DECIMALS, type QuoteTerms } from '../src/terms.js';
 
 const A = new Uint8Array(32).fill(1);
@@ -20,7 +29,6 @@ describe('domain separation', () => {
   it('produces 32-byte outputs', () => {
     expect(dealerCommitment(A)).toHaveLength(32);
     expect(deriveQuoteId(A, B, C)).toHaveLength(32);
-    expect(deriveChallengeId(A, B)).toHaveLength(32);
   });
 
   it('is deterministic', () => {
@@ -31,9 +39,8 @@ describe('domain separation', () => {
   it('separates domains — the same inputs never collide across derivations', () => {
     // Distinct pad(32, "otc:...:v1") prefixes are what stop a value valid in one context from
     // being replayed in another.
-    const asCommitment = dealerCommitment(A);
-    const asChallenge = deriveChallengeId(A, A);
-    expect(Buffer.from(asCommitment)).not.toEqual(Buffer.from(asChallenge));
+    expect(Buffer.from(dealerCommitment(A))).not.toEqual(Buffer.from(otherDomain(A, A)));
+    expect(Buffer.from(deriveQuoteId(A, A, A))).not.toEqual(Buffer.from(otherDomain(A, A)));
   });
 
   it('is sensitive to every input position', () => {
@@ -44,7 +51,7 @@ describe('domain separation', () => {
   });
 
   it('does not confuse argument order', () => {
-    expect(Buffer.from(deriveChallengeId(A, B))).not.toEqual(Buffer.from(deriveChallengeId(B, A)));
+    expect(Buffer.from(deriveQuoteId(A, B, C))).not.toEqual(Buffer.from(deriveQuoteId(B, A, C)));
   });
 });
 

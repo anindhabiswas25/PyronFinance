@@ -19,37 +19,32 @@ pure circuit SLASH_PROVER_BPS(): Uint<16> { return 1000; }
 pure circuit BPS_DENOMINATOR(): Uint<16> { return 10000; }
 
 // Timing (seconds).
-// Inequality: BOND_WITHDRAW_DELAY > MAX_QUOTE_VALIDITY + CHALLENGE_WINDOW + PROOF_GRACE_PERIOD
-//             86400 > 900 + 600 + 3600 = 5100  ✓ (large margin, deliberate — see CONTRACTS.md §6)
+// Inequality: BOND_WITHDRAW_DELAY > MAX_QUOTE_VALIDITY + PROOF_GRACE_PERIOD
+//             86400 > 900 + 3600 = 4500  ✓ (large margin, deliberate — see CONTRACTS.md §6)
 //
 // PROOF_GRACE_PERIOD is load-bearing, not decorative: releaseExpiredQuote is gated on
 // validUntil + PROOF_GRACE_PERIOD so a dealer cannot release their own expired quote and
 // thereby dodge a Class-A fraud proof (submitFraudProofMismatch asserts !q.resolved).
-// It also exceeds CHALLENGE_WINDOW, which guarantees any Class-B timeout proof can land
-// before release becomes possible. Do not shrink it below CHALLENGE_WINDOW.
 pure circuit MAX_QUOTE_VALIDITY(): Uint<64> { return 900; }
-pure circuit CHALLENGE_WINDOW(): Uint<64> { return 600; }
 pure circuit PROOF_GRACE_PERIOD(): Uint<64> { return 3600; }
 pure circuit BOND_WITHDRAW_DELAY(): Uint<64> { return 86400; }
 pure circuit TIME_SLACK(): Uint<64> { return 300; }
 
-// Bond sizing — docs/CONTRACTS.md §7 and §7a (decided 2026-09-12, implemented M2 task 2.9).
+// Bond sizing — docs/CONTRACTS.md §7 (decided 2026-09-12, implemented M2 task 2.9).
 //
-// §7: per-quote notional cap. commitQuote rejects any quote whose notional exceeds
+// Per-quote notional cap. commitQuote rejects any quote whose notional exceeds
 // bond * NOTIONAL_CAP_K, i.e. a dealer must bond at least 5% of what they quote. There is
 // deliberately NO flat MIN_BOND floor: the cap subsumes it (a zero bond can quote nothing).
 // Notional is denominated in the bond asset (tNIGHT base units), so no oracle is needed.
 pure circuit NOTIONAL_CAP_K(): Uint<8> { return 20; }
-//
-// §7a: challenge bond = max(CHALLENGE_BOND_FLOOR, 2% of notional). The 2% is checked without
-// division as bondAmount * CHALLENGE_BOND_DENOM >= notional * CHALLENGE_BOND_PCT, which rounds
-// in the dealer's favour (the taker must post at least the exact 2%, never a rounded-down one).
-pure circuit CHALLENGE_BOND_PCT(): Uint<8> { return 2; }
-pure circuit CHALLENGE_BOND_DENOM(): Uint<8> { return 100; }
-// OPEN VALUE, NOT A DECISION: the floor's *existence* is decided (§7a); its *amount* is not, and
-// is explicitly deferred to M4 task 4.1 against real-value NIGHT. 1 base unit makes the floor
-// inert on testnet so the scaling rule is what the tests exercise. Do not ship this to Mainnet.
-pure circuit CHALLENGE_BOND_FLOOR(): Uint<128> { return 1; }
+
+// CLASS B REMOVED (owner decision 2026-09-14, docs/ROADMAP.md "Research: what Class B is still for").
+// openSettlementChallenge, submitFraudProofTimeout, the Challenge ledger and challenge bonds are gone.
+// Unilateral settlement (a taker holding a proved, bound Offer File settles alone) removed the "stall"
+// failure they were built for, and the remaining failure — a dealer spending the offer's inputs
+// elsewhere first — could not be punished by them: recordSettlement dismissed any challenge without
+// proof of settlement. They could, however, slash an honest dealer who missed a 600 s window during a
+// chain stall. Do not reintroduce a challenge path unless its response can prove a settlement.
 
 // ─────────────────────────────────────────────────────────────────────────
 // Ledger structs
@@ -60,7 +55,6 @@ export struct Bond {
   quotePk: JubjubPoint,       // dealer's quote-signing pubkey (verifies reveals)
   withdrawRequested: Uint<64>,// unix secs; 0 = no pending withdrawal
   liveQuotes: Uint<32>,       // unexpired commitments — blocks withdrawal while > 0
-  openChallenges: Uint<32>,   // unresolved challenges — blocks withdrawal while > 0
   active: Boolean,
 }
 
@@ -70,15 +64,7 @@ export struct Quote {
   validUntil: Uint<64>,
   rfqId: Bytes<32>,
   notional: Uint<128>,        // bond-asset base units; public — see CONTRACTS.md §7 for why that leaks nothing new
-  resolved: Boolean,          // settled or slashed; terminal
-}
-
-export struct Challenge {
-  quoteId: Bytes<32>,
-  takerAddr: Bytes<32>,       // payout target for compensation
-  bondAmount: Uint<128>,
-  respondBy: Uint<64>,
-  resolved: Boolean,
+  resolved: Boolean,          // settled, released or slashed; terminal
 }
 
 export struct NoteRef {
@@ -95,7 +81,6 @@ export ledger bonds: Map<Bytes<32>, Bond>;          // dealerCmt -> bond
 export ledger settled: Map<Bytes<32>, Counter>;      // dealerCmt -> settled trades
 export ledger slashed: Map<Bytes<32>, Counter>;      // dealerCmt -> times slashed
 export ledger quotes: Map<Bytes<32>, Quote>;         // quoteId -> commitment record
-export ledger challenges: Map<Bytes<32>, Challenge>; // challengeId -> challenge
 export ledger notes: Map<Bytes<32>, NoteRef>;        // tradeId -> disclosure note ref
 export ledger burnedTotal: Uint<128>;                // transparency only; never withdrawable
 
@@ -127,10 +112,6 @@ pure circuit deriveQuoteId(dealerCmt: Bytes<32>, rfqId: Bytes<32>, c: Bytes<32>)
   return persistentHash<Vector<4, Bytes<32>>>([pad(32, "otc:quote:v1"), dealerCmt, rfqId, c]);
 }
 
-pure circuit deriveChallengeId(quoteId: Bytes<32>, taker: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "otc:challenge:v1"), quoteId, taker]);
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // 5.1 Bonding — permissionless, no approval step exists anywhere
 // ─────────────────────────────────────────────────────────────────────────
@@ -147,7 +128,6 @@ export circuit postBond(amount: Uint<128>, quotePk: JubjubPoint): [] {
     quotePk: disclose(quotePk),
     withdrawRequested: 0,
     liveQuotes: 0,
-    openChallenges: 0,
     active: true,
   });
   settled.insertDefault(cmt);
@@ -186,7 +166,6 @@ export circuit withdrawBond(recipient: Bytes<32>): [] {
   const b = bonds.lookup(cmt);
   assert(b.withdrawRequested > 0, "No withdrawal requested");
   assert(blockTimeGte((b.withdrawRequested + BOND_WITHDRAW_DELAY()) as Uint<64>), "Timelock not elapsed");
-  assert(b.openChallenges == 0, "Unresolved challenges outstanding");
   assert(b.liveQuotes == 0, "Live quote commitments outstanding");
   sendUnshielded(default<Bytes<32>>, b.amount,
                  right<ContractAddress, UserAddress>(UserAddress { bytes: disclose(recipient) }));
@@ -242,52 +221,15 @@ export circuit commitQuote(
   bonds.insert(cmt, Bond { ...b, liveQuotes: (b.liveQuotes + 1) as Uint<32> });
 }
 
-// Taker converts an unobservable off-chain omission into an observable on-chain one.
-// `now` is caller-supplied and chain-validated — see requestBondWithdrawal above for why.
-export circuit openSettlementChallenge(quoteId: Bytes<32>, bondAmount: Uint<128>, now: Uint<64>): [] {
-  const qidPub = disclose(quoteId);
-  assert(quotes.member(qidPub), "Unknown quote");
-  const q = quotes.lookup(qidPub);
-  assert(!q.resolved, "Quote already resolved");
-  assert(!blockTimeGte(q.validUntil), "Quote expired — nothing to honor");
-  // max(floor, 2% of notional) — CONTRACTS.md §7a. Scaled so griefing a large quote costs
-  // proportionally, while a small taker is never priced out of enforcing their own trade.
-  const challengeBond = disclose(bondAmount);
-  assert(challengeBond >= CHALLENGE_BOND_FLOOR(), "Challenge bond below floor");
-  assert(challengeBond * CHALLENGE_BOND_DENOM() >= q.notional * CHALLENGE_BOND_PCT(),
-         "Challenge bond below 2% of notional");
-  receiveUnshielded(default<Bytes<32>>, disclose(bondAmount));
-  const claimedNow = disclose(now);
-  assert(blockTimeGte(claimedNow), "claimed time is in the future");
-  assert(!blockTimeGte((claimedNow + TIME_SLACK()) as Uint<64>), "claimed time too far in the past");
-  const taker = disclose(takerAddress());
-  const cid = deriveChallengeId(qidPub, taker);
-  assert(!challenges.member(cid), "Challenge already open for this taker");
-  challenges.insert(cid, Challenge {
-    quoteId: qidPub,
-    takerAddr: taker,
-    bondAmount: disclose(bondAmount),
-    respondBy: (claimedNow + CHALLENGE_WINDOW()) as Uint<64>,
-    resolved: false,
-  });
-  const dealerBond = bonds.lookup(q.dealerCmt);
-  bonds.insert(q.dealerCmt, Bond { ...dealerBond, openChallenges: (dealerBond.openChallenges + 1) as Uint<32> });
-}
-
-// Called by the dealer after Zswap settlement completes. Also answers any open challenge,
-// returning the challenge bond to the dealer — this is what prices griefing.
+// Called by the dealer after Zswap settlement completes.
 //
 // recordSettlement is dealer-attested, not Zswap-verified: the contract cannot inspect a
 // Zswap swap, so this is a known, accepted limitation (see docs/CONTRACTS.md §5.2). The
 // counter is a soft reputation signal; the bond is the hard guarantee.
 //
-// `recipient` is the dealer's unshielded wallet address for the challenge-bond refund. It must
-// be passed explicitly: the dealer *commitment* is persistentHash("otc:dealer:v1", sk), which is
-// an identity commitment and NOT an address — refunding to it would send funds to a key nobody
-// holds. withdrawBond takes an explicit recipient for exactly the same reason.
-export circuit recordSettlement(
-  quoteId: Bytes<32>, challengeId: Maybe<Bytes<32>>, recipient: Bytes<32>
-): [] {
+// CHANGED 2026-09-14 with the Class B removal: the `challengeId` and `recipient` parameters are
+// gone. `recipient` existed only to refund a challenge bond.
+export circuit recordSettlement(quoteId: Bytes<32>): [] {
   const cmt = disclose(dealerCommitment(dealerSecretKey()));
   const qidPub = disclose(quoteId);
   assert(quotes.member(qidPub), "Unknown quote");
@@ -295,29 +237,7 @@ export circuit recordSettlement(
   assert(q.dealerCmt == cmt, "Not your quote");
   assert(!q.resolved, "Already resolved");
   quotes.insert(qidPub, Quote { ...q, resolved: true });
-
-  const b = bonds.lookup(cmt);
-  const newLiveQuotes = (b.liveQuotes - 1) as Uint<32>;
-
-  if (disclose(challengeId.is_some)) {
-    const cid = disclose(challengeId.value);
-    assert(challenges.member(cid), "Unknown challenge");
-    const c = challenges.lookup(cid);
-    assert(c.quoteId == qidPub, "Challenge does not match this quote");
-    assert(!c.resolved, "Challenge already resolved");
-    challenges.insert(cid, Challenge { ...c, resolved: true });
-    // Challenge bond returns to the dealer — this is what prices griefing.
-    sendUnshielded(default<Bytes<32>>, c.bondAmount,
-                   right<ContractAddress, UserAddress>(UserAddress { bytes: disclose(recipient) }));
-    bonds.insert(cmt, Bond {
-      ...b,
-      liveQuotes: newLiveQuotes,
-      openChallenges: (b.openChallenges - 1) as Uint<32>,
-    });
-  } else {
-    bonds.insert(cmt, Bond { ...b, liveQuotes: newLiveQuotes });
-  }
-
+  releaseLiveQuote(cmt);
   settled.lookup(cmt).increment(1);
 }
 
@@ -333,10 +253,6 @@ export circuit recordSettlement(
 // !q.resolved, so releasing at expiry would let a fraudulent dealer resolve their own quote the
 // instant it expired and become immune to a Class-A proof. Waiting out the grace period closes
 // that escape hatch and is what makes PROOF_GRACE_PERIOD load-bearing.
-//
-// The Class-B path needs no extra guard here: a challenge can only be opened while the quote is
-// live, so respondBy <= validUntil + CHALLENGE_WINDOW (600) < validUntil + PROOF_GRACE_PERIOD
-// (3600). Any timeout proof therefore becomes submittable strictly before release is possible.
 export circuit releaseExpiredQuote(quoteId: Bytes<32>): [] {
   const qidPub = disclose(quoteId);
   assert(quotes.member(qidPub), "Unknown quote");
@@ -357,7 +273,7 @@ circuit releaseLiveQuote(dealerCmt: Bytes<32>): [] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 5.3 Fraud proofs — permissionless, callable by anyone
+// 5.3 Fraud proof — permissionless, callable by anyone
 // ─────────────────────────────────────────────────────────────────────────
 
 // CLASS A — commitment mismatch. Fully objective.
@@ -386,38 +302,6 @@ export circuit submitFraudProofMismatch(
   quotes.insert(qidPub, Quote { ...q, resolved: true });
   releaseLiveQuote(q.dealerCmt);
   slashBond(q.dealerCmt, disclose(beneficiary));
-}
-
-// CLASS B — failure to honor a live quote, proven by an unanswered challenge.
-export circuit submitFraudProofTimeout(challengeId: Bytes<32>): [] {
-  const cidPub = disclose(challengeId);
-  assert(challenges.member(cidPub), "Unknown challenge");
-  const c = challenges.lookup(cidPub);
-  assert(!c.resolved, "Challenge already resolved");
-  assert(blockTimeGte(c.respondBy), "Response window still open");
-  assert(quotes.member(c.quoteId), "Unknown quote");
-  const q = quotes.lookup(c.quoteId);
-  const dealerCmt = q.dealerCmt;
-
-  // Challenge bond returns to the taker; they were in the right.
-  sendUnshielded(default<Bytes<32>>, c.bondAmount, right<ContractAddress, UserAddress>(UserAddress { bytes: c.takerAddr }));
-  challenges.insert(cidPub, Challenge { ...c, resolved: true });
-  closeChallenge(dealerCmt);
-  // The quote may already have been resolved by releaseExpiredQuote if nobody proved the
-  // timeout before the grace period elapsed. The challenge record is authoritative here — an
-  // unanswered challenge is still a slash — but the live-quote slot must only be released once.
-  if (!q.resolved) {
-    quotes.insert(c.quoteId, Quote { ...q, resolved: true });
-    releaseLiveQuote(dealerCmt);
-  }
-  slashBond(dealerCmt, c.takerAddr);
-}
-
-// Decrements a dealer's open-challenge count, guarding against underflow.
-circuit closeChallenge(dealerCmt: Bytes<32>): [] {
-  const b = bonds.lookup(dealerCmt);
-  assert(b.openChallenges > 0, "openChallenges underflow");
-  bonds.insert(dealerCmt, Bond { ...b, openChallenges: (b.openChallenges - 1) as Uint<32> });
 }
 
 // Slash arithmetic computes the burn share as a remainder so integer-division
@@ -458,6 +342,8 @@ export circuit attachDisclosureNote(
   // "A disclosure note is provably tied to one specific settled trade." Without these two
   // assertions a note can be attached to arbitrary bytes, and that sentence — which
   // docs/DISCLOSURE.md advertises and its verification flow depends on — is simply false.
+  // OPEN (docs/ROADMAP.md): `resolved` is also set by releaseExpiredQuote and by a slash, so this
+  // proves "tied to one resolved quote", which is weaker than "settled".
   assert(quotes.member(tid), "Unknown trade");
   assert(quotes.lookup(tid).resolved, "Trade not settled");
   assert(!notes.member(tid), "Note already attached");

@@ -10,10 +10,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, taker, prover, bytes32, T0,
-  CHALLENGE_WINDOW, DEALER_SK, TAKER_ADDR, PROVER_ADDR, QUOTE_SK, QUOTE_PK,
+  DEALER_SK, TAKER_ADDR, PROVER_ADDR, QUOTE_SK, QUOTE_PK,
   SLASH_TAKER_BPS, SLASH_PROVER_BPS, NOTIONAL
 } from './harness.js';
-import { deriveQuoteId, deriveChallengeId } from '../../packages/sdk/src/domain.js';
+import { deriveQuoteId } from '../../packages/sdk/src/domain.js';
 import { sealQuote } from '../../packages/sdk/src/quotes.js';
 import { encodeTerms, type QuoteTerms } from '../../packages/sdk/src/terms.js';
 import { schnorrSign, schnorrPublicKey, freshNonce } from '../../packages/sdk/src/schnorr.js';
@@ -135,65 +135,24 @@ describe('submitFraudProofMismatch — Class A (M1 definition of done)', () => {
   });
 });
 
-describe('submitFraudProofTimeout — Class B', () => {
-  function challenged() {
+// Class B (submitFraudProofTimeout) was removed 2026-09-14; its tests went with it. See
+// contracts/test/settlement.test.ts "Class B is removed" for the pin.
+
+describe('a settled quote is immune to a fraud proof', () => {
+  it('rejects a mismatch proof against a quote the dealer already settled', () => {
     const sim = new OTCSim();
     const cmt = bondDealer(sim, BOND);
     const commitment = bytes32(2);
     sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, commitment, BigInt(T0 + 600), NOTIONAL);
     const quoteId = deriveQuoteId(cmt, RFQ, commitment);
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
-    return { sim, cmt, quoteId, challengeId: deriveChallengeId(quoteId, TAKER_ADDR) };
-  }
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId);
 
-  it('rejects the proof while the dealer still has time to respond', () => {
-    const { sim, challengeId } = challenged();
-    sim.advanceTo(T0 + CHALLENGE_WINDOW - 1);
-    const msg = sim.expectRevert(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-    expect(msg).toMatch(/Response window still open/);
-  });
-
-  it('slashes once the response window closes unanswered', () => {
-    const { sim, cmt, quoteId, challengeId } = challenged();
-    sim.advanceTo(T0 + CHALLENGE_WINDOW);
-
-    sim.call(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-
-    expect(sim.ledger.bonds.lookup(cmt).amount).toBe(0n);
-    expect(sim.ledger.slashed.lookup(cmt).read()).toBe(1n);
-    expect(sim.ledger.challenges.lookup(challengeId).resolved).toBe(true);
-    expect(sim.ledger.quotes.lookup(quoteId).resolved).toBe(true);
-  });
-
-  it('clears both obligation counters when it slashes', () => {
-    const { sim, cmt, challengeId } = challenged();
-    sim.advanceTo(T0 + CHALLENGE_WINDOW);
-    sim.call(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-
-    const bond = sim.ledger.bonds.lookup(cmt);
-    expect(bond.openChallenges).toBe(0n);
-    expect(bond.liveQuotes).toBe(0n);
-  });
-
-  it('rejects a repeat proof on an already-resolved challenge', () => {
-    const { sim, challengeId } = challenged();
-    sim.advanceTo(T0 + CHALLENGE_WINDOW);
-    sim.call(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-    const msg = sim.expectRevert(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-    expect(msg).toMatch(/already resolved/i);
-  });
-
-  it('a dealer who settles in time cannot then be slashed', () => {
-    const { sim, cmt, quoteId, challengeId } = challenged();
-    sim.advanceTo(T0 + 100);
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: challengeId }, bytes32(0xab));
-
-    sim.advanceTo(T0 + CHALLENGE_WINDOW + 1);
-    const msg = sim.expectRevert(prover(PROVER_ADDR), 'submitFraudProofTimeout', challengeId);
-
+    const fraudTerms = encodeTerms(FRAUD_TERMS);
+    const sig = schnorrSign(fraudTerms, QUOTE_SK, freshNonce());
+    const msg = sim.expectRevert(prover(PROVER_ADDR), 'submitFraudProofMismatch',
+      quoteId, fraudTerms, bytes32(3), sig, TAKER_ADDR);
     expect(msg).toMatch(/already resolved/i);
     expect(sim.ledger.bonds.lookup(cmt).amount).toBe(BOND);
-    expect(sim.ledger.slashed.lookup(cmt).read()).toBe(0n);
   });
 });
 

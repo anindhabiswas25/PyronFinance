@@ -71,6 +71,9 @@ initNetworkId(chain.network);
 
 const deploymentFile = path.resolve(import.meta.dirname, `../deployments/${chain.network}.json`);
 const { address: contractAddress } = JSON.parse(fs.readFileSync(deploymentFile, 'utf-8'));
+// A lifecycle begun on a different deployment is moved aside below, NOT resumed: prover keys come from
+// contracts/managed/, which always matches the CURRENT contract, so proofs for an older deployment's
+// circuits fail once the contract is recompiled (learned 2026-09-14, the Class B removal).
 const stateFile = path.join(walletStateDir(), `lifecycle-${chain.network}.json`);
 
 function save(s: LifecycleState): void {

@@ -662,13 +662,14 @@ DUST-generation/registration process.
 | **`commitQuote` may see quote size** | Yes. Not a new leak: RFQ gossip already publishes `size` and `rfqId` is already on-chain, so size is already derivable. Price stays sealed | `CONTRACTS.md` §7 |
 | **`MIN_CHALLENGE_BOND`** | `max(floor, 2% of notional)`. Corrects `FRONTEND.md`'s 25%-of-notional example | `CONTRACTS.md` §7a |
 | **Taker CAN settle unilaterally from a pre-proved Offer File** | **Yes — demonstrated on-chain.** See the finding below; it changes what Class B is *for* | `ROADMAP.md` (this file), `offers.ts` |
+| **Class B** | **Removed (owner, 2026-09-14)** after the research below. Contract is 9 circuits; `recordSettlement(quoteId)`; no challenge bonds; task 3.5 and `DEALER-NODE.md` §6 dropped. Residual risk (dealer spends the offer's inputs first) is handled by immediate settlement, an input pre-check and publicly verifiable failure evidence, and disclosed in `GRANT.md` risk 3 | `OTCProtocol.compact`, `ARCHITECTURE.md`, `GRANT.md` |
 
 ## Decisions still open
 
 | Question | Needed by | Notes |
 |---|---|---|
 | Binding `recordSettlement` to a Zswap tx hash | Post-M4 | Closes the self-attested settled-counter gap (`CONTRACTS.md` §5.2) |
-| **What Class B is still for, given unilateral settlement works** | M2/M3 | **The underlying question is ANSWERED — see the finding below.** What is now open is the consequence: how much of `openSettlementChallenge` / `submitFraudProofTimeout` / challenge bonds / `DEALER-NODE.md` §6 survives, and whether the remaining failure mode ("dealer spent that inventory elsewhere first") is better handled by challenges or by something cheaper. **Not decided here** — it touches `ARCHITECTURE.md`, `CONTRACTS.md` and `DEALER-NODE.md`, and is the owner's call. Surfaced 2026-09-12 |
+| ~~**What Class B is still for, given unilateral settlement works**~~ **DECIDED 2026-09-14: removed** (see "Decisions made") | M2/M3 | **The underlying question is ANSWERED — see the finding below.** What is now open is the consequence: how much of `openSettlementChallenge` / `submitFraudProofTimeout` / challenge bonds / `DEALER-NODE.md` §6 survives, and whether the remaining failure mode ("dealer spent that inventory elsewhere first") is better handled by challenges or by something cheaper. **Not decided here** — it touches `ARCHITECTURE.md`, `CONTRACTS.md` and `DEALER-NODE.md`, and is the owner's call. Surfaced 2026-09-12 |
 | ~~Second asset for a genuine two-token settlement~~ | — | **Closed 2026-09-13.** Option (b) was taken (`TestToken.compact`), and a two-asset settlement has now landed on-chain (S5). Real USDM on Preview remains untested because the wallet holds none; bridging it needs a human |
 | **Should an under-declared `notional` be slashable?** | M3 | `commitQuote` cannot tie the declared notional to the hidden sealed size. It is caught client-side today (`verifyReveal`, `verifyQuoteRef`). A signed reveal that opens the commitment but whose size ≠ on-chain notional is objectively provable, so `submitFraudProofMismatch` *could* slash it. That changes the slashing rule. **Surfaced 2026-09-13, not decided** (`CONTRACTS.md` §7) |
 | **Challenge-bond floor amount** | M4 (4.1) | The formula `max(floor, 2%)` is implemented; the floor is 1 base unit (inert) on testnet. Also depends on the Class-B decision above |
@@ -718,6 +719,69 @@ Two honest caveats on the demonstration: it ran with one wallet playing both rol
 one-asset offer. Neither affects the mechanism above — the balancing draws on the caller's own coins
 and signs only the caller's own half either way — but neither has been run with two distinct wallets
 or two distinct assets. See task 2.6's limits.
+
+---
+
+## Research: what Class B is still for (2026-09-14) — RECOMMENDATION, not a decision
+
+The owner asked for research before deciding §"What Class B is still for". Findings, in order of weight:
+
+**1. The current challenge can be dismissed without settling.** `recordSettlement(quoteId, some(challengeId),
+recipient)` checks only that the caller owns the quote, the quote is unresolved, and the challenge
+matches it (`OTCProtocol.compact`). It never checks that a settlement happened — it cannot, the contract
+does not see Zswap (§5.2). So a dealer who double-spent the offer's inputs answers the challenge with
+one transaction, collects the taker's challenge bond, and is never slashed. **Class B as built does
+not punish the one failure unilateral settlement leaves open.** What it still does is slash a dealer
+who fails to answer within 600 s — an honest dealer during a chain stall (Preprod has stalled
+10+ min), or one who calls `recordSettlement` without the `challengeId` (open item above).
+
+**2. The residual failure is real and gets exploited.** A dealer who keeps the offer's coins spendable
+holds a free option for the reveal→settlement window (~20–60 s measured): if the market moves, spend
+the inputs first and the taker's settlement fails. That is last-look by another name. The one large
+public measurement of exactly this pattern — Polymarket, where off-chain-matched orders settle later
+on-chain — found 1.95 M reverted settlements over Aug 2025–May 2026, **50.2% deliberate**, including
+"balance drain" front-running and "cancel the losing positions after the outcome is known", with
+≥$1.49 M realised attacker profit. What fixed most of it was **escrow** (a platform deposit wallet cut
+daily reverts from ~8% to 0.3%), not reputation (arXiv 2606.16852).
+
+**3. Nobody bonds this away.** Hashflow's makers may custody funds outside the pool and a quote then
+fails on-chain if balance or allowance is gone; Hashflow handles it with an **allowlist** and
+off-chain penalties (docs.hashflow.com). 0x RFQ lets makers cancel on-chain and treats balance/allowance
+griefing as "difficult to defend against". Both lean on permissioning, which this protocol rejects.
+
+**4. There is no known on-chain proof of "spent elsewhere".** No Compact primitive observed (compiler
+0.30.0 toolchain notes, stdlib as used here) lets a circuit query unshielded UTXO or nullifier state,
+so "these inputs were spent by another transaction before `validUntil`" cannot be checked in a
+circuit today. Not proven impossible — not found.
+
+**Options, re-evaluated:**
+
+| Option | Stops the double-spend option? | Cost | Constitution fit |
+|---|---|---|---|
+| (a) Keep challenges | **No** (finding 1) | Node challenge loop, UTXO reserve, honest-dealer liveness slashing | Fits, but protects nothing it claims |
+| (a′) Keep, but make the response require proof of settlement | Only if a circuit can verify a Zswap settlement — same blocker as (b) | Contract change | Fits |
+| (b) Spent-inputs fraud proof | Yes, if buildable | Blocked on finding 4 | Fits |
+| (c) Remove Class B | No (but neither does (a)) | Contract/SDK/docs deletion; residual risk disclosed in GRANT.md | Fits |
+| (d) Escrowed quotes: dealer locks the inventory in the contract, taker fills through a circuit | **Yes** — the Polymarket fix | Settlement moves into the contract and the executed amounts become public | **Conflicts** with "Zswap settles, don't reimplement settlement" and with price privacy at settlement |
+
+**Recommendation: (c), plus off-chain accountability, with (b) kept as a research item.**
+- Remove `openSettlementChallenge`, `submitFraudProofTimeout`, challenge bonds, the floor, `DEALER-NODE.md`
+  §6 and task 3.5. They cannot slash a cheating dealer (finding 1), but they can slash an honest one.
+- Taker client: settle immediately on a verified reveal, and check the offer's inputs are still
+  unspent (indexer) right before submitting.
+- **Publicly checkable failure evidence, no identity:** a failed taker publishes the dealer-signed reveal plus
+  the Offer File. Anyone can verify the signature under the on-chain `quotePk`, read the offer's inputs,
+  and check on the indexer that those inputs were spent in a different transaction before `validUntil`.
+  Clients fold that into the dealer's track record beside settled/slashed. This is reputation, which is weaker than slashing, and GRANT.md must say so.
+- Binding `recordSettlement` to a Zswap tx hash (post-M4) makes the settled counter mean something, and is
+  the piece that would also unlock (a′) if a circuit can ever verify it.
+
+**Owner decision still required.** Until it is made, M3 builds 3.1–3.4, 3.6 and 3.7 and does not build 3.5.
+
+Sources: [arXiv 2606.16852 — Ghost Fills on Polymarket](https://arxiv.org/html/2606.16852v1) ·
+[Hashflow market-making docs](https://docs.hashflow.com/hashflow/market-making/getting-started-api-v3) ·
+[0x Protocol 4.1 docs](https://docs.0xprotocol.org/en/latest/basics/functions.html) ·
+[Midnight ledger concepts](https://docs.midnight.network/concepts/ledgers)
 
 ---
 

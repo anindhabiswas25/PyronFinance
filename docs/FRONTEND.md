@@ -159,7 +159,16 @@ mistake this protocol exists to correct.
 
 ### Settlement, and what happens when a dealer stalls
 
-After `Select`, the client attempts Zswap settlement. If the dealer does not complete it:
+> **Superseded 2026-09-14 — Class B (settlement challenges) was removed.** The taker settles
+> unilaterally from the revealed Offer File, so there is no "dealer has not settled" state to
+> challenge. The screen becomes: on `Select`, pre-check that the offer's inputs are unspent, then
+> settle immediately. If settlement fails because the dealer spent the inputs, show **"This dealer's
+> quote could not be settled — their offer's funds were spent elsewhere,"** offer **[ Publish failure
+> evidence ]** (the signed reveal + Offer File, verifiable by anyone against the indexer) and
+> **[ Pick another quote ]**, and surface the dealer's published failures next to settled/slashed in
+> Screen 3. No challenge bond exists. The original design is kept below for the record.
+
+~~After `Select`, the client attempts Zswap settlement. If the dealer does not complete it:~~
 
 ```
 ┌──────────────────────────────────────────────────────────┐
