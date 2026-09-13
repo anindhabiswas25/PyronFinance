@@ -82,8 +82,8 @@ Build and deploy `OTCProtocol.compact` per `docs/CONTRACTS.md`.
 | 1.0 | **Resolve the Schnorr polyfill risk** (`CONTRACTS.md` §9.1) — blocks 1.5 | ✅ Resolved — works, needs a range-checked reduction gadget (see below) |
 | 1.1 | Toolchain: Compact compiler, Docker proof server, pnpm + Turborepo skeleton | ✅ pnpm + turbo + vitest + root tsconfig; proof server running (`midnightntwrk/proof-server:8.1.0` — see image warning above) |
 | 1.2 | Ledger + structs + domain-separated derivations | ✅ `contracts/src/OTCProtocol.compact` |
-| 1.3 | Bonding circuits: `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` | ✅ `postBond` executed on Preprod; the other three still simulation-only |
-| 1.4 | Quote circuits: `commitQuote`, `openSettlementChallenge`, `recordSettlement` | ✅ `commitQuote` executed on Preprod; challenge/settlement still simulation-only |
+| 1.3 | Bonding circuits: `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` | ✅ `postBond`, **`topUpBond`** and **`requestBondWithdrawal`** executed on Preprod (A6, 2026-09-14); `withdrawBond` pending the 24 h timelock (due 2026-09-14T21:31Z) |
+| 1.4 | Quote circuits: `commitQuote`, ~~`openSettlementChallenge`~~, `recordSettlement` | ✅ `commitQuote`, `recordSettlement` (one-argument form) and **`releaseExpiredQuote`** executed on Preprod; `openSettlementChallenge` removed with Class B |
 | 1.5 | Fraud circuits: `submitFraudProofMismatch`, `submitFraudProofTimeout`, `slashBond` | ✅ `submitFraudProofMismatch` executed on Preprod and slashed a real bond; timeout path still simulation-only |
 | 1.6 | `attachDisclosureNote` (contract side only; client flow is M3) | ✅ Compiles |
 | 1.7 | Deploy + init scripts, Preprod config, faucet funding | ✅ **Executed.** `fund` → `deploy` → `init` all ran on Preprod; `init` passes all 7 fresh-state checks. Adds `pnpm run status` for wallet/DUST/deployment visibility |
@@ -556,6 +556,22 @@ client's polling interval, so the aggregator's old rejection-caching defect (fix
 rarely have bitten at this lag — the fix stays, because Preprod's indexer has also stalled for tens of
 seconds. The chain-confirmation legs (~22 s per commit, ~28 s submit+index for the settlement) dominate
 the ~2.5-minute cycle; relays, verification and reveal delivery are sub-second.
+
+**A6 — the bond lifecycle on-chain (2026-09-14, `pnpm run e2e-lifecycle`, contract `c85b6b93…`).**
+
+| Phase | Circuit | Read-back |
+|---|---|---|
+| bonded | `postBond` 50 | submitted |
+| bonded | **`topUpBond`** 25 | bond.amount 75 |
+| bonded | `commitQuote` (left to expire) | quote `6c0c1974…` live, liveQuotes 1 |
+| bonded | `releaseExpiredQuote` inside the grace period | **refused** by local circuit execution ("Fraud-proof grace period still open") |
+| released | **`releaseExpiredQuote`** after validUntil + 3600 s | quote resolved, liveQuotes 0 |
+| released | **`requestBondWithdrawal`** | withdrawRequested 1789334949, active false |
+| withdrawn | `withdrawBond` | **pending the 24 h timelock** — resume with `pnpm run e2e-lifecycle` after 2026-09-14T21:31:09Z; the script checks tNIGHT rises by exactly the bond |
+
+A first lifecycle on the pre-Class-B contract `f365…` was abandoned at "bonded" when the recompile
+changed every prover key (see the compact-contracts skill): its 75-unit test bond and one quote remain
+there. `attachDisclosureNote` is exercised on-chain by the M3 run's taker driver.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
