@@ -431,6 +431,20 @@ redeploy, `e2e-settle` (one wallet, both roles) hit the rule again on the same f
 | 3 | **one** tNIGHT coin; TESTUSD {16576, 24864, 999958560} | dealer **1 in**; taker **2 in** (16576 + 24864 = exactly the 41440 owed); DUST 2 | 7328 B | 18.1 ms | 15.0 ms (floor) | FAIL (local) |
 | 4 | **one** tNIGHT coin; **one** TESTUSD coin (both consolidated) | dealer 1 in; taker 1 in | — | — | — | PASS (local) → **accepted on-chain; settled counter 1** |
 
+**A2 (two distinct wallets), attempt 1 — the minimal shape, refused by 0.1 ms.** Dealer (main wallet,
+consolidated) half `1 in / 1 out`; taker (fresh faucet wallet, a single tNIGHT coin and a single DUST
+coin) `1 in / 2 out`; **1 DUST spend**; 4187 B. Local verdict: **15.098 ms against the 15.000 ms floor
+— FAIL.** One input per side is therefore *not* sufficient on its own.
+
+Compare S5 Run B, also one input per side but with **3 DUST spends**: 10342 B, 19.6 ms against 20.7 ms,
+accepted. Across those two rows, the two extra DUST spends added ~4.5 ms of modelled cost but ~6.1 KB of
+size, i.e. ~12 ms of allowance. **Hypothesis, from two data points and not established:** each DUST
+spend buys more allowance than it costs, so a very compact settlement can fail where a larger one of
+the same input count passes — the opposite of intuition. S4 is the standing warning about a slope
+drawn through two points; this needs a controlled measurement (same trade, varying DUST spend count)
+before anything is built on it. Next step: resubmit the same shape bypassing the local gate
+(`E2E_FORCE_SUBMIT=1`) to record the node's own verdict at this margin.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument

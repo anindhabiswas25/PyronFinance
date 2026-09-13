@@ -208,13 +208,36 @@ if (!check.valid) throw new Error(`taker rejected reveal: ${check.reason}`);
 console.log('  signature valid under ON-CHAIN quotePk; opens ON-CHAIN commitment; notional matches');
 
 console.log('[taker 2/2] settle unilaterally, paying own DUST');
+// E2E_FORCE_SUBMIT=1: record the LOCAL time-to-dismiss verdict with a dry run, then submit WITHOUT the
+// local gate, so the node's own verdict on this exact shape is on record. Added after the first A2 run
+// was refused locally by 0.098 ms (15.098 vs a 15.000 ms floor): at that margin the node's answer is
+// worth more than the local model's, and a node rejection costs nothing (it happens before inclusion).
+const FORCE = process.env.E2E_FORCE_SUBMIT === '1';
+if (FORCE) {
+  try {
+    await settleFromOffer({ wallet: takerWallet, offerFileBase64: plaintext.offerFile, expiresAt: plaintext.expiresAt, ledgerParameters, submit: false });
+    console.log('  local time-to-dismiss verdict: PASS');
+  } catch (err) {
+    console.log(`  local time-to-dismiss verdict: FAIL — ${(err as Error).message.split('\n').slice(0, 2).join(' | ')}`);
+  }
+  console.log('  submitting WITHOUT the local gate (E2E_FORCE_SUBMIT=1)...');
+}
 const t0 = Date.now();
-const settlement = await settleFromOffer({
-  wallet: takerWallet,
-  offerFileBase64: plaintext.offerFile,
-  expiresAt: plaintext.expiresAt,
-  ledgerParameters,
-});
+let settlement: Awaited<ReturnType<typeof settleFromOffer>>;
+try {
+  settlement = await settleFromOffer({
+    wallet: takerWallet,
+    offerFileBase64: plaintext.offerFile,
+    expiresAt: plaintext.expiresAt,
+    ledgerParameters: FORCE ? undefined : ledgerParameters,
+  });
+} catch (err) {
+  const text = String((err as Error).message);
+  const code = text.match(/Custom error:?\s*(\d+)/)?.[1];
+  console.log(`  NODE VERDICT: rejected${code ? ` with Custom error ${code}` : ''} — ${text.split('\n')[0].slice(0, 300)}`);
+  throw err;
+}
+if (FORCE) console.log('  NODE VERDICT: accepted into the pool (inclusion checked below)');
 console.log(`  submitted in ${Date.now() - t0} ms: ${settlement.txId}; DUST provisioned ${settlement.dustSurplus}`);
 const indexed = await waitForTransaction(chain.indexerHttp, { identifier: settlement.txId });
 console.log(`  INDEXER: hash ${indexed.hash}, block ${indexed.blockHeight}, status ${indexed.status}`);
