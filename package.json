@@ -27,7 +27,11 @@
     "probe-merge-sigs": "tsx --env-file=.env scripts/probe-merge-signatures.ts",
     "probe-fee-calc": "tsx --env-file=.env scripts/probe-fee-calculation.ts",
     "compact:testshieldedtoken": "compact compile contracts/src/TestShieldedToken.compact contracts/managed/test-shielded-token",
-    "probe-shielded-latency": "tsx --env-file=.env scripts/probe-shielded-latency.ts"
+    "probe-shielded-latency": "tsx --env-file=.env scripts/probe-shielded-latency.ts",
+    "probe-shielded-settle": "tsx --env-file=.env scripts/probe-shielded-settle.ts",
+    "e2e-lifecycle": "tsx --env-file=.env scripts/e2e-lifecycle.ts",
+    "e2e-settle-2wallet": "tsx --env-file=.env scripts/e2e-settle-2wallet.ts",
+    "e2e-rfq-2dealers": "tsx --env-file=.env scripts/e2e-rfq-2dealers.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

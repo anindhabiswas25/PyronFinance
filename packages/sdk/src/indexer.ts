@@ -66,6 +66,64 @@ export async function queryLedgerParameters(
   return { height: block.height, params: LedgerParameters.deserialize(fromHex(block.ledgerParameters)) };
 }
 
+export interface IndexedTransaction {
+  hash: string;
+  identifiers: string[];
+  status: string | undefined;
+  blockHeight: number;
+}
+
+/** Looks a transaction up by the identifier `facade.submitTransaction` returns — a 66-hex id, which
+ *  is NOT the transaction hash (docs/ROADMAP.md). Returns undefined until the indexer has it. The
+ *  `transactionResult.status` is what proves a submission landed: a submit receipt only proves the
+ *  node accepted it into the pool. Shape confirmed against the Preprod indexer 2026-09-14. */
+export async function queryTransaction(
+  indexerHttpUrl: string,
+  by: { identifier: string } | { hash: string },
+): Promise<IndexedTransaction | undefined> {
+  const data = await gqlQuery(
+    indexerHttpUrl,
+    `query TX($offset: TransactionOffset!) {
+      transactions(offset: $offset) {
+        hash block { height }
+        ... on RegularTransaction { identifiers transactionResult { status } }
+      }
+    }`,
+    { offset: by },
+  );
+  const txs = data?.transactions as
+    | Array<{ hash: string; block: { height: number }; identifiers?: string[]; transactionResult?: { status: string } }>
+    | undefined;
+  const tx = txs?.[0];
+  if (!tx) return undefined;
+  return { hash: tx.hash, identifiers: tx.identifiers ?? [], status: tx.transactionResult?.status, blockHeight: tx.block.height };
+}
+
+/** Polls `queryTransaction` until the indexer reports the transaction, tolerating the intermittent
+ *  connect timeouts Preprod's indexer is known for. */
+export async function waitForTransaction(
+  indexerHttpUrl: string,
+  by: { identifier: string } | { hash: string },
+  options: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<IndexedTransaction> {
+  const { timeoutMs = 10 * 60_000, intervalMs = 5_000 } = options;
+  const start = Date.now();
+  let lastErr: unknown;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const tx = await queryTransaction(indexerHttpUrl, by);
+      if (tx) return tx;
+    } catch (err) {
+      lastErr = err;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(
+    `transaction ${JSON.stringify(by)} not seen by the indexer after ${timeoutMs} ms` +
+      (lastErr ? ` (last error: ${(lastErr as Error).message})` : ''),
+  );
+}
+
 /** Polls for the contract to appear on the indexer after a deploy — indexer lag is typically
  *  2–10s on preprod (indexer SKILL.md §11), never immediate. */
 export async function pollForContractState(
