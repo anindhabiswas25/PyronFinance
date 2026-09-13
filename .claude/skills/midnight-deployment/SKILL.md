@@ -68,8 +68,8 @@ Rules:
 - **`.env.preprod` / `.env.mainnet` committed; `.env` and `.env.local` git-ignored.** Committed files
   hold endpoints only, never seeds or keys.
 - **Fail fast at startup.** Validate the full config on boot and exit with a clear message. A dealer
-  node that starts with a bad contract address and discovers it at quote time may miss a challenge
-  window — which costs the entire bond.
+  node that starts with a bad contract address and discovers it at quote time has already committed
+  to quotes it cannot serve. (This used to say "may miss a challenge window"; Class B was removed.)
 - **`secrets/` is git-ignored; key files are `0600`.**
 
 ---
@@ -148,13 +148,15 @@ Each component needs funding:
 |---|---|
 | Deploy wallet | DUST for the deploy transaction |
 | Dealer node | Bond amount + DUST for `commitQuote` / `recordSettlement` per quote |
-| Taker (web) | Trade funds + DUST for challenges |
+| Taker (web) | Trade funds + DUST for its own settlement fee — and consolidated coins (see zswap-offer-files §2) |
 | Relay node | **Nothing.** Relays hold no funds and make no transactions. |
 
 **A dealer's DUST burn is per-quote and continuous.** Every `commitQuote` is a transaction. A dealer
 quoting actively needs a DUST balance that keeps up, and running dry mid-window means being unable to
-call `recordSettlement` — which means an unanswered challenge and a slashed bond. **The Dealer Node
-must monitor DUST as a first-class health check, alongside bond balance.**
+call `recordSettlement` or `commitQuote`. (This used to end "an unanswered challenge and a slashed
+bond"; challenges were removed 2026-09-14.) **The Dealer Node must monitor DUST as a first-class health
+check, alongside bond balance** — and note the balancer provisions `additionalFeeOverhead` (3 DUST) per
+transaction, so that is the practical floor per concurrent transaction.
 
 ---
 

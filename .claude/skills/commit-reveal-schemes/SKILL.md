@@ -83,7 +83,7 @@ quoteId = persistentHash<Vector<4, Bytes<32>>>([pad(32,"otc:quote:v1"), dealerCm
 on-chain commitment from a gossiped reference with no lookup service (`docs/RELAY.md` §3.2).
 
 **Domain separation is mandatory.** Every hash purpose gets its own `pad(32, "...")` prefix —
-`otc:dealer:v1`, `otc:quote:v1`, `otc:challenge:v1`, `otc:recipient:v1`. Reusing a separator across
+`otc:dealer:v1`, `otc:quote:v1`, `otc:recipient:v1` (and, until its removal with Class B on 2026-09-14, `otc:challenge:v1` — never reuse that tag for something else). Reusing a separator across
 purposes risks a value valid in one context being replayed in another.
 
 ---
@@ -170,10 +170,13 @@ reference equality and always fails for freshly constructed points.
 A dealer who commits and then simply never reveals has broken no cryptographic property. There is no
 mismatch to prove — there is nothing at all. The chain sees a commitment and silence.
 
-This is the fundamental limit of commit-reveal, and it is why this protocol needs a *second*,
-non-cryptographic mechanism: the on-chain settlement challenge (`docs/CONTRACTS.md` §5.2). The taker
-converts an unobservable off-chain omission into an observable on-chain one by opening a challenge
-the dealer must answer.
+This is the fundamental limit of commit-reveal. ~~It is why this protocol needs a *second*,
+non-cryptographic mechanism: the on-chain settlement challenge.~~ **Corrected 2026-09-14:** the
+challenge was removed. In this protocol the reveal carries a pre-proved, bound Offer File, and a taker
+holding it settles alone, so "refusing to reveal" leaves the taker with no trade but costs them
+nothing; a dealer who reveals and then spends the offer's inputs is the residual case, and a challenge
+whose answer (`recordSettlement`) is self-attested could not punish it. See `docs/ROADMAP.md`,
+"Research: what Class B is still for".
 
 **Do not attempt to solve reveal-refusal with a cleverer commitment scheme.** It is not that kind of
 problem. Verifiable-delay or timelock constructions can force *eventual* opening, but they cannot
@@ -188,8 +191,9 @@ force opening within a trading window and they introduce hardware-dependent timi
   the Dealer Node and the UI.
 - **Validity windows must be capped** (`MAX_QUOTE_VALIDITY = 900 s`). An uncapped window is an
   unbounded free option written to the market, and would force an unbounded bond-withdrawal timelock.
-- **The withdrawal timelock must strictly exceed** `MAX_QUOTE_VALIDITY + CHALLENGE_WINDOW +
-  PROOF_GRACE_PERIOD`, or a dealer can defect and exit before a fraud proof can land.
+- **The withdrawal timelock must strictly exceed** `MAX_QUOTE_VALIDITY + PROOF_GRACE_PERIOD`
+  (86400 > 900 + 3600), or a dealer can defect and exit before a fraud proof can land.
+  (`CHALLENGE_WINDOW` left the inequality with Class B, 2026-09-14.)
 
 ---
 

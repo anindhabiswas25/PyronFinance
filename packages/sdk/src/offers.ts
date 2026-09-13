@@ -48,6 +48,7 @@
 //     `Transaction.imbalances` is not). Shielded and unshielded balances of the SAME token are
 //     therefore distinct entries. `balanceKey()` below flattens them to stable strings.
 
+import { inspect } from 'node:util';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
@@ -580,10 +581,19 @@ export async function settleFromOffer(params: SettleParams): Promise<SettlementR
         `with-margin(5) ${ledgerFeeWithMarginOf(merged, 5)}, ` +
         `merged vector ${showVector(mergedBalanceVector)}, ` +
         `${merged.serialize().length} bytes)\n  structure: ${describeIntents(merged)}\n  ` +
-        `${(err as Error).message}`,
+        `node code: ${nodeErrorCode(err) ?? '(none found)'}\n  ${(err as Error).message}`,
     );
   }
   return { txId, mergedBalanceVector, fee, dustSurplus, ledgerDefaultFee };
+}
+
+/** The node's `Custom error: N` code, dug out of a submission failure. The facade wraps the node's
+ *  reason in an Effect failure whose top-level message is only "Transaction submission error"; the code
+ *  sits in nested fields that are neither `.message` nor a plain `.cause` chain (first seen in
+ *  probe-fee-calc; a forced A2 submission on 2026-09-14 lost it the same way). */
+export function nodeErrorCode(err: unknown): number | undefined {
+  const m = inspect(err, { depth: 12, maxStringLength: 20_000 }).match(/Custom error:?\s*(\d+)/);
+  return m ? Number(m[1]) : undefined;
 }
 
 /** Per-intent shape of a transaction: segment ids, and each segment's unshielded input/output/

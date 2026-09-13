@@ -42,7 +42,8 @@ import {
   plaintextToTerms,
   type RevealMessage,
 } from '../packages/sdk/src/reveal-channel.js';
-import { buildAndProveOffer, settleFromOffer, balanceKey, showVector } from '../packages/sdk/src/offers.js';
+import { buildAndProveOffer, settleFromOffer, balanceKey, showVector, offerMatchesTerms } from '../packages/sdk/src/offers.js';
+import { counterAmountFor } from '../packages/sdk/src/terms.js';
 import { usdmFor } from '../packages/sdk/src/assets.js';
 import {
   queryLatestContractState,
@@ -55,9 +56,17 @@ const chain = loadChainConfig();
 if (chain.network === 'mainnet') throw new Error('REFUSING: test settlement script');
 initNetworkId(chain.network);
 
-const takerSeed = process.env.MN_TAKER_WALLET_SEED;
-if (!takerSeed) throw new Error('MN_TAKER_WALLET_SEED is not set — the taker needs its own wallet (task A2)');
-const dealerSeed = requireWalletSeed();
+// E2E_SWAP_ROLES=1 makes the second wallet the DEALER (selling tNIGHT from its single faucet coin) and
+// the main wallet the TAKER (paying the counter-asset). Still two distinct wallets. Added after the
+// first A2 shape — a taker with ONE DUST coin, so a 4.2 KB merged transaction — was refused on the
+// 15 ms floor by 0.1 ms, local and node agreeing. The main wallet holds several DUST coins, which
+// makes a larger settlement: the test of whether size buys more allowance than DUST spends cost.
+const SWAP = process.env.E2E_SWAP_ROLES === '1';
+const mainSeed = requireWalletSeed();
+const secondSeed = process.env.MN_TAKER_WALLET_SEED;
+if (!secondSeed) throw new Error('MN_TAKER_WALLET_SEED is not set — the second wallet (task A2)');
+const takerSeed = SWAP ? mainSeed : secondSeed;
+const dealerSeed = SWAP ? secondSeed : mainSeed;
 if (takerSeed === dealerSeed) throw new Error('taker and dealer seeds are identical — that is the one-wallet run A2 replaces');
 
 const NIGHT = ledger.nativeToken().raw;
@@ -124,7 +133,8 @@ if (dealerWallet.unshieldedAddressHex === takerWallet.unshieldedAddressHex) thro
 
 const takerStart = await balances(takerWallet);
 console.log(`  taker: tNIGHT ${takerStart.night}, DUST ${takerStart.dust}, UTXOs ${takerStart.utxos}`);
-if (takerStart.night < GIVE_UNITS) throw new Error(`taker holds ${takerStart.night} tNIGHT, needs ${GIVE_UNITS} — fund it`);
+if (!SWAP && takerStart.night < GIVE_UNITS) throw new Error(`taker holds ${takerStart.night} tNIGHT, needs ${GIVE_UNITS} — fund it`);
+if (SWAP && takerStart.counter < WANT_UNITS) throw new Error(`taker holds ${takerStart.counter} counter, needs ${WANT_UNITS}`);
 if (takerStart.dust === 0n) throw new Error('taker has no DUST — run `pnpm run fund` with MN_WALLET_SEED set to the taker seed');
 
 // ── DEALER ──────────────────────────────────────────────────────────────────────────────────────
@@ -142,7 +152,9 @@ const contract = await findDeployedContract(providers, {
   initialPrivateState: { dealerSecretKey: dealerSk, takerAddress: new Uint8Array(32) },
 });
 
-const terms = { pair: PAIR, side: 'buy' as const, price: PRICE, size: TERMS_SIZE };
+// Default: the dealer BUYS tNIGHT (pays counter). With SWAP the dealer SELLS tNIGHT (pays tNIGHT).
+const DEALER_SIDE: 'buy' | 'sell' = SWAP ? 'sell' : 'buy';
+const terms = { pair: PAIR, side: DEALER_SIDE, price: PRICE, size: TERMS_SIZE };
 const sealedPreview = sealQuote(terms, new Uint8Array(32), 0n);
 const bondAmount = minBondForNotional(sealedPreview.notional);
 console.log(`\n[dealer 1/5] postBond ${bondAmount} (notional ${sealedPreview.notional})`);
@@ -152,15 +164,15 @@ const { params: ledgerParameters } = await queryLedgerParameters(chain.indexerHt
 console.log('[dealer 2/5] build + prove Offer File (checked against live time-to-dismiss)');
 const offer = await buildAndProveOffer({
   wallet: dealerWallet,
-  give: { kind: 'unshielded', token: COUNTER, amount: WANT_UNITS },
-  want: { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS },
+  give: SWAP ? { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS } : { kind: 'unshielded', token: COUNTER, amount: WANT_UNITS },
+  want: SWAP ? { kind: 'unshielded', token: COUNTER, amount: WANT_UNITS } : { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS },
   validitySecs: VALIDITY_SECS,
   ledgerParameters,
 });
 console.log(`  vector ${showVector(offer.balanceVector)}`);
 if (
-  offer.balanceVector[balanceKey({ tag: 'unshielded', raw: COUNTER })] !== WANT_UNITS ||
-  offer.balanceVector[balanceKey({ tag: 'unshielded', raw: NIGHT })] !== -GIVE_UNITS
+  offer.balanceVector[balanceKey({ tag: 'unshielded', raw: COUNTER })] !== (SWAP ? -WANT_UNITS : WANT_UNITS) ||
+  offer.balanceVector[balanceKey({ tag: 'unshielded', raw: NIGHT })] !== (SWAP ? GIVE_UNITS : -GIVE_UNITS)
 ) {
   throw new Error('dealer half is not the trade asked for');
 }
@@ -206,6 +218,13 @@ const check = verifyReveal(
 );
 if (!check.valid) throw new Error(`taker rejected reveal: ${check.reason}`);
 console.log('  signature valid under ON-CHAIN quotePk; opens ON-CHAIN commitment; notional matches');
+const offerCheck = offerMatchesTerms(plaintext.offerFile, {
+  dealerSide: revealTerms.side,
+  base: { kind: 'unshielded', token: NIGHT, amount: GIVE_UNITS }, // size, whichever side
+  counter: { kind: 'unshielded', token: COUNTER, amount: counterAmountFor(revealTerms) },
+});
+if (!offerCheck.ok) throw new Error(`taker rejected the offer: ${offerCheck.reason}`);
+console.log('  offer file delivers exactly the revealed terms');
 
 console.log('[taker 2/2] settle unilaterally, paying own DUST');
 // E2E_FORCE_SUBMIT=1: record the LOCAL time-to-dismiss verdict with a dry run, then submit WITHOUT the
@@ -233,7 +252,7 @@ try {
   });
 } catch (err) {
   const text = String((err as Error).message);
-  const code = text.match(/Custom error:?\s*(\d+)/)?.[1];
+  const code = text.match(/node code: (\d+)/)?.[1] ?? text.match(/Custom error:?\s*(\d+)/)?.[1];
   console.log(`  NODE VERDICT: rejected${code ? ` with Custom error ${code}` : ''} — ${text.split('\n')[0].slice(0, 300)}`);
   throw err;
 }
@@ -258,16 +277,17 @@ async function settledBalances(w: HeadlessWallet, pred: (b: Awaited<ReturnType<t
     await new Promise((r) => setTimeout(r, 5000));
   }
 }
-const takerAfter = await settledBalances(takerWallet, (b) => b.counter - takerBefore.counter === WANT_UNITS);
-const dealerAfter = await settledBalances(dealerWallet, (b) => dealerBefore.counter - b.counter === WANT_UNITS);
+const takerAfter = await settledBalances(takerWallet, (b) => (b.counter - takerBefore.counter) * (SWAP ? -1n : 1n) === WANT_UNITS);
+const dealerAfter = await settledBalances(dealerWallet, (b) => (dealerBefore.counter - b.counter) * (SWAP ? -1n : 1n) === WANT_UNITS);
 const l = await chainState();
 const bond = l.bonds.lookup(dealerCmt);
 
+const sgn = SWAP ? -1n : 1n; // SWAP reverses which way each asset moves
 const rows: Array<[string, bigint, bigint]> = [
-  ['taker tNIGHT delta', takerAfter.night - takerBefore.night, -GIVE_UNITS],
-  ['taker counter delta', takerAfter.counter - takerBefore.counter, WANT_UNITS],
-  ['dealer tNIGHT delta', dealerAfter.night - dealerBefore.night, GIVE_UNITS],
-  ['dealer counter delta', dealerAfter.counter - dealerBefore.counter, -WANT_UNITS],
+  ['taker tNIGHT delta', takerAfter.night - takerBefore.night, -GIVE_UNITS * sgn],
+  ['taker counter delta', takerAfter.counter - takerBefore.counter, WANT_UNITS * sgn],
+  ['dealer tNIGHT delta', dealerAfter.night - dealerBefore.night, GIVE_UNITS * sgn],
+  ['dealer counter delta', dealerAfter.counter - dealerBefore.counter, -WANT_UNITS * sgn],
   ['settled counter', l.settled.lookup(dealerCmt).read(), 1n],
   ['slashed counter', l.slashed.lookup(dealerCmt).read(), 0n],
   ['bond.amount', bond.amount, bondAmount],
