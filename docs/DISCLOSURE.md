@@ -159,6 +159,32 @@ rejects a second attachment for an existing `tradeId`.
 
 ---
 
+### As implemented (M3 task 3.7, 2026-09-14) — `packages/sdk/src/disclosure.ts`
+
+The sketch above left four encoding details open. The reference implementation fixes them, and an
+independent client must match them byte for byte:
+
+| Detail | Choice | Why |
+|---|---|---|
+| `tradeId` | The settled quote's **`quoteId`** | It is the key `attachDisclosureNote` checks in `quotes`, and anyone can recompute it |
+| HKDF `info` | UTF-8 `"otc:disclosure:v1"` followed by the **32 raw `tradeId` bytes** | "‖ tradeId" needed a byte encoding; raw bytes, not hex |
+| AEAD additional data | The 32 raw `tradeId` bytes | Belt and braces: a blob for trade X fails authentication under trade Y even if key derivation were ever changed |
+| `ciphertextHash` | `blake2b256(canonicalJSON(blob))`, with `canonicalJSON` as defined in `RELAY.md` §2 | "blake2b256(blob)" needed a byte encoding of a JSON object |
+
+Verification adds a sixth check to the five above: `notes[tradeId].recipientHint ==
+blake2b256("otc:recipient:v1" ‖ recipientPk)`, so a recipient does not accept a note that the chain
+record addresses to someone else.
+
+**Caveat — "settled" is stronger than the contract enforces.** `attachDisclosureNote` checks
+`quotes[tradeId].resolved`, and `resolved` is also set when a quote is released unsettled or slashed.
+The chain therefore proves "tied to one resolved quote". Check (e) above inherits this. Tracked in
+`ROADMAP.md` open decisions; closing it needs a contract change.
+
+Tests: `packages/sdk/test/disclosure.test.ts` runs test-plan items 1–7 against the compiled contract
+in the simulator, including a wrong recipient, a tampered blob (failing both the AEAD and the hash), a
+substituted note re-encrypted to the right recipient (fails the hash), attachment to an unknown or
+unsettled trade, a second attachment, and cross-trade unlinkability.
+
 ## Deferred shapes (design sketches, not M3 scope)
 
 ### Time-delayed reveal (`0x0002`)
