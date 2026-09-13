@@ -69,6 +69,24 @@ export function notionalOf(terms: QuoteTerms): bigint {
   return encodeTerms(terms)[3];
 }
 
+/** The exact counter-asset amount a quote's Offer File must carry, in base units.
+ *
+ *  `size` (base asset) × `price` (counter per base) at 6 dp each. When that product is not a whole
+ *  number of base units it is rounded AGAINST the dealer, and this function is the single
+ *  definition both sides use:
+ *    side 'buy'  — the dealer BUYS the base asset and PAYS counter      -> CEIL (taker gets at least the quote)
+ *    side 'sell' — the dealer SELLS the base asset and RECEIVES counter -> FLOOR (taker pays at most the quote)
+ *  (`side` here is the DEALER's side in the quote terms.) A taker who checks an Offer File against
+ *  this can never be shorted by a rounding choice the dealer made. */
+export function counterAmountFor(terms: QuoteTerms): bigint {
+  const [, , price, size] = encodeTerms(terms);
+  const scale = 10n ** BigInt(PRICE_DECIMALS);
+  const product = size * price;
+  const floor = product / scale;
+  if (terms.side === 'sell') return floor;
+  return product % scale === 0n ? floor : floor + 1n;
+}
+
 /** Encodes quote terms into the Vector<4, Field> the contract's commitment/reveal circuits see. */
 export function encodeTerms(terms: QuoteTerms): bigint[] {
   const pairCode = PAIR_CODES[terms.pair];

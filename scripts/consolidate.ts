@@ -3,8 +3,13 @@
 // exact-sum self-transfer, dismiss-checked before submission, verified by indexer read-back.
 //
 // Env: CONSOLIDATE_TOKEN (default native tNIGHT), CONSOLIDATE_K (default 3), CONSOLIDATE_TARGET
-// (stop once the wallet holds at most this many coins of the token; default 2),
+// (stop once the wallet holds at most this many coins of the token; default 1),
 // CONSOLIDATE_KEEP_LARGEST (never touch this many largest coins; default 0).
+//
+// WHY THE DEFAULT TARGET IS 1, learned on Preprod 2026-09-14. Coin selection takes the SMALLEST coins
+// first: a dealer half giving 1000 tNIGHT from coins {249, 500, 4999998990} came out with 3 inputs,
+// 249 + 500 + the large one. So an offer gets a single input only when NO coin of that token is
+// smaller than its give amount. Leaving "a few" small coins is not enough; they must all be merged away.
 
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { loadChainConfig, requireWalletSeed } from '../packages/sdk/src/config.js';
@@ -16,7 +21,7 @@ const chain = loadChainConfig();
 initNetworkId(chain.network);
 const TOKEN = process.env.CONSOLIDATE_TOKEN ?? ledger.nativeToken().raw;
 const K = Number(process.env.CONSOLIDATE_K ?? '3');
-const TARGET = Number(process.env.CONSOLIDATE_TARGET ?? '2');
+const TARGET = Number(process.env.CONSOLIDATE_TARGET ?? '1');
 const KEEP = Number(process.env.CONSOLIDATE_KEEP_LARGEST ?? '0');
 
 const wallet = await createHeadlessWallet(requireWalletSeed(), chain);
