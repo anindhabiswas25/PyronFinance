@@ -1,0 +1,64 @@
+# Reference Dealer Node configuration — docs/DEALER-NODE.md §2.
+# Copy to dealer.toml and edit. NO SECRETS in this file: the dealer key lives in a 0600 file named by
+# secret_key_path, and the wallet seed comes from MN_WALLET_SEED (or a 0600 file, wallet_seed_path).
+# The loader refuses any key that looks like a seed, secret or password.
+
+journal_path = "./dealer-journal.log"        # crash-consistent quote journal (append-only, fsync'd)
+
+[identity]
+secret_key_path = "./secrets/dealer.key"     # `pnpm --filter @otc/dealer-node gen-key` writes it, 0600
+# wallet_seed_path = "./secrets/wallet.seed" # optional; otherwise MN_WALLET_SEED
+
+[network]
+network       = "preprod"                    # undeployed | preprod | preview | mainnet
+indexer       = "https://indexer.preprod.midnight.network/api/v4/graphql"
+indexer_ws    = "wss://indexer.preprod.midnight.network/api/v4/graphql/ws"
+rpc           = "https://rpc.preprod.midnight.network"
+# The proof server does NOT parallelise (~3 s per shielded offer, ROADMAP 2.8): add servers to add capacity.
+proof_servers = ["http://localhost:6300"]
+contract      = "0000000000000000000000000000000000000000000000000000000000000000"  # deployments/<network>.json
+
+[relays]
+endpoints = [
+  "ws://127.0.0.1:18787/gossip",
+  "ws://127.0.0.1:18788/gossip",
+]                                            # at least 2, run by unrelated operators (RELAY.md §6)
+use_mailbox   = true                         # reveals go to the relay mailbox (dealer behind NAT)
+# reveal_listen = "0.0.0.0:7420"
+# reveal_public = "wss://dealer-a.example/reveal"
+
+[bond]
+minimum_balance = "0.0001"                   # stop quoting below this bond (tNIGHT)
+auto_topup      = false
+topup_target    = "0.0002"
+
+# UTXO reserve (DEALER-NODE.md §5): coins offer construction may NEVER select, so the node's own
+# transactions (recordSettlement, topUpBond, consolidation) always have something to spend.
+[reserve]
+min_utxos      = 2
+min_utxo_value = "1"
+
+[pool]
+dismiss_headroom  = 0.3                      # refuse halves using more than 70% of the time-to-dismiss allowance
+consolidate_above = 8                        # merge small UTXOs when the wallet holds more than this many
+
+# One block per pair. Adding a pair is config, not code.
+[[quote_policy]]
+pair            = "tNIGHT/TESTUSD"           # Preprod stand-in; "tNIGHT/USDM" on Preview/Mainnet
+enabled         = true
+mid_source      = "manual"                   # manual | external | script (DEALER-NODE.md §4)
+mid_price       = "41.44"
+spread_bps      = 30
+min_size        = "0.001"                    # tNIGHT
+max_size        = "0.002"                    # per-quote cap; the contract also caps notional at bond * 20
+ladder_sizes    = ["0.001", "0.002"]
+inventory_floor = "0.01"
+validity_secs   = 300                        # quote window; <= 900 (contract MAX_QUOTE_VALIDITY)
+settlement_margin_secs = 300
+expiry_margin_secs = 900                     # discard offers this close to expiry; >= validity + settlement margin
+refresh_secs    = 1800                       # pool refresh tick; <= 3600 - expiry_margin
+
+[risk]
+max_live_quotes    = 20
+max_total_notional = "0.02"                  # across ALL live quotes — the contract's cap is per quote
+halt_on_slash      = true                    # stop everything if slashed; investigate first

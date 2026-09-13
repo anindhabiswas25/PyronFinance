@@ -38,6 +38,14 @@ export function generateEncKeypair(): EncKeypair {
   return { sk, pk };
 }
 
+/** A keypair from a fixed 32-byte secret — for a dealer's LONG-LIVED reveal key (`dealerEncPk`),
+ *  which the Dealer Node derives from its identity secret so a restart keeps the same key and
+ *  in-flight takers can still decrypt. Never use this for a taker's per-RFQ key. */
+export function encKeypairFromSecret(sk: Uint8Array): EncKeypair {
+  if (sk.length !== 32) throw new Error('X25519 secret must be 32 bytes');
+  return { sk, pk: x25519.getPublicKey(sk) };
+}
+
 function deriveSymmetricKey(sharedSecret: Uint8Array): Uint8Array {
   return hkdf(sha256, sharedSecret, undefined, HKDF_INFO, 32);
 }
