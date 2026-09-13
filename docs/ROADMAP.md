@@ -28,12 +28,13 @@ on-chain half of 1.9, which had been blocked since 2026-08-27.
 ```
 preprod  f365d5622e2609e007416eb6c5966ce9d96517787cdb032ac6fdc1d301414cf5   (2.9 bond sizing, 2026-09-13 — current)
 preprod  539d3ea689983058059137f4c6d0ee234ae29b585f7f222919a2013800ee2225   (M1, superseded: pre-2.9 circuits)
-preview  f25703438d00441deadba817aa60e42637f304598b3f90e15ca5cfb9e9a74c04   (pre-2.9 circuits — STALE, needs redeploy)
+preview  c4d65ea5f5c92ca3666f1fce82827c8afe03fe78a53bfdac342b98e7659303c4   (2.9 bond sizing, redeployed 2026-09-14 — current)
+preview  f25703438d00441deadba817aa60e42637f304598b3f90e15ca5cfb9e9a74c04   (pre-2.9 circuits — superseded 2026-09-14)
 ```
 
-**The Preview deployment does not match the current compiled contract.** 2.9 changed `commitQuote`'s
-and `openSettlementChallenge`'s signatures and regenerated every verifier key. Scripts run against
-Preview will fail until `pnpm run deploy` is rerun there.
+~~**The Preview deployment does not match the current compiled contract.**~~ **Resolved 2026-09-14
+(task A1):** `deploy` → `init` (7/7 fresh-state checks) → `e2e-fraud` all ran against Preview; the
+fraud path slashed a bond on the redeployed contract (bond 0, inactive, slashed 1, quote resolved).
 
 Five defects stood between "the wallet path compiles and typechecks" and "it works against a chain."
 None were caught by `tsc` or the 211-test simulation suite; each required a live run. This is the
@@ -569,8 +570,34 @@ What this says:
 - **Chain confirmation still dominates end to end.** A ~3 s proof sits beside a 19–53 s
   `commitQuote`. The latency to attack is still the commit→confirm→reveal round trip.
 
-Limits: one machine, one run, one offer shape (one shielded input and one unshielded output). None
-of these offers was settled; they were built, proved and reverted. The live pair, tNIGHT/USDM, is
+### Task 2.8 / A5 — a SHIELDED offer checked against time-to-dismiss, and SETTLED on-chain (2026-09-14)
+
+`pnpm run probe-shielded-settle` (`PROBE_SUBMIT=1` to submit), Preprod, one wallet in both roles.
+Dealer half gives 1000 shielded TSU for 400 unshielded tNIGHT; the taker balances it unilaterally.
+
+| Transaction | Size | Structure | Modelled compute / read | Allowance | Local verdict | **Node** |
+|---|---|---|---|---|---|---|
+| Dealer half (shielded) | 10503 B | seg1: 0 in / 1 out; Zswap offer present | 7.9 ms / 3.7 ms | ≈21.0 ms | PASS (fee 1) | — |
+| Merged settlement | 28354 B | seg1: 0/1; seg2: 2 in / 1 out / 2 sig; 4 DUST spends; Zswap offer present | 30.8 ms / 12.0 ms | ≈56.7 ms | PASS (fee 1) | **accepted, `SUCCESS`, block 2535898** |
+
+Settlement tx hash `fbba11eca3b7dc75c7e54c72fb57d372984ea270c5b4efff673233bddeca8f83` (indexer read-back).
+
+What this establishes:
+- **The shielded leg settles on-chain**, through `balanceFinalizedTransaction`, unilaterally. That was
+  the last piece of the settlement path that had never run.
+- **The shielded half is not the time-to-dismiss risk the size difference suggested.** A proof is
+  expensive to verify, but it is also large, and the allowance scales with bytes (2 µs/byte). The
+  merged transaction nearly triples in size (the taker's balancing adds its own shielded output
+  proof), and its allowance grows with it. What still decides pass/fail is the unshielded input,
+  signature and DUST-spend count — the same lever as S5.
+- The local check agreed with the node again.
+
+Limits: one run, one wallet, one shape; the taker side here spent 2 unshielded inputs and 4 DUST
+coins. A more fragmented taker wallet would eat the headroom (43 ms of cost against 57 ms allowed —
+roughly 25%), so the S5 rule of few, large UTXOs still applies. Proving took 3.9 s per side.
+
+Limits of the latency run above: one machine, one run, one offer shape (one shielded input and one unshielded output). None
+of those offers was settled; they were built, proved and reverted. The live pair, tNIGHT/USDM, is
 unshielded on both legs, so this measures the protocol's *capacity* for shielded pairs, not the
 current one.
 
@@ -648,6 +675,7 @@ DUST-generation/registration process.
 | Sybil-resistant relay discovery | Post-M4 | `peer_announce` is spammable; stake-weighting would reintroduce permissioning |
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
 | **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
+| **`attachDisclosureNote` accepts a note on a quote that never SETTLED** | M3 (3.7) | Its guard is `quotes.lookup(tid).resolved`, and `resolved` is also set by `releaseExpiredQuote` (expired, untraded) and by both fraud proofs (slashed). So a note can be attached to a quote that was released or slashed. `DISCLOSURE.md`'s claim "provably tied to one specific **settled** trade" is therefore stronger than the contract: the chain proves "tied to one resolved quote". Closing it needs a distinct settled flag (e.g. a `Quote.settled` field set only by `recordSettlement`), which is a contract change and still dealer-attested (§5.2). Found while writing `e2e-lifecycle` (A6), 2026-09-14. **Surfaced, not decided** |
 | **Slash arithmetic overflow (D7)** | M4 (4.1) | `b.amount * 6000` can overflow `Uint<128>` for absurd bond sizes. Unreachable at realistic values; settle alongside `MIN_BOND` |
 | **Fraud proofs have no upper time bound** | M2 | `submitFraudProofMismatch` can be submitted arbitrarily late while a quote stays unresolved. `releaseExpiredQuote` lets a dealer close their own window after `PROOF_GRACE_PERIOD`, which bounds it in practice, but nothing forces it |
 | `TIME_SLACK` (300s) for caller-supplied `now` in `requestBondWithdrawal`/`openSettlementChallenge` | M1 (surfaced) | Not pre-approved — needed because Compact can't read block time as a value, only compare against it. A caller-supplied, chain-bounded `now` was the only viable design found; 300s is a placeholder guess, not tuned |

@@ -341,12 +341,17 @@ export class RelayAggregator {
 
     for (const [envelopeId, { envelope, relays }] of this.refs) {
       if (envelope.body.rfqId !== rfq.rfqId) continue;
+      // Only ACCEPTED verdicts are cached. A rejection can be transient — most importantly "quoteId not
+      // found on-chain" while the indexer is still behind the dealer's commit, which a live indexer
+      // makes routine — and caching it would drop an honest quote permanently. Re-verifying a
+      // rejected ref costs a chain read that the ChainReader already rate-limits.
       let verdict = this.verdicts.get(envelopeId);
       if (!verdict) {
         verdict = verifyQuoteRef(envelope, rfq, this.options.chain, nowSecs);
-        this.verdicts.set(envelopeId, verdict);
       }
       const v = await verdict;
+      if (v.ok) this.verdicts.set(envelopeId, verdict);
+      else this.verdicts.delete(envelopeId);
       if (!v.ok) {
         rejected.push({ envelopeId, quoteId: envelope.body.quoteId, relays: [...relays], reason: v.reason });
         continue;

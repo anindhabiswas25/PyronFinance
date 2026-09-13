@@ -8,3 +8,4 @@ secrets/
 
 .wallet-state/
 otc-midnight-db/
+otc-midnight-db-*/

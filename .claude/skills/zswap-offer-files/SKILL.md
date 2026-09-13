@@ -315,8 +315,12 @@ local proof server, one run:
 
 - **The warm pool's premise holds for shielded offers**, and only for them.
 - **The proof server does not parallelise.** Size refill capacity at ~3 s per offer per proof server.
-- **A shielded half is ~16× larger.** Its time-to-dismiss headroom (§2) is unmeasured; check it
-  before quoting a shielded pair.
+- ~~**A shielded half is ~16× larger.** Its time-to-dismiss headroom (§2) is unmeasured; check it
+  before quoting a shielded pair.~~ **VERIFIED 2026-09-14 (`pnpm run probe-shielded-settle`):** the
+  shielded half (10503 B) passes at 7.9 ms modelled compute against a ~21 ms allowance. The merged
+  settlement (28354 B: the taker's balancing adds its own proof) passes at 30.8 ms compute + 12.0 ms
+  read against ~56.7 ms, and it **settled on-chain** (`SUCCESS`, Preprod block 2535898). Size grows
+  the allowance as fast as proofs grow the cost; unshielded inputs and DUST spends still decide the verdict.
 - **Shielded minting signature:** `mintShieldedToken(domainSep: Bytes<32>, amount: Uint<64>,
   nonce: Bytes<32>, recipient: Either<ZswapCoinPublicKey, ContractAddress>)`. Confirmed from the
   compiler's own type error. Use a fresh nonce per mint. The wallet does see the coins, but on

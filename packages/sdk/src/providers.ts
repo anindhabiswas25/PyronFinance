@@ -13,13 +13,20 @@ import { testShieldedTokenZkConfigPath } from './test-shielded-token.js';
 import type { OTCCircuits, OTCPrivateStateId, OTCProviders } from './types.js';
 import { OTCPrivateStateId as PRIVATE_STATE_ID } from './types.js';
 
+/** LevelDB directory for private state, relative to cwd. LevelDB takes an exclusive LOCK on it, so
+ *  two live processes sharing the default (e.g. a Preview run beside a Preprod run, or a dealer node
+ *  beside a script) fail at open. Override with MN_PRIVATE_STATE_DB to run them side by side. */
+export function privateStateDbName(): string {
+  return process.env.MN_PRIVATE_STATE_DB ?? 'otc-midnight-db';
+}
+
 export function buildOTCProviders(chain: ChainConfig, wallet: HeadlessWallet): OTCProviders {
   const zkConfigProvider = new NodeZkConfigProvider<OTCCircuits>(zkConfigPath);
   const privateStatePassword = requirePrivateStatePassword();
 
   return {
     privateStateProvider: levelPrivateStateProvider<OTCPrivateStateId>({
-      midnightDbName: 'otc-midnight-db',
+      midnightDbName: privateStateDbName(),
       privateStateStoreName: 'otc-private-state',
       signingKeyStoreName: 'otc-signing-keys',
       privateStoragePasswordProvider: async () => privateStatePassword,
@@ -57,7 +64,7 @@ function testnetTokenProviders(chain: ChainConfig, wallet: HeadlessWallet, zkPat
 
   return {
     privateStateProvider: levelPrivateStateProvider({
-      midnightDbName: 'otc-midnight-db',
+      midnightDbName: privateStateDbName(),
       privateStateStoreName: `${storePrefix}-private-state`,
       signingKeyStoreName: `${storePrefix}-signing-keys`,
       privateStoragePasswordProvider: async () => privateStatePassword,

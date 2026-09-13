@@ -105,6 +105,12 @@ export interface ProvedOffer {
    *  built transaction rather than assumed. */
   expiresAt: number;
   balanceVector: BalanceVector;
+  /** Un-books the coins this offer's construction selected, in THIS wallet's local state. `initSwap`
+   *  books them for the offer's whole lifetime (DEALER-NODE.md §5), so an offer that is discarded —
+   *  expired out of a warm pool, or a losing quote whose reveal the taker never used — holds its
+   *  inputs hostage until the process restarts unless released. Never call it on an offer that may
+   *  still be settled: the coins would be offered to other transactions while this one can spend them. */
+  release(): Promise<void>;
 }
 
 /** Flattens a `Transaction.imbalances` key (a tagged token-type object) to a stable string.
@@ -287,6 +293,7 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
       provedAt: Math.floor(Date.now() / 1000),
       expiresAt,
       balanceVector: balanceVectorOf(finalized),
+      release: () => wallet.facade.revert(recipe).then(() => undefined, () => undefined),
     };
   } catch (err) {
     // initSwap books the selected UTXOs in local wallet state. If we die after that and before
