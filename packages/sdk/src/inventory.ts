@@ -14,10 +14,12 @@
 //   * split: carve exact-denomination coins, so an offer giving amount X is backed by a coin worth
 //     exactly X — one input and no change output, the cheapest shape a half can have.
 //
-// CAVEAT — DUST generation. Native tNIGHT generates DUST only while its UTXO is registered. A
-// transfer creates NEW UTXOs, which are not registered. Consolidating registered tNIGHT therefore
-// stops DUST generation on that value until the outputs are registered again; `registerNewNight`
-// does that. Contract-minted tokens generate no DUST and need nothing.
+// DUST generation. ~~A transfer creates NEW UTXOs, which are not registered. Consolidating registered
+// tNIGHT therefore stops DUST generation on that value until the outputs are registered again.~~
+// CORRECTED 2026-09-14: a live split of registered tNIGHT produced outputs the wallet's own metadata
+// reported as already registered ("registered 0 new"), and the wallet's DUST coin count rose 2 -> 5.
+// That is metadata, not a measured generation rate, so `registerNewNight` is still called after
+// merges and splits: it is a no-op when nothing needs registering. Contract-minted tokens generate no DUST.
 
 import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';

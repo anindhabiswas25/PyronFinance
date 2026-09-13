@@ -35,7 +35,8 @@
     "consolidate": "tsx --env-file=.env scripts/consolidate.ts",
     "taker-pinger": "tsx --env-file=.env scripts/taker-pinger.ts",
     "wallet-coins": "tsx --env-file=.env scripts/wallet-coins.ts",
-    "reset-unshielded-state": "tsx --env-file=.env scripts/reset-unshielded-state.ts"
+    "reset-unshielded-state": "tsx --env-file=.env scripts/reset-unshielded-state.ts",
+    "split-for-dust": "tsx --env-file=.env scripts/split-for-dust.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
