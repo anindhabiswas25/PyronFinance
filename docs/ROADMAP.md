@@ -63,7 +63,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); two-wallet settlement (A2) and two-competing-dealers cycle (A3) scripted, **blocked on funding the taker wallet**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; two-competing-dealers cycle (A3) running; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
 | **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; unattended multi-expiry live run pending |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -513,6 +513,22 @@ SUCCESS). DUST coins went **2 → 5**. Two observations recorded as observed, no
   really continues on them is inferred from the metadata, not measured.
 - The wallet's DUST balance fell ~5.87 DUST across that one transfer (20.93 → 15.07). The live fee is
   ~1 SPECK, so this is not the fee; its cause is not established.
+
+**A2 COMPLETE (2026-09-14) — the first settlement between two distinct wallets.** Dealer = main wallet,
+taker = second wallet after `split-for-dust` (5 DUST coins). Both halves one input. Settlement tx
+`c7b6ec70c6cc1b1a890b32862d7aac6491fb3485893f98b12e18be0628369c5e`, block 2536687, **SUCCESS**. Verified
+from the indexer's own record of that transaction, not from wallet balances:
+
+| Wallet | Spent | Created | Delta |
+|---|---|---|---|
+| dealer `mn_addr_preprod1u726…` | TESTUSD 41440 | tNIGHT 1000 | **+1000 tNIGHT, −41440 TESTUSD** |
+| taker `mn_addr_preprod1e7wg…` | tNIGHT 100000 | TESTUSD 41440, tNIGHT 99000 (change) | **−1000 tNIGHT, +41440 TESTUSD** |
+
+Contract read-back on `c85b6b93…`: quote resolved, dealer settled counter **1**, bond **50 untouched**,
+`liveQuotes` 0. The taker paid its own DUST and never held the dealer's keys; the dealer never held the
+taker's. `recordSettlement` then stalled behind repeated `Wallet.Sync` failures and the watchdog killed
+the process after 20 silent minutes — but read-back shows it had already landed. What it took, in
+order: one coin per asset on each side, and a taker with enough DUST coins to spend ~3.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
