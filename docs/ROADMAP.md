@@ -470,6 +470,20 @@ fallback (`unshielded restore failed … syncing from genesis`), re-synced unshi
 `wallet-coins` then listed both TESTUSD coins (41440, 999958560) **AVAILABLE, 0 pending**. Diagnosis
 confirmed end to end: the coins were stranded by a persisted booking, never spent.
 
+**A2 attempt 3 (roles swapped, after the reset): refused again — and it refutes the hypothesis above as
+stated.** Fresh wallet dealing (1 in), main wallet taking (1 in), **2 DUST spends**, 7189 B: **17.357 ms**
+against the 15.000 ms floor — *worse* than the 1-spend shape (15.098 ms). ~~Each DUST spend buys more
+allowance than it costs, so a very compact settlement can fail where a larger one passes.~~ The extra
+spend added ~2.3 ms of cost, but 7.2 KB × 2 µs is still under the floor, so it bought nothing.
+
+**Revised model — fits all six recorded shapes, still UNTESTED as a model:** above the ~7.5 KB where the
+size-based allowance clears the 15 ms floor, each DUST spend adds ~2.9 KB (~5.8 ms of allowance) for
+~2.3 ms of cost; below it, a spend is pure cost. A 1-in/1-in unshielded settlement then fails with 1
+or 2 DUST spends and passes with 3 — which is what both accepted 1-in/1-in settlements had. It would
+also explain S4's unexplained observation: raising `additionalFeeOverhead` makes the DUST balancer spend
+more coins. Controlled test running (same trade, same wallet, only `additionalFeeOverhead` varied,
+local verdicts, nothing submitted) before anything is built on it.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
@@ -701,7 +715,7 @@ material beyond the measured table above.
 | 3.7 | Disclosure: named-recipient shape (`0x0001`) attach + decrypt in SDK | ✅ `packages/sdk/src/disclosure.ts`; encodings fixed in `DISCLOSURE.md`. On-chain attach runs in `taker-pinger` (pending) |
 | 3.8 | Frontend: Screen 4 (settled trades feed) + disclosure note affordance | ⬜ |
 | 3.9 | Disclosure test suite — **including the negative cases** (`DISCLOSURE.md` test plan 4, 5, 7) | ✅ items 1–7 against the compiled contract in the simulator |
-| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | 🟡 `packages/dealer-node/README.md` written; clean-checkout timing not yet done |
+| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | 🟡 `packages/dealer-node/README.md` written. **Clean-checkout run, 2026-09-14 (partial):** clone → install → config → `gen-key` worked from nothing in 4 s (warm pnpm store — not representative of a fresh machine). It exposed a real gap: a clean clone has **no prover keys** (`*.prover` is git-ignored), so nothing could be proved; the README now installs Compact 0.30.0 and runs `pnpm run compact` (**20 s**). Compilation is **deterministic**: recompiled keys were byte-identical to the committed verifier keys (the deployed contract's) and to the developer's prover keys. Still to time: faucet/DUST wait, consolidation, bond, start |
 
 **Definition of done:** a Dealer Node instance holds a standing quote alive unattended across
 multiple Offer File expiry cycles; a settled trade's disclosure note round-trips (attach → decrypt by

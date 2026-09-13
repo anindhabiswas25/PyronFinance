@@ -16,13 +16,24 @@ Design and rationale: [`docs/DEALER-NODE.md`](../../docs/DEALER-NODE.md).
 - The second asset you will quote against. On Preprod that is the testnet stand-in TESTUSD
   (`pnpm run deploy-test-token` mints it); on Preview/Mainnet it is USDM.
 
-## 1. Install and start a proof server (5 min)
+## 1. Install, compile the contract, start a proof server (5 min)
 
 ```bash
+# Compact compiler (once per machine), pinned to the version this contract is compiled with
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+compact update 0.30.0
+
 git clone <repo> && cd pyronfinance
 pnpm install
+pnpm run compact          # ~20 s: generates the prover keys (see below)
 docker run -d -p 6300:6300 midnightntwrk/proof-server:8.1.0 midnight-proof-server -v
 ```
+
+**Why compile.** Prover keys are large and git-ignored, so a clean clone has only the verifier keys —
+and a node without prover keys cannot bond, commit or record anything. Compilation is deterministic:
+recompiling this source in a clean clone (compiler 0.30.0) produced all 9 verifier keys **byte-identical**
+to the committed ones the deployed contract checks proofs against, and all 9 prover keys identical to
+the developer's. Use the pinned compiler version, or the keys will not match the deployment.
 
 The image org is **`midnightntwrk`** (no "e"). `midnightnetwork/proof-server` is a stale, unrelated
 image that accepts requests and spins at 100% CPU forever — it looks exactly like slow proving.
