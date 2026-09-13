@@ -68,7 +68,7 @@ Practical consequences:
 | `bonds` | `Map<Bytes<32>, Bond>` | Per-dealer lookup by commitment. Public by design. |
 | `settled` / `slashed` | `Map<Bytes<32>, Counter>` | `Counter` has monotonic `.increment(n)`; these must never decrease. |
 | `quotes` | `Map<Bytes<32>, Quote>` | Keyed by deterministic, publicly recomputable `quoteId`. |
-| `challenges` | `Map<Bytes<32>, Challenge>` | Keyed by `deriveChallengeId(quoteId, taker)`. |
+| ~~`challenges`~~ | ~~`Map<Bytes<32>, Challenge>`~~ | **Removed 2026-09-14 with Class B** (the challenge answer was self-attested, so it could not punish the failure it existed for — `docs/ROADMAP.md`). |
 | `notes` | `Map<Bytes<32>, NoteRef>` | One note per `tradeId`; re-attachment rejected. |
 | `burnedTotal` | `Uint<128>` cell | Transparency only. **No circuit path may ever decrease it.** |
 
@@ -164,7 +164,7 @@ assert(blockTimeGte(disclose(unlockTime)), "Timelock not elapsed");
 - `blockTimeGte(t)` → true when `block_time >= t`. `Uint<64>` Unix seconds.
 - **Never store raw block time on the ledger.** Store target timestamps and compare.
 - Chain time is coarse and slightly adversarial. Every window in this protocol
-  (`CHALLENGE_WINDOW`, `PROOF_GRACE_PERIOD`, `BOND_WITHDRAW_DELAY`) is sized with generous margin
+  (`PROOF_GRACE_PERIOD`, `BOND_WITHDRAW_DELAY`; `CHALLENGE_WINDOW` was removed with Class B) is sized with generous margin
   rather than tuned tight — see the timelock inequality in `docs/CONTRACTS.md` §6.
 
 ---
@@ -177,7 +177,7 @@ sendUnshielded(default<Bytes<32>>, amount,
                right<ContractAddress, UserAddress>(disclose(recipient)));   // out
 ```
 
-The contract custodies bonds and challenge bonds. Rules:
+The contract custodies bonds (challenge bonds were removed with Class B, 2026-09-14). Rules:
 
 - **Every inbound path must have a matching outbound path** — except the burn share, which
   intentionally has none.
@@ -185,7 +185,7 @@ The contract custodies bonds and challenge bonds. Rules:
   enforced by the *absence* of a release path is stronger than a privileged burn address, because no
   key can ever change it.
 - **Check for pending obligations before releasing.** `withdrawBond` asserts
-  `liveQuotes == 0 && openChallenges == 0` **and** the timelock. Both, not either.
+  `liveQuotes == 0` **and** the timelock. Both, not either. (`openChallenges` no longer exists.)
 
 ---
 
@@ -351,9 +351,10 @@ then fix. A suite written after the fix only proves the fix agrees with itself.
 - [ ] Quote commitments use `persistentCommit` with a fresh nonce — **never** `persistentHash`
 - [ ] Distinct `pad(32, "otc:...:v1")` domain separator per hash purpose
 - [ ] Every witness value validated against ledger state before being trusted
-- [ ] `withdrawBond` checks timelock **and** `liveQuotes == 0` **and** `openChallenges == 0`
+- [ ] `withdrawBond` checks timelock **and** `liveQuotes == 0`
 - [ ] Slash arithmetic computes the burn share as a remainder — no rounding leak
 - [ ] Fraud circuits are callable by **anyone**; no caller authentication anywhere
-- [ ] Quotes/challenges marked `resolved` to prevent double-slashing
+- [ ] Quotes marked `resolved` to prevent double-slashing — and remember `resolved` is also set by release and slash, so it does not mean *settled* (`attachDisclosureNote` inherits this; open in ROADMAP)
+- [ ] **Every recompile regenerates prover keys.** A deployment built from older source can no longer be called from this checkout — resumable scripts must not resume against an old deployment (learned 2026-09-14)
 - [ ] **No privileged key, owner, admin, or pause anywhere.** If one appears, the change is wrong.
 - [ ] No circuit compares two prices — matching and comparison are client-side, off-chain

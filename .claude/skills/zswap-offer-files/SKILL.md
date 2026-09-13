@@ -180,6 +180,32 @@ in the rejection message, because a node rejection is an opaque
 > - A dealer's warm pool should prefer offers backed by **few, large UTXOs**. An offer that sweeps
 >   many small coins can make every settlement of it undeliverable, and the dealer is still bound by
 >   the quote.
+>
+> ### VERIFIED 2026-09-14 — coin selection is smallest-first (read from source)
+>
+> `@midnight-ntwrk/wallet-sdk-capabilities` `dist/balancer/Balancer.js`: `chooseCoin` sorts a token's
+> coins **ascending by value**; `doBalance` adds the smallest remaining coin until the imbalance is
+> covered, then writes change. So a half spends exactly one coin only when **no coin of that token is
+> smaller than the amount**. Live consequences on Preprod, all refused locally before submission:
+>
+> | Merged shape | Size | Cost | Allowed | Verdict |
+> |---|---|---|---|---|
+> | dealer 3 in, taker 2 in, DUST 3 | 10588 B | 27.3 ms | 21.2 ms | FAIL |
+> | dealer 2 in (749 + large), taker 2 in, DUST 2 | 7454 B | 21.5 ms | 15.0 ms floor | FAIL |
+> | dealer 1 in, **taker 2 in** (two fragments summing to the exact amount) | 7328 B | 18.1 ms | 15.0 ms floor | FAIL |
+> | dealer 1 in, taker 1 in (both consolidated), one wallet | — | — | — | **accepted** |
+> | dealer 1 in, taker 1 in, **1 DUST spend**, two wallets | 4187 B | 15.098 ms | 15.000 ms floor | FAIL by 0.1 ms |
+>
+> - **The TAKER's wallet decides it too.** Consolidate before settling, not only before quoting.
+> - **One coin per side is necessary, not proven sufficient.** A very compact merged transaction sits on
+>   the 15 ms floor. The accepted S5 Run B had 3 DUST spends and 10 KB — plausibly the extra size bought
+>   more allowance than the spends cost. Two data points; not established.
+> - `packages/sdk/src/inventory.ts` merges coins with exact-sum self-transfers (so smallest-first takes
+>   exactly the intended coins, with no change), dismiss-checked before submitting. Merged native tNIGHT
+>   must be re-registered for DUST generation.
+> - The taker must also check the Offer File **delivers the revealed terms** before settling
+>   (`offerMatchesTerms`): the settlement executes the offer, not the terms, and Class A cannot see a
+>   mismatch between them.
 
 ## 2a. VERIFIED — the taker settles UNILATERALLY
 
@@ -201,7 +227,9 @@ negotiated; the dealer takes no further action; the taker never touches the deal
 for the dealer to do. The residual failure mode is narrower: the dealer **spent that inventory
 elsewhere first**, so the offer's inputs are already consumed and settlement fails immediately. This
 is why Hashflow's RFQ model needs no bonds. It does not make bonds pointless here (Class A is
-untouched), but it means Class B is solving a smaller problem than the design assumed. See
+untouched), but it means Class B is solving a smaller problem than the design assumed. **Update
+2026-09-14: Class B was removed outright** — its answer was self-attested, so it could not punish this
+residual case either. See
 `docs/ROADMAP.md`.
 
 > **This is why there is no matching engine and no CLOB.** Not merely because Midnight lacks shared
@@ -268,7 +296,7 @@ offerFile.remainingLife  >  validity_secs + settlement_margin
 
 **Committing to a quote backed by an Offer File that expires mid-window guarantees the dealer cannot
 settle, which guarantees a slash.** The dealer is bound on-chain for `validity_secs`; if the backing
-Offer File dies inside that window, the taker challenges and the entire bond is slashed.
+Offer File dies inside that window, the taker holds a committed quote that cannot settle. (Old text: "the taker challenges and the entire bond is slashed" — Class B was removed 2026-09-14; the failure is now public, attributable evidence rather than a slash.)
 
 This is the sharpest way expiry can hurt a dealer, and it is entirely preventable by enforcing the
 inequality above at quote time. **Enforce it in `offers.ts`, not by convention.**

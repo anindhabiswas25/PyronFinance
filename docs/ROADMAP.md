@@ -64,7 +64,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
 | **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); two-wallet settlement (A2) and two-competing-dealers cycle (A3) scripted, **blocked on funding the taker wallet**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
-| **M3** | Dealer Node + disclosure | ⬜ Not started |
+| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; unattended multi-expiry live run pending |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ complete · 🔴 blocked
@@ -445,6 +445,13 @@ drawn through two points; this needs a controlled measurement (same trade, varyi
 before anything is built on it. Next step: resubmit the same shape bypassing the local gate
 (`E2E_FORCE_SUBMIT=1`) to record the node's own verdict at this margin.
 
+**A2 attempt 2 (forced past the local gate): the node REJECTED it.** Same shape, 4271 B, local 15.098 ms
+vs 15.000 ms. The local model and the node agree even 0.1 ms from the boundary. The Custom error code
+was **not captured**: `settleFromOffer` kept only the facade's top-level "Transaction submission error"
+message, and the code sits in nested fields (the same trap `probe-fee-calc` had already worked around).
+Fixed: `nodeErrorCode()` now digs it out of every rejection. It is very likely 168, but that is inferred,
+not observed, so it is not recorded as 168.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
@@ -667,16 +674,16 @@ material beyond the measured table above.
 
 | # | Task | Status |
 |---|---|---|
-| 3.1 | `packages/dealer-node` skeleton, TOML config, key management | ⬜ |
-| 3.2 | Warm-pool Offer File management + refresh loop (`DEALER-NODE.md` §5) | ⬜ |
-| 3.3 | Crash-consistent quote journal (nonce persisted **pre**-commit) | ⬜ |
-| 3.4 | Automated commit → reveal state machine | ⬜ |
-| 3.5 | Challenge-response loop (`DEALER-NODE.md` §6) | ⬜ |
-| 3.6 | Bond monitoring, `halt_on_slash`, risk caps | ⬜ |
-| 3.7 | Disclosure: named-recipient shape (`0x0001`) attach + decrypt in SDK | ⬜ |
+| 3.1 | `packages/dealer-node` skeleton, TOML config, key management | ✅ `config.ts` (validates at startup; refuses float amounts, secrets, <2 relays, unsafe margins, TESTUSD on mainnet), `identity.ts` (one 0600 secret; derived quote + reveal keys; never overwrites), `bin.ts` gen-key/bond/status/start |
+| 3.2 | Warm-pool Offer File management + refresh loop (`DEALER-NODE.md` §5) | ✅ offline — `pool.ts`: ladder, expiry margin, mid-move re-prove, stale-mid hard stop, serial refill, value reserve designed from the SDK's smallest-first coin selection (read from source), `max_offer_inputs`; consolidation keeper + SDK `inventory.ts` (used live to fix three S5 recurrences) |
+| 3.3 | Crash-consistent quote journal (nonce persisted **pre**-commit) | ✅ `journal.ts`: append-only, checksummed, fsync'd; torn tail truncated, mid-file corruption refused; `recover()` tested at all three crash points; never records a settlement when offer inputs were spent elsewhere |
+| 3.4 | Automated commit → reveal state machine | ✅ offline — `quoting.ts` (every transition and failure tested); `live.ts` adapters incl. indexer `unshieldedTransactions` subscription for settlement detection. **Live run pending** |
+| ~~3.5~~ | ~~Challenge-response loop (`DEALER-NODE.md` §6)~~ | **Removed** with Class B (owner decision 2026-09-14) |
+| 3.6 | Bond monitoring, `halt_on_slash`, risk caps | ✅ offline — in `quoting.ts`/`pool.ts`: bond active/amount watched, halt on slash, `max_size`, cumulative `max_total_notional`, bond × 20 cap, `minimum_balance`, inventory floor. `auto_topup` parsed but not acted on yet |
+| 3.7 | Disclosure: named-recipient shape (`0x0001`) attach + decrypt in SDK | ✅ `packages/sdk/src/disclosure.ts`; encodings fixed in `DISCLOSURE.md`. On-chain attach runs in `taker-pinger` (pending) |
 | 3.8 | Frontend: Screen 4 (settled trades feed) + disclosure note affordance | ⬜ |
-| 3.9 | Disclosure test suite — **including the negative cases** (`DISCLOSURE.md` test plan 4, 5, 7) | ⬜ |
-| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | ⬜ |
+| 3.9 | Disclosure test suite — **including the negative cases** (`DISCLOSURE.md` test plan 4, 5, 7) | ✅ items 1–7 against the compiled contract in the simulator |
+| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | 🟡 `packages/dealer-node/README.md` written; clean-checkout timing not yet done |
 
 **Definition of done:** a Dealer Node instance holds a standing quote alive unattended across
 multiple Offer File expiry cycles; a settled trade's disclosure note round-trips (attach → decrypt by

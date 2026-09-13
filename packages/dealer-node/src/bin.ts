@@ -44,6 +44,20 @@ function hex(b: Uint8Array): string {
   return Buffer.from(b).toString('hex');
 }
 
+/** Preprod's indexer times out on connect intermittently; the first live `bond` died on a bare
+ *  "fetch failed" right after wallet sync. Every indexer read in the CLI goes through this. */
+async function retry<T>(what: string, fn: () => Promise<T>, attempts = 8): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i >= attempts) throw new Error(`${what} failed after ${attempts} attempts: ${(err as Error).message}`);
+      log(`[retry] ${what}: ${(err as Error).message} (attempt ${i})`);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+}
+
 function chainConfigOf(cfg: DealerConfig): ChainConfig {
   if (cfg.network.proofServers.length > 1) {
     log(`[config] ${cfg.network.proofServers.length} proof servers configured; the wallet proves through the first only (multi-server fan-out is not wired yet)`);
@@ -97,7 +111,7 @@ async function cmdBond(cfg: DealerConfig): Promise<void> {
   const identity = loadSecretFile(cfg.identity.secretKeyPath);
   const { contract } = await openWalletAndContract(cfg, identity);
   const reader = indexerChainReader(cfg.network.indexer, cfg.network.contract, 0);
-  const before = await reader.dealer(identity.dealerCmt);
+  const before = await retry('bond read', () => reader.dealer(identity.dealerCmt));
   if (before.bond) {
     log(`[bond] existing bond ${before.bond.amount}; topping up by ${amount}`);
     await topUpBond(contract, amount);
@@ -105,7 +119,7 @@ async function cmdBond(cfg: DealerConfig): Promise<void> {
     log(`[bond] posting ${amount}`);
     await postBond(contract, amount, identity.quotePk);
   }
-  const after = await reader.dealer(identity.dealerCmt);
+  const after = await retry('bond read-back', () => reader.dealer(identity.dealerCmt));
   log(`[bond] on-chain: amount ${after.bond?.amount}, active ${after.bond?.active}; may back quotes up to ${maxNotionalForBond(after.bond?.amount ?? 0n)} notional`);
   process.exit(0);
 }
@@ -113,7 +127,7 @@ async function cmdBond(cfg: DealerConfig): Promise<void> {
 async function cmdStatus(cfg: DealerConfig): Promise<void> {
   const identity = loadSecretFile(cfg.identity.secretKeyPath);
   const reader = indexerChainReader(cfg.network.indexer, cfg.network.contract, 0);
-  const d = await reader.dealer(identity.dealerCmt);
+  const d = await retry('dealer read', () => reader.dealer(identity.dealerCmt));
   log(`dealer ${hex(identity.dealerCmt)}: bond ${d.bond?.amount ?? 'none'} active ${d.bond?.active ?? '-'} settled ${d.settled} slashed ${d.slashed}`);
   if (fs.existsSync(cfg.journalPath)) {
     const j = QuoteJournal.open(cfg.journalPath);
@@ -238,7 +252,7 @@ async function consolidateIfNeeded(
   for (const token of [tokens.base.token, tokens.counter.token]) {
     const coins = (await listCoins(wallet, token)).filter((c) => !exclude.has(c.ref));
     if (coins.length <= cfg.pool.consolidateAbove) continue;
-    const { params } = await queryLedgerParameters(cfg.network.indexer);
+    const { params } = await retry('ledger parameters', () => queryLedgerParameters(cfg.network.indexer));
     const out = await consolidateSmallest(wallet, token, 3, params, { exclude });
     log(`[consolidate] ${token.slice(0, 8)}…: ${coins.length} coins; merged ${out?.inputs ?? 0} -> ${out?.outputs ?? 0} (${out?.txId ?? 'skipped'})`);
     if (out && token === NIGHT) await registerNewNight(wallet).catch((err) => log(`[consolidate] DUST re-registration failed: ${(err as Error).message}`));

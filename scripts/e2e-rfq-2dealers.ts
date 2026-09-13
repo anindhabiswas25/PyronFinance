@@ -45,7 +45,8 @@ import { encodeTerms } from '../packages/sdk/src/terms.js';
 import { sealQuote, commitQuote, buildReveal, verifyReveal } from '../packages/sdk/src/quotes.js';
 import { recordSettlement, releaseExpiredQuote } from '../packages/sdk/src/fraud.js';
 import { generateEncKeypair, encryptReveal, decryptReveal, plaintextToTerms, type RevealMessage } from '../packages/sdk/src/reveal-channel.js';
-import { buildAndProveOffer, settleFromOffer, type ProvedOffer } from '../packages/sdk/src/offers.js';
+import { buildAndProveOffer, settleFromOffer, offerMatchesTerms, type ProvedOffer } from '../packages/sdk/src/offers.js';
+import { counterAmountFor } from '../packages/sdk/src/terms.js';
 import { usdmFor } from '../packages/sdk/src/assets.js';
 import { queryLedgerParameters, queryLatestContractState, waitForTransaction } from '../packages/sdk/src/indexer.js';
 import { RelayAggregator, indexerChainReader } from '../packages/sdk/src/relay-client.js';
@@ -187,7 +188,8 @@ async function unshieldedState(w: HeadlessWallet) {
   return Rx.firstValueFrom(w.facade.state().pipe(Rx.filter((x) => x.isSynced)));
 }
 
-const wantUnits = (price: string) => (SIZE_UNITS * encodeTerms({ pair: PAIR, side: 'buy', price, size: '0' })[2]) / 1_000_000n;
+// Canonical amount, rounded against the dealer — the same function the taker checks the offer with.
+const wantUnits = (price: string) => counterAmountFor({ pair: PAIR, side: 'buy', price, size: TERMS_SIZE });
 const maxWant = [DEALER_PRICES.A, DEALER_PRICES.B].map(wantUnits).reduce((a, b) => (a > b ? a : b));
 
 // Two dealers quoting from one wallet need two counter-asset coins: initSwap BOOKS the coin each
@@ -398,6 +400,14 @@ for (const q of agg.verified) {
     cq.notional,
   );
   if (!check.valid) throw new Error(`reveal for ${q.quoteId} failed verification: ${check.reason}`);
+  // The settlement executes the OFFER, not the terms: check the Offer File delivers exactly what was
+  // revealed before trusting its price (docs/ROADMAP.md open decisions, 2026-09-14).
+  const offerCheck = offerMatchesTerms(plaintext.offerFile, {
+    dealerSide: revealTerms.side,
+    base: { kind: 'unshielded', token: NIGHT, amount: encodedTerms[3] },
+    counter: { kind: 'unshielded', token: COUNTER, amount: counterAmountFor(revealTerms) },
+  });
+  if (!offerCheck.ok) throw new Error(`offer for ${q.quoteId} does not deliver its terms: ${offerCheck.reason}`);
   candidates.push({ quoteId: q.quoteId, price: encodedTerms[2], offerFile: plaintext.offerFile, expiresAt: plaintext.expiresAt, dealerCmt: q.dealerCmt });
   console.log(`  reveal ${q.quoteId.slice(0, 12)}… verified against chain: price ${revealTerms.price}`);
 }
