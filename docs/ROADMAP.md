@@ -63,7 +63,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; two-competing-dealers cycle (A3) running; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
 | **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; unattended multi-expiry live run pending |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -529,6 +529,33 @@ Contract read-back on `c85b6b93…`: quote resolved, dealer settled counter **1*
 taker's. `recordSettlement` then stalled behind repeated `Wallet.Sync` failures and the watchdog killed
 the process after 20 silent minutes — but read-back shows it had already landed. What it took, in
 order: one coin per asset on each side, and a taker with enough DUST coins to spend ~3.
+
+**A3 COMPLETE (2026-09-14) — M2's definition of done, minus the UI.** `pnpm run e2e-rfq-2dealers` on
+Preprod: two `relay-node` processes, two dealers (distinct bonds, dealer keys, quote keys and reveal
+keys, backed by one wallet), one taker (second wallet). Timeline:
+
+| t | Event |
+|---|---|
+| +0.5 s | relays up and peered |
+| +59 s / +85 s | dealer A / dealer B bonded (50 each) |
+| +85.3 s | taker published the RFQ to both relays; A received it via :18787, B via :18788 |
+| +107.6 s | dealer B commit confirmed (22.3 s); **visible on the indexer 726 ms later**; quote_ref gossiped, reveal mailboxed |
+| +130.8 s | dealer A commit confirmed (22.5 s); visible on the indexer 237 ms later |
+| +136.4 s | taker aggregated **2 verified, 0 rejected**, each quote received via **both** relays |
+| +137.5 s | both reveals verified against the chain and against their Offer Files; client-side comparison chose B (41.52) over A (41.44) |
+| +165.4 s | settlement `1b95ba27760da897c5c703430284e684cb8a704f164710e23a376c13f31d70ed` **SUCCESS** |
+| +192.4 s | dealer B recorded the settlement |
+
+All ten checks passed: better price won; winner settled 1, resolved, liveQuotes 0; loser still live with
+liveQuotes 1; both bonds untouched; taker received exactly 41520 TESTUSD and paid exactly 1000 tNIGHT;
+gossip crossed both relays. The losing quote is released by the **taker** (permissionless) after
+2026-09-13T22:32:27Z.
+
+**What 2.4's first live-indexer run taught.** Commit → indexer visibility was 237–726 ms, well inside a
+client's polling interval, so the aggregator's old rejection-caching defect (fixed earlier today) would
+rarely have bitten at this lag — the fix stays, because Preprod's indexer has also stalled for tens of
+seconds. The chain-confirmation legs (~22 s per commit, ~28 s submit+index for the settlement) dominate
+the ~2.5-minute cycle; relays, verification and reveal delivery are sub-second.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
