@@ -197,6 +197,12 @@ in the rejection message, because a node rejection is an opaque
 > | dealer 1 in, taker 1 in, **1 DUST spend**, two wallets | 4187 B | 15.098 ms | 15.000 ms floor | FAIL by 0.1 ms |
 >
 > - **The TAKER's wallet decides it too.** Consolidate before settling, not only before quoting.
+> - **DUST spends decide a one-input-per-side settlement (controlled test, 2026-09-14).** Same trade,
+>   same wallet: 3 DUST spends 10267 B, 19.6 ms vs 20.5 ms PASS; 4 spends 13256 B, 21.9 vs 26.5 PASS. From
+>   other wallets: 1 spend 15.1 vs 15.0 FAIL (node-confirmed), 2 spends 17.4 vs 15.0 FAIL. Each spend costs
+>   ~2.3 ms but adds ~3 KB (~6 ms of allowance) once above the 15 ms floor. So a compact settlement needs
+>   about **3 DUST spends**, and a fresh wallet with one DUST coin cannot take one. `additionalFeeOverhead`
+>   is not a reliable way to force spends; the count depends on the wallet's DUST coin values.
 > - **One coin per side is necessary, not proven sufficient.** A very compact merged transaction sits on
 >   the 15 ms floor. The accepted S5 Run B had 3 DUST spends and 10 KB — plausibly the extra size bought
 >   more allowance than the spends cost. Two data points; not established.
