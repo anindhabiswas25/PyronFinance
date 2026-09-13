@@ -92,9 +92,13 @@ async function selfTransfer(
   }
   let inputs = 0;
   let outs = 0;
+  // Count both sections: a wallet transfer does not necessarily use the guaranteed one (the first
+  // live consolidation reported "0 in -> 0 out" from counting only guaranteedUnshieldedOffer).
   for (const [, intent] of tx.intents ?? []) {
-    inputs += intent.guaranteedUnshieldedOffer?.inputs.length ?? 0;
-    outs += intent.guaranteedUnshieldedOffer?.outputs.length ?? 0;
+    for (const offer of [intent.guaranteedUnshieldedOffer, intent.fallibleUnshieldedOffer]) {
+      inputs += offer?.inputs.length ?? 0;
+      outs += offer?.outputs.length ?? 0;
+    }
   }
   const txId = await wallet.facade.submitTransaction(tx);
   return { txId, inputs, outputs: outs, bytes: tx.serialize().length };

@@ -421,6 +421,38 @@ both spent 3 DUST coins. Do not infer either.
 **Consequence for the Dealer Node (M3):** a warm pool must back offers with **few, large UTXOs**,
 and should consolidate fragmented inventory, not just track its value. See `DEALER-NODE.md` §5.
 
+**Recurrence, 2026-09-14 — twice, both caught by the local guard before submission.** After the Class B
+redeploy, `e2e-settle` (one wallet, both roles) hit the rule again on the same fragmented wallet:
+
+| Attempt | Wallet tNIGHT coins | Merged shape | Size | Dismiss cost | Allowed | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | 249, 500, 400, 24, …, large | dealer 3 in / 2 out; taker 2 in; DUST 3 | 10588 B | 27.3 ms | 21.2 ms | FAIL (local) |
+| 2 | 749 (merged), large | dealer 2 in / 2 out; taker 2 in; DUST 2 | 7454 B | 21.5 ms | **15.0 ms (floor)** | FAIL (local) |
+| 3 | **one** tNIGHT coin; TESTUSD {16576, 24864, 999958560} | dealer **1 in**; taker **2 in** (16576 + 24864 = exactly the 41440 owed); DUST 2 | 7328 B | 18.1 ms | 15.0 ms (floor) | FAIL (local) |
+
+**Attempt 3 is the important one: the TAKER's wallet decides it too.** The dealer half was already a
+single coin, and the taker side — smallest-first again — paid with two fragments that summed to the
+exact amount owed. Three unshielded inputs in a compact (~7 KB) merged settlement already exceed the
+15 ms floor. The only accepted shape on record is one input on each side. Consequences:
+- **A taker client must consolidate before settling**, not only the dealer node. A fragmented taker
+  cannot take even a perfectly shaped quote. This belongs in the SDK's settlement path and in the
+  frontend (FRONTEND.md), not just in `DEALER-NODE.md`.
+- A dealer can pre-check its own half, but it cannot know the taker's wallet. `settleFromOffer`'s local
+  check is what protects the taker from a pointless submission; it has refused all three.
+
+Two things this adds to S5:
+- **The cause is now read from source, not inferred.** `wallet-sdk-capabilities` `Balancer.js`
+  `chooseCoin` sorts a token's coins ascending by value and `doBalance` keeps adding the smallest until
+  the imbalance is covered. So an offer spends exactly one coin only when **no coin of that token is
+  smaller than its give amount**. Merging "some" small coins is not enough (attempt 2).
+- **Fewer DUST spends can make it worse.** Attempt 2 was smaller, so its size-based allowance fell to
+  the 15 ms floor while its input/signature cost barely moved. The allowance is `max(2 µs × bytes,
+  15 ms)`, and a compact transaction sits on the floor.
+
+`scripts/consolidate.ts` now defaults to merging down to one coin, and the Dealer Node's pool is
+designed around smallest-first selection (`DEALER-NODE.md` §5). Each failed attempt left one live,
+unsettled quote on `c85b6b93…` under a throwaway dealer key; they are releasable after the grace period.
+
 ---
 
 *The original S5 write-up follows unchanged. Its analysis was careful and still wrong about where
@@ -679,6 +711,7 @@ DUST-generation/registration process.
 | Pairs beyond tNIGHT/USDM | M4 | Encoding is generic; adding pairs should be config only |
 | **`recordSettlement` without a `challengeId` while a challenge is open** | M2 | Resolves the quote but leaves the challenge open, so a timeout proof can still slash a dealer who genuinely settled. The Dealer Node must always pass the `challengeId` (`DEALER-NODE.md` §6). A contract-side fix needs challenge-by-quote lookup, which the current `Map` keying can't express — surfaced 2026-08-28 |
 | **`attachDisclosureNote` accepts a note on a quote that never SETTLED** | M3 (3.7) | Its guard is `quotes.lookup(tid).resolved`, and `resolved` is also set by `releaseExpiredQuote` (expired, untraded) and by both fraud proofs (slashed). So a note can be attached to a quote that was released or slashed. `DISCLOSURE.md`'s claim "provably tied to one specific **settled** trade" is therefore stronger than the contract: the chain proves "tied to one resolved quote". Closing it needs a distinct settled flag (e.g. a `Quote.settled` field set only by `recordSettlement`), which is a contract change and still dealer-attested (§5.2). Found while writing `e2e-lifecycle` (A6), 2026-09-14. **Surfaced, not decided** |
+| ~~**The taker never checks that the Offer File delivers the revealed terms**~~ **Fixed in the SDK 2026-09-14 (B3/B4)** | M3 | Found designing the warm pool's pricing. `verifyReveal` proves the terms open the commitment and are signed; nothing compared the Offer File's balance vector to those terms, so a dealer could reveal honest terms with an Offer File paying less, and the taker's settlement executes the **offer**, not the terms. Class A cannot catch it (terms and commitment agree). Fix: `counterAmountFor` (canonical rounding, against the dealer) + `offerMatchesTerms` in `offers.ts`, called by every taker flow before settling. Whether such a reveal should be **slashable** is a contract question (the signed reveal commits to terms, not the offer bytes, by design — `zswap-offer-files` SKILL §6). **Surfaced, not decided** |
 | **Slash arithmetic overflow (D7)** | M4 (4.1) | `b.amount * 6000` can overflow `Uint<128>` for absurd bond sizes. Unreachable at realistic values; settle alongside `MIN_BOND` |
 | **Fraud proofs have no upper time bound** | M2 | `submitFraudProofMismatch` can be submitted arbitrarily late while a quote stays unresolved. `releaseExpiredQuote` lets a dealer close their own window after `PROOF_GRACE_PERIOD`, which bounds it in practice, but nothing forces it |
 | `TIME_SLACK` (300s) for caller-supplied `now` in `requestBondWithdrawal`/`openSettlementChallenge` | M1 (surfaced) | Not pre-approved — needed because Compact can't read block time as a value, only compare against it. A caller-supplied, chain-bounded `now` was the only viable design found; 300s is a placeholder guess, not tuned |

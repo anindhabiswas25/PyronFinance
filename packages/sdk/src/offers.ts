@@ -111,6 +111,61 @@ export interface ProvedOffer {
    *  inputs hostage until the process restarts unless released. Never call it on an offer that may
    *  still be settled: the coins would be offered to other transactions while this one can spend them. */
   release(): Promise<void>;
+  /** The unshielded inputs this offer spends, as "intentHash:outputNo". Journaled with the quote: after
+   *  a restart the wallet's booking of them is gone, so the node must keep them out of new transactions
+   *  itself until the quote is terminal. */
+  inputs: string[];
+}
+
+/** Unshielded inputs a transaction spends, across every intent and both sections. */
+export function inputsOf(tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>): string[] {
+  const out: string[] = [];
+  for (const [, intent] of tx.intents ?? []) {
+    for (const offer of [intent.guaranteedUnshieldedOffer, intent.fallibleUnshieldedOffer]) {
+      for (const input of offer?.inputs ?? []) out.push(`${input.intentHash}:${input.outputNo}`);
+    }
+  }
+  return out;
+}
+
+export type TermsCheck = { ok: true } | { ok: false; reason: string };
+
+/** THE TAKER'S LAST CHECK BEFORE SETTLING (found 2026-09-14, docs/ROADMAP.md open decisions).
+ *
+ *  `verifyReveal` proves the revealed terms are signed and open the on-chain commitment. It says
+ *  nothing about the Offer File, and the settlement executes the OFFER, not the terms. A dealer could
+ *  reveal honest terms beside an Offer File that pays less; Class A cannot catch that, because terms
+ *  and commitment agree. So before settling, a taker checks the offer's balance vector is exactly the
+ *  trade the terms describe — base leg = size, counter leg = `counterAmountFor(terms)`, nothing else.
+ *
+ *  `dealerSide` is the side in the TERMS (the dealer's). Balance-vector signs are the dealer half's:
+ *  positive = the dealer hands it over (the taker receives it). */
+export function offerMatchesTerms(
+  offerFileBase64: string,
+  expected: { dealerSide: 'buy' | 'sell'; base: SwapLeg; counter: SwapLeg },
+): TermsCheck {
+  let vector: BalanceVector;
+  try {
+    vector = tradeableBalance(balanceVectorOf(deserializeOffer(offerFileBase64)));
+  } catch (err) {
+    return { ok: false, reason: `offer file unreadable: ${(err as Error).message}` };
+  }
+  const baseKey = `${expected.base.kind}:${expected.base.token}`;
+  const counterKey = `${expected.counter.kind}:${expected.counter.token}`;
+  const want: BalanceVector =
+    expected.dealerSide === 'sell'
+      ? { [baseKey]: expected.base.amount, [counterKey]: -expected.counter.amount }
+      : { [baseKey]: -expected.base.amount, [counterKey]: expected.counter.amount };
+  const keys = new Set([...Object.keys(vector), ...Object.keys(want)]);
+  for (const k of keys) {
+    if ((vector[k] ?? 0n) !== (want[k] ?? 0n)) {
+      return {
+        ok: false,
+        reason: `offer does not deliver the revealed terms: expected ${showVector(want)}, offer is ${showVector(vector)}`,
+      };
+    }
+  }
+  return { ok: true };
 }
 
 /** Flattens a `Transaction.imbalances` key (a tagged token-type object) to a stable string.
@@ -295,6 +350,7 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
       provedAt: Math.floor(Date.now() / 1000),
       expiresAt,
       balanceVector: balanceVectorOf(finalized),
+      inputs: inputsOf(finalized),
       release: () => wallet.facade.revert(recipe).then(() => undefined, () => undefined),
     };
   } catch (err) {
