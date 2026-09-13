@@ -464,6 +464,12 @@ reverts dead offers from their journaled bytes on startup (`facade.revertTransac
 syncs without saving while an offer is booked; `reset-unshielded-state` recovers a wallet whose leaked
 offers' bytes are gone.
 
+**Reset verified on the live wallet (2026-09-14).** `reset-unshielded-state` backed up the snapshot and
+discarded its unshielded part (2 pending coins). The next start logged the SDK's own per-sub-wallet
+fallback (`unshielded restore failed … syncing from genesis`), re-synced unshielded coins in ~40 s, and
+`wallet-coins` then listed both TESTUSD coins (41440, 999958560) **AVAILABLE, 0 pending**. Diagnosis
+confirmed end to end: the coins were stranded by a persisted booking, never spent.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
