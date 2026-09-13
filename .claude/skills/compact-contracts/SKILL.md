@@ -355,6 +355,7 @@ then fix. A suite written after the fix only proves the fix agrees with itself.
 - [ ] Slash arithmetic computes the burn share as a remainder — no rounding leak
 - [ ] Fraud circuits are callable by **anyone**; no caller authentication anywhere
 - [ ] Quotes marked `resolved` to prevent double-slashing — and remember `resolved` is also set by release and slash, so it does not mean *settled* (`attachDisclosureNote` inherits this; open in ROADMAP)
-- [ ] **Every recompile regenerates prover keys.** A deployment built from older source can no longer be called from this checkout — resumable scripts must not resume against an old deployment (learned 2026-09-14)
+- [ ] **Every recompile of CHANGED source regenerates the keys.** A deployment built from older source can no longer be called from this checkout — resumable scripts must not resume against an old deployment (learned 2026-09-14)
+- [ ] **Compilation of the SAME source is deterministic** — VERIFIED 2026-09-14: a clean clone compiled with compiler 0.30.0 in 20 s produced all 9 `.verifier` keys byte-identical to the committed ones and all 9 `.prover` keys identical to the developer's. So git-ignoring `*.prover` is safe **as long as the compiler version is pinned**; an operator regenerates exactly the keys the deployment verifies against
 - [ ] **No privileged key, owner, admin, or pause anywhere.** If one appears, the change is wrong.
 - [ ] No circuit compares two prices — matching and comparison are client-side, off-chain
