@@ -504,6 +504,16 @@ values (3e17 still spent 3). **Consequence:** a fresh faucet wallet holds one DU
 it cannot reach 3 spends and cannot settle this pair — which is exactly what blocked A2. Whether a
 wallet can raise its own DUST coin count (split tNIGHT, register each piece) is the next test.
 
+**Can a wallet raise its own DUST coin count? Yes (2026-09-14, `split-for-dust`, taker wallet).** A
+self-transfer split the single 999,999,950 tNIGHT coin into 3 × 100,000 plus change (tx `4e60640d…`,
+SUCCESS). DUST coins went **2 → 5**. Two observations recorded as observed, not explained:
+- The split outputs were reported **already DUST-registered** by the wallet's own metadata
+  ("registered 0 new"). That contradicts the caveat written into `inventory.ts` earlier today
+  (that a transfer's new UTXOs are unregistered); the caveat is struck there. Whether generation
+  really continues on them is inferred from the metadata, not measured.
+- The wallet's DUST balance fell ~5.87 DUST across that one transfer (20.93 → 15.07). The live fee is
+  ~1 SPECK, so this is not the fee; its cause is not established.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
