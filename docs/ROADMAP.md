@@ -429,6 +429,12 @@ redeploy, `e2e-settle` (one wallet, both roles) hit the rule again on the same f
 | 1 | 249, 500, 400, 24, …, large | dealer 3 in / 2 out; taker 2 in; DUST 3 | 10588 B | 27.3 ms | 21.2 ms | FAIL (local) |
 | 2 | 749 (merged), large | dealer 2 in / 2 out; taker 2 in; DUST 2 | 7454 B | 21.5 ms | **15.0 ms (floor)** | FAIL (local) |
 | 3 | **one** tNIGHT coin; TESTUSD {16576, 24864, 999958560} | dealer **1 in**; taker **2 in** (16576 + 24864 = exactly the 41440 owed); DUST 2 | 7328 B | 18.1 ms | 15.0 ms (floor) | FAIL (local) |
+| 4 | **one** tNIGHT coin; **one** TESTUSD coin (both consolidated) | dealer 1 in; taker 1 in | — | — | — | PASS (local) → **accepted on-chain; settled counter 1** |
+
+Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
+settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
+settlement on the Class-B-removed contract, and the first live execution of the one-argument
+`recordSettlement(quoteId)`. The consolidation diagnosis above is confirmed by the only variable changed.
 
 **Attempt 3 is the important one: the TAKER's wallet decides it too.** The dealer half was already a
 single coin, and the taker side — smallest-first again — paid with two fragments that summed to the

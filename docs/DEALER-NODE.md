@@ -81,7 +81,7 @@ min_utxos      = 2
 min_utxo_value = "1"
 
 [pool]                                       # §5
-dismiss_headroom  = 0.3
+max_offer_inputs  = 1
 consolidate_above = 8
 
 [[quote_policy]]
@@ -284,8 +284,10 @@ its own inputs and DUST spends. Measured on Preprod:
 
 Consequences for the node:
 
-- **Check every half before pooling it,** with live `ledgerParameters`, and keep `dismiss_headroom`
-  for the taker's side.
+- **Check every half before pooling it,** with live `ledgerParameters`, and refuse any half spending more
+  than `max_offer_inputs` coins (default 1). A fractional time-to-dismiss headroom was considered and
+  dropped: the dealer cannot see the taker's wallet, and the input count is the lever that measurably
+  decides the verdict (S5 recurrence: 1-in/2-in failed, 1-in/1-in settled).
 - **Consolidate.** `packages/sdk/src/inventory.ts` merges the k smallest coins of a token with an
   exact-sum self-transfer (smallest-first selection then takes exactly those coins, with no change),
   checked against the rule before submitting. The keeper runs it when a token has more than

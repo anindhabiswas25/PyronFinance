@@ -44,6 +44,8 @@ export interface QuotePolicy {
   settlementMarginSecs: number;
   /** Ladder: sizes to keep pre-proved per side. */
   ladderSizes: bigint[];
+  /** RawTokenType of the counter asset. Required unless the network has a known USDM and the pair is tNIGHT/USDM. */
+  counterToken?: string;
 }
 
 export interface DealerConfig {
@@ -66,8 +68,11 @@ export interface DealerConfig {
     minUtxoValue: bigint;
   };
   pool: {
-    /** Refuse any half that fails time-to-dismiss, and require this fraction of headroom (e.g. 0.3). */
-    dismissHeadroom: number;
+    /** Refuse any half that spends more unshielded inputs than this. Default 1: the only merged settlement
+     *  shape accepted on-chain so far is one input per side (ROADMAP S5 recurrence, 2026-09-14). A
+     *  fractional "time-to-dismiss headroom" was considered and dropped — the taker's side is unknowable
+     *  to the dealer, while the input count is the lever that measurably decides the verdict. */
+    maxOfferInputs: number;
     /** Merge small UTXOs when a wallet holds more than this many. */
     consolidateAbove: number;
   };
@@ -217,6 +222,12 @@ export function parseConfig(text: string, file = '<inline>'): DealerConfig {
     for (const s of ladderSizes) if (s < minSize || s > maxSize) throw new ConfigError(`${where}.ladder_sizes: ${s} outside [min_size, max_size]`);
     return {
       pair,
+      counterToken: (() => {
+        const t = p.counter_token;
+        if (t === undefined) return undefined;
+        if (typeof t !== 'string' || !/^[0-9a-f]{64}$/.test(t)) throw new ConfigError(`${where}.counter_token must be a 64-hex RawTokenType`);
+        return t;
+      })(),
       enabled: bool(p, 'enabled', where, true),
       midSource,
       midPrice,
@@ -259,10 +270,9 @@ export function parseConfig(text: string, file = '<inline>'): DealerConfig {
       minUtxoValue: amount(reserve, 'min_utxo_value', 'reserve', '1'),
     },
     pool: {
-      dismissHeadroom: (() => {
-        const h = pool.dismiss_headroom ?? 0.3;
-        if (typeof h !== 'number' || h < 0 || h >= 1) throw new ConfigError('pool.dismiss_headroom must be a number in [0, 1)');
-        return h;
+      maxOfferInputs: (() => {
+        if ('dismiss_headroom' in pool) throw new ConfigError('pool.dismiss_headroom was replaced by pool.max_offer_inputs (see DEALER-NODE.md §5.3)');
+        return int(pool, 'max_offer_inputs', 'pool', 1, 8, 1);
       })(),
       consolidateAbove: int(pool, 'consolidate_above', 'pool', 2, 1000, 8),
     },
