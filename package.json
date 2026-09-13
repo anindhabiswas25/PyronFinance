@@ -31,7 +31,8 @@
     "probe-shielded-settle": "tsx --env-file=.env scripts/probe-shielded-settle.ts",
     "e2e-lifecycle": "tsx --env-file=.env scripts/e2e-lifecycle.ts",
     "e2e-settle-2wallet": "tsx --env-file=.env scripts/e2e-settle-2wallet.ts",
-    "e2e-rfq-2dealers": "tsx --env-file=.env scripts/e2e-rfq-2dealers.ts"
+    "e2e-rfq-2dealers": "tsx --env-file=.env scripts/e2e-rfq-2dealers.ts",
+    "consolidate": "tsx --env-file=.env scripts/consolidate.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

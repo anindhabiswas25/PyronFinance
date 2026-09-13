@@ -26,9 +26,11 @@ deactivated, slashed counter 1, quote resolved**. Tasks 1.0–1.10 are all done,
 on-chain half of 1.9, which had been blocked since 2026-08-27.
 
 ```
-preprod  f365d5622e2609e007416eb6c5966ce9d96517787cdb032ac6fdc1d301414cf5   (2.9 bond sizing, 2026-09-13 — current)
+preprod  c85b6b93a12fa0e19121bdd6bb4e15ee98f3783e304bf97cb2e3a49a374b6b34   (Class B removed, 9 circuits, 2026-09-14 — current; init + e2e-fraud pass)
+preprod  f365d5622e2609e007416eb6c5966ce9d96517787cdb032ac6fdc1d301414cf5   (2.9 bond sizing, 2026-09-13 — superseded 2026-09-14; an abandoned A6 test bond of 75 and one live quote remain on it)
 preprod  539d3ea689983058059137f4c6d0ee234ae29b585f7f222919a2013800ee2225   (M1, superseded: pre-2.9 circuits)
-preview  c4d65ea5f5c92ca3666f1fce82827c8afe03fe78a53bfdac342b98e7659303c4   (2.9 bond sizing, redeployed 2026-09-14 — current)
+preview  e35b4547d59c7132c021753344d662d445b739af0e78cc39bc771e58fd05d1fa   (Class B removed, 9 circuits, 2026-09-14 — current; init + e2e-fraud pass)
+preview  c4d65ea5f5c92ca3666f1fce82827c8afe03fe78a53bfdac342b98e7659303c4   (2.9 bond sizing, 2026-09-14 — superseded the same day by the Class B removal)
 preview  f25703438d00441deadba817aa60e42637f304598b3f90e15ca5cfb9e9a74c04   (pre-2.9 circuits — superseded 2026-09-14)
 ```
 
