@@ -1,0 +1,50 @@
+// Guards added during the 2026-09-14 session, tested on their own. Every earlier guard in this project
+// that went untested turned out to be a bug (ROADMAP S2, S3): the checks are as untested as the code
+// they check.
+
+import { describe, expect, it } from 'vitest';
+import { counterAmountFor, type QuoteTerms } from '../src/terms.js';
+import { nodeErrorCode } from '../src/offers.js';
+
+const t = (side: 'buy' | 'sell', price: string, size: string): QuoteTerms => ({ pair: 'tNIGHT/USDM', side, price, size });
+
+describe('counterAmountFor — the one definition dealer and taker both use', () => {
+  it('is exact when size x price is a whole number of base units', () => {
+    expect(counterAmountFor(t('sell', '41.44', '0.001'))).toBe(41440n);
+    expect(counterAmountFor(t('buy', '41.44', '0.001'))).toBe(41440n);
+  });
+
+  it('rounds AGAINST the dealer: down when the dealer receives, up when the dealer pays', () => {
+    // 0.001 x 41.315681 = 41.315681 base units -> not whole
+    expect(counterAmountFor(t('sell', '41.315681', '0.001'))).toBe(41315n); // dealer receives: floor
+    expect(counterAmountFor(t('buy', '41.315681', '0.001'))).toBe(41316n); // dealer pays: ceil
+  });
+
+  it('never lets a non-zero trade round to a free lunch for the dealer', () => {
+    // 0.000001 x 0.000001 = 1e-12 base units: a dealer who PAYS still pays 1; one who receives gets 0.
+    expect(counterAmountFor(t('buy', '0.000001', '0.000001'))).toBe(1n);
+    expect(counterAmountFor(t('sell', '0.000001', '0.000001'))).toBe(0n);
+  });
+
+  it('refuses more than 6 decimal places rather than silently truncating', () => {
+    expect(() => counterAmountFor(t('sell', '41.4400001', '0.001'))).toThrow(/decimal places/);
+  });
+});
+
+describe('nodeErrorCode — the node rejection code the facade buries', () => {
+  it('finds the code in a nested Effect-style failure whose message says nothing', () => {
+    const err = Object.assign(new Error('Transaction submission error'), {
+      cause: { _tag: 'SubmissionError', error: { reason: '1010: Invalid Transaction: Custom error: 168', data: '0x…' } },
+    });
+    expect(nodeErrorCode(err)).toBe(168);
+  });
+
+  it('finds it in a plain message too', () => {
+    expect(nodeErrorCode(new Error('1010: Invalid Transaction: Custom error: 192'))).toBe(192);
+  });
+
+  it('returns undefined rather than guessing when there is no code', () => {
+    expect(nodeErrorCode(new Error('Transaction submission error'))).toBeUndefined();
+    expect(nodeErrorCode(undefined)).toBeUndefined();
+  });
+});
