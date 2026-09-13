@@ -61,7 +61,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured (see 2.8); **frontend 2.5/2.7 not started** |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); two-wallet settlement (A2) and two-competing-dealers cycle (A3) scripted, **blocked on funding the taker wallet**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
 | **M3** | Dealer Node + disclosure | ⬜ Not started |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
