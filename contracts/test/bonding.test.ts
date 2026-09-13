@@ -17,7 +17,6 @@ describe('postBond — permissionless entry', () => {
     expect(bond.amount).toBe(5000n);
     expect(bond.active).toBe(true);
     expect(bond.liveQuotes).toBe(0n);
-    expect(bond.openChallenges).toBe(0n);
     expect(bond.withdrawRequested).toBe(0n);
   });
 

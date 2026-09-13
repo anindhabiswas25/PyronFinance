@@ -4,7 +4,6 @@ export type Bond = { amount: bigint;
                      quotePk: __compactRuntime.JubjubPoint;
                      withdrawRequested: bigint;
                      liveQuotes: bigint;
-                     openChallenges: bigint;
                      active: boolean
                    };
 
@@ -15,13 +14,6 @@ export type Quote = { dealerCmt: Uint8Array;
                       notional: bigint;
                       resolved: boolean
                     };
-
-export type Challenge = { quoteId: Uint8Array;
-                          takerAddr: Uint8Array;
-                          bondAmount: bigint;
-                          respondBy: bigint;
-                          resolved: boolean
-                        };
 
 export type NoteRef = { ciphertextHash: Uint8Array;
                         policyTag: bigint;
@@ -51,14 +43,8 @@ export type ImpureCircuits<PS> = {
               commitment_0: Uint8Array,
               validUntil_0: bigint,
               notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
-  openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
-                          quoteId_0: Uint8Array,
-                          bondAmount_0: bigint,
-                          now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
-                   quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array },
-                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+                   quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
                       quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
@@ -69,8 +55,6 @@ export type ImpureCircuits<PS> = {
                                           response: bigint
                                         },
                            beneficiary_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
-  submitFraudProofTimeout(context: __compactRuntime.CircuitContext<PS>,
-                          challengeId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   attachDisclosureNote(context: __compactRuntime.CircuitContext<PS>,
                        tradeId_0: Uint8Array,
                        ciphertextHash_0: Uint8Array,
@@ -92,14 +76,8 @@ export type ProvableCircuits<PS> = {
               commitment_0: Uint8Array,
               validUntil_0: bigint,
               notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
-  openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
-                          quoteId_0: Uint8Array,
-                          bondAmount_0: bigint,
-                          now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
-                   quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array },
-                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+                   quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
                       quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
@@ -110,8 +88,6 @@ export type ProvableCircuits<PS> = {
                                           response: bigint
                                         },
                            beneficiary_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
-  submitFraudProofTimeout(context: __compactRuntime.CircuitContext<PS>,
-                          challengeId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   attachDisclosureNote(context: __compactRuntime.CircuitContext<PS>,
                        tradeId_0: Uint8Array,
                        ciphertextHash_0: Uint8Array,
@@ -136,14 +112,8 @@ export type Circuits<PS> = {
               commitment_0: Uint8Array,
               validUntil_0: bigint,
               notional_0: bigint): __compactRuntime.CircuitResults<PS, []>;
-  openSettlementChallenge(context: __compactRuntime.CircuitContext<PS>,
-                          quoteId_0: Uint8Array,
-                          bondAmount_0: bigint,
-                          now_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   recordSettlement(context: __compactRuntime.CircuitContext<PS>,
-                   quoteId_0: Uint8Array,
-                   challengeId_0: { is_some: boolean, value: Uint8Array },
-                   recipient_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
+                   quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   releaseExpiredQuote(context: __compactRuntime.CircuitContext<PS>,
                       quoteId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   submitFraudProofMismatch(context: __compactRuntime.CircuitContext<PS>,
@@ -154,8 +124,6 @@ export type Circuits<PS> = {
                                           response: bigint
                                         },
                            beneficiary_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
-  submitFraudProofTimeout(context: __compactRuntime.CircuitContext<PS>,
-                          challengeId_0: Uint8Array): __compactRuntime.CircuitResults<PS, []>;
   attachDisclosureNote(context: __compactRuntime.CircuitContext<PS>,
                        tradeId_0: Uint8Array,
                        ciphertextHash_0: Uint8Array,
@@ -189,13 +157,6 @@ export type Ledger = {
     member(key_0: Uint8Array): boolean;
     lookup(key_0: Uint8Array): Quote;
     [Symbol.iterator](): Iterator<[Uint8Array, Quote]>
-  };
-  challenges: {
-    isEmpty(): boolean;
-    size(): bigint;
-    member(key_0: Uint8Array): boolean;
-    lookup(key_0: Uint8Array): Challenge;
-    [Symbol.iterator](): Iterator<[Uint8Array, Challenge]>
   };
   notes: {
     isEmpty(): boolean;

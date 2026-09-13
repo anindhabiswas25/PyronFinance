@@ -295,9 +295,7 @@ console.log('  merged balance vector (asserted zero before submit):', showVector
 // [6/6] Dealer records the settlement on-chain.
 // ---------------------------------------------------------------------------
 console.log('\n[6/6] recordSettlement...');
-const recipient = Buffer.from(wallet.unshieldedAddressHex, 'hex');
-if (recipient.length !== 32) throw new Error(`recipient must be 32 raw bytes, got ${recipient.length}`);
-await recordSettlement(contract, quoteId, new Uint8Array(recipient));
+await recordSettlement(contract, quoteId);
 console.log('  recorded.');
 
 // ---------------------------------------------------------------------------

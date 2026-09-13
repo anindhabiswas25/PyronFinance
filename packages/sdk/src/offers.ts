@@ -164,9 +164,11 @@ export function tradeableBalance(vector: BalanceVector): BalanceVector {
 
 /** THE RULE THAT MUST NEVER BE VIOLATED (zswap-offer-files SKILL.md §4).
  *
- *  Committing to a quote backed by an Offer File that expires mid-window guarantees the dealer
- *  cannot settle, which guarantees a slash. The dealer is bound on-chain for `validitySecs`; if the
- *  backing offer dies inside that window the taker challenges and the ENTIRE bond is gone.
+ *  Committing to a quote backed by an Offer File that expires mid-window means the taker holds a
+ *  signed, committed quote that cannot settle. The dealer is bound on-chain for `validitySecs`.
+ *  (This text used to say "the taker challenges and the ENTIRE bond is gone"; Class B challenges
+ *  were removed 2026-09-14. The failure is now public, attributable evidence against the dealer's
+ *  track record rather than a slash — still a failure this check exists to prevent.)
  *
  *  `offerExpiresAt` is the offer's own expiry in epoch seconds — `ProvedOffer.expiresAt`. It used
  *  to take `provedAt` and assume a fixed one-hour life; it takes the real expiry now that we know

@@ -7,7 +7,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { sealQuote, quoteIdFor, buildReveal, verifyReveal } from '../src/quotes.js';
 import { encodeTerms, notionalOf, type QuoteTerms } from '../src/terms.js';
-import { minBondForNotional, maxNotionalForBond, minChallengeBond, CHALLENGE_BOND_FLOOR } from '../src/bonding.js';
+import { minBondForNotional, maxNotionalForBond } from '../src/bonding.js';
 import { schnorrPublicKey, schnorrSign, freshNonce } from '../src/schnorr.js';
 import { deriveQuoteId, dealerCommitment } from '../src/domain.js';
 import { computeSlashSharesFor } from './helpers.js';
@@ -152,13 +152,6 @@ describe('bond sizing — mirrors OTCProtocol.compact (CONTRACTS.md §7, §7a)',
 
   it('minBondForNotional rejects a non-positive notional, as commitQuote does', () => {
     expect(() => minBondForNotional(0n)).toThrow();
-  });
-
-  it('minChallengeBond is max(floor, ceil(2% of notional))', () => {
-    expect(minChallengeBond(1000n)).toBe(20n);
-    expect(minChallengeBond(1001n)).toBe(21n);
-    expect(minChallengeBond(20_000n)).toBe(400n);
-    expect(minChallengeBond(10n)).toBe(CHALLENGE_BOND_FLOOR); // 0.2 rounds up to 1 = the floor
   });
 });
 

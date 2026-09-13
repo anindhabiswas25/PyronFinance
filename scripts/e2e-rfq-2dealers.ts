@@ -414,7 +414,7 @@ if (indexed.status !== 'SUCCESS') throw new Error('settlement failed');
 
 const winner = dealers.find((d) => hex(d.cmt) === best.dealerCmt)!;
 const loserDealer = dealers.find((d) => hex(d.cmt) === loser.dealerCmt)!;
-await asDealer(winner, () => recordSettlement(winner.contract, unhex(best.quoteId), unhex(dealerWallet.unshieldedAddressHex)));
+await asDealer(winner, () => recordSettlement(winner.contract, unhex(best.quoteId)));
 console.log(`${t()} dealer ${winner.name} recorded settlement`);
 
 // The losing offer will never be used; release its coin booking in the dealer wallet.

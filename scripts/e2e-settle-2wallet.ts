@@ -222,7 +222,7 @@ if (indexed.status !== 'SUCCESS') throw new Error(`settlement status ${indexed.s
 
 // ── DEALER records ─────────────────────────────────────────────────────────────────────────────
 console.log('\n[dealer 5/5] recordSettlement');
-await recordSettlement(contract, quoteId, new Uint8Array(Buffer.from(dealerWallet.unshieldedAddressHex, 'hex')));
+await recordSettlement(contract, quoteId);
 
 // ── Verify ─────────────────────────────────────────────────────────────────────────────────────
 console.log('\nverifying...');

@@ -131,74 +131,12 @@
       }
     },
     {
-      "name": "openSettlementChallenge",
-      "pure": false,
-      "proof": true,
-      "arguments": [
-        {
-          "name": "quoteId",
-          "type": {
-            "type-name": "Bytes",
-            "length": 32
-          }
-        },
-        {
-          "name": "bondAmount",
-          "type": {
-            "type-name": "Uint",
-            "maxval": 340282366920938463463374607431768211455
-          }
-        },
-        {
-          "name": "now",
-          "type": {
-            "type-name": "Uint",
-            "maxval": 18446744073709551615
-          }
-        }
-      ],
-      "result-type": {
-        "type-name": "Tuple",
-        "types": [
-        ]
-      }
-    },
-    {
       "name": "recordSettlement",
       "pure": false,
       "proof": true,
       "arguments": [
         {
           "name": "quoteId",
-          "type": {
-            "type-name": "Bytes",
-            "length": 32
-          }
-        },
-        {
-          "name": "challengeId",
-          "type": {
-            "type-name": "Struct",
-            "name": "Maybe",
-            "elements": [
-              {
-                "name": "is_some",
-                "type": {
-                  "type-name": "Boolean"
-                }
-              },
-              {
-                "name": "value",
-                "type": {
-                  "type-name": "Bytes",
-                  "length": 32
-                }
-              }
-            ]
-          }
-        },
-        {
-          "name": "recipient",
           "type": {
             "type-name": "Bytes",
             "length": 32
@@ -287,25 +225,6 @@
         },
         {
           "name": "beneficiary",
-          "type": {
-            "type-name": "Bytes",
-            "length": 32
-          }
-        }
-      ],
-      "result-type": {
-        "type-name": "Tuple",
-        "types": [
-        ]
-      }
-    },
-    {
-      "name": "submitFraudProofTimeout",
-      "pure": false,
-      "proof": true,
-      "arguments": [
-        {
-          "name": "challengeId",
           "type": {
             "type-name": "Bytes",
             "length": 32

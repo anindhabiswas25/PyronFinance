@@ -173,7 +173,25 @@ number is bad, it is published as a bad number. Whether tens of seconds of bindi
 dealers able to quote competitively is **still unvalidated**. The table measures the mechanism, not
 market viability.
 
-### 3. Optimistic challenge assumes a live, uncensored dealer
+### 3. A dealer can still make a revealed quote fail — and is not slashed for it
+
+**Updated 2026-09-14: the settlement challenge (Class B) was removed.** A taker holding the dealer's
+pre-proved Offer File settles unilaterally, so a dealer cannot stall. But a dealer who **spends the
+offer's inputs elsewhere** before the taker's settlement lands makes it fail, and that option is
+last-look by another name. It is exploited at scale where it exists: on Polymarket, where
+off-chain-matched orders settle later on-chain, half of ~1.95 M reverted settlements over nine months
+were deliberate, including exactly this "drain the balance first" pattern (arXiv 2606.16852).
+
+The protocol does **not** slash for this — no Compact primitive we found lets a circuit observe that
+a UTXO was spent, and the removed challenge could not either (its answer was self-attested). What it
+offers instead: the window is short (the taker settles on reveal, ~20–60 s measured), the taker
+pre-checks the inputs, and a failed quote leaves **publicly verifiable, attributable evidence** (the
+dealer-signed reveal plus the Offer File, checked against the indexer) that clients fold into the
+dealer's track record. That is reputation, not collateral, and it is the weakest guarantee in the
+protocol. Escrowing the dealer's inventory would close it, at the cost of moving settlement off Zswap
+and making executed amounts public; that trade was considered and not taken.
+
+~~Original risk 3, "Optimistic challenge assumes a live, uncensored dealer", kept for the record:~~
 
 Class-B fraud detection slashes a dealer who fails to answer a settlement challenge in time. **A
 dealer whose node crashes is slashed identically to one acting in bad faith.**

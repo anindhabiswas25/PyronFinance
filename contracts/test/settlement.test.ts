@@ -1,13 +1,18 @@
-// Settlement recording, the Class-B challenge path, and quote lifecycle accounting.
-// docs/CONTRACTS.md §5.2, docs/ARCHITECTURE.md "Fraud path B".
+// Settlement recording and quote lifecycle accounting. docs/CONTRACTS.md §5.2.
+//
+// Class B (settlement challenges, timeout proofs, challenge bonds) was REMOVED on 2026-09-14 — see
+// docs/ROADMAP.md "Research: what Class B is still for". The last describe block pins that removal,
+// so a challenge path cannot quietly come back.
 
 import { describe, expect, it } from 'vitest';
 import {
   OTCSim, bondDealer, dealer, taker, bytes32, T0,
-  CHALLENGE_WINDOW, PROOF_GRACE_PERIOD, BOND_WITHDRAW_DELAY,
+  PROOF_GRACE_PERIOD, BOND_WITHDRAW_DELAY,
   DEALER_SK, TAKER_ADDR, QUOTE_PK, NOTIONAL
 } from './harness.js';
-import { deriveQuoteId, deriveChallengeId } from '../../packages/sdk/src/domain.js';
+import { deriveQuoteId } from '../../packages/sdk/src/domain.js';
+import { Contract } from '../managed/otc-protocol/contract/index.js';
+import { otcWitnesses } from '../../packages/sdk/src/witnesses.js';
 
 const RFQ = bytes32(1);
 const COMMITMENT = bytes32(2);
@@ -22,11 +27,11 @@ function bondedWithQuote(windowSecs = 600) {
   return { sim, cmt, quoteId: deriveQuoteId(cmt, RFQ, COMMITMENT), validUntil };
 }
 
-describe('recordSettlement — no challenge', () => {
+describe('recordSettlement', () => {
   it('resolves the quote, bumps settled, and releases the live-quote slot', () => {
     const { sim, cmt, quoteId } = bondedWithQuote();
 
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId);
 
     expect(sim.ledger.quotes.lookup(quoteId).resolved).toBe(true);
     expect(sim.ledger.settled.lookup(cmt).read()).toBe(1n);
@@ -37,107 +42,30 @@ describe('recordSettlement — no challenge', () => {
     const { sim, quoteId } = bondedWithQuote();
     const other = bytes32(0xbb);
     sim.call(dealer(other), 'postBond', 1000n, QUOTE_PK);
-    const msg = sim.expectRevert(
-      dealer(other), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT,
-    );
+    const msg = sim.expectRevert(dealer(other), 'recordSettlement', quoteId);
     expect(msg).toMatch(/Not your quote/);
   });
 
   it('rejects double settlement', () => {
     const { sim, quoteId } = bondedWithQuote();
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
-    const msg = sim.expectRevert(
-      dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT,
-    );
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId);
+    const msg = sim.expectRevert(dealer(DEALER_SK), 'recordSettlement', quoteId);
     expect(msg).toMatch(/Already resolved/);
   });
-});
 
-describe('openSettlementChallenge — Class B', () => {
-  it('records a challenge and increments the dealer openChallenges counter', () => {
-    const { sim, cmt, quoteId } = bondedWithQuote();
-
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
-
-    const cid = deriveChallengeId(quoteId, TAKER_ADDR);
-    const ch = sim.ledger.challenges.lookup(cid);
-    expect(ch.bondAmount).toBe(250n);
-    expect(ch.respondBy).toBe(BigInt(T0 + CHALLENGE_WINDOW));
-    expect(ch.resolved).toBe(false);
-    expect(sim.ledger.bonds.lookup(cmt).openChallenges).toBe(1n);
-  });
-
-  it('rejects a challenge against an expired quote — nothing left to honor', () => {
-    const { sim, quoteId } = bondedWithQuote();
-    sim.advanceTo(T0 + 601);
-    const msg = sim.expectRevert(
-      taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0 + 601),
-    );
-    expect(msg).toMatch(/Quote expired/);
-  });
-
-  it('rejects a challenge bond below 2% of notional (NOTIONAL 1000 needs 20)', () => {
-    const { sim, cmt, quoteId } = bondedWithQuote();
-    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 19n, BigInt(T0));
-    expect(msg).toMatch(/below 2% of notional/);
-    expect(sim.ledger.bonds.lookup(cmt).openChallenges).toBe(0n);
-  });
-
-  it('accepts a challenge bond of exactly 2% of notional', () => {
-    const { sim, quoteId } = bondedWithQuote();
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 20n, BigInt(T0));
-    expect(sim.ledger.challenges.lookup(deriveChallengeId(quoteId, TAKER_ADDR)).bondAmount).toBe(20n);
-  });
-
-  it('rounds the 2% requirement UP, never in the challenger\'s favour', () => {
-    // 2% of 1001 is 20.02: a bond of 20 is short of it and must be refused.
+  it('rejects an unknown quote', () => {
     const sim = new OTCSim();
-    const cmt = bondDealer(sim);
-    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), 1001n);
-    const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
-    sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 20n, BigInt(T0));
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 21n, BigInt(T0));
+    bondDealer(sim);
+    const msg = sim.expectRevert(dealer(DEALER_SK), 'recordSettlement', bytes32(0x99));
+    expect(msg).toMatch(/Unknown quote/);
   });
 
-  it('scales with notional — a flat bond that griefs a small quote is too small for a large one', () => {
-    const sim = new OTCSim();
-    const cmt = bondDealer(sim, 1000n);
-    sim.call(dealer(DEALER_SK), 'commitQuote', RFQ, COMMITMENT, BigInt(T0 + 600), 20_000n);
-    const quoteId = deriveQuoteId(cmt, RFQ, COMMITMENT);
-    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
-    expect(msg).toMatch(/below 2% of notional/);
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 400n, BigInt(T0));
-  });
-
-  it('rejects a zero challenge bond at the floor', () => {
-    const { sim, quoteId } = bondedWithQuote();
-    const msg = sim.expectRevert(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 0n, BigInt(T0));
-    expect(msg).toMatch(/below floor/);
-  });
-
-  it('rejects a duplicate challenge from the same taker', () => {
-    const { sim, quoteId } = bondedWithQuote();
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
-    const msg = sim.expectRevert(
-      taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0),
-    );
-    expect(msg).toMatch(/Challenge already open/);
-  });
-});
-
-describe('recordSettlement answering a challenge — this is what prices griefing', () => {
-  it('resolves the challenge and clears both counters', () => {
+  it('leaves the bond untouched', () => {
     const { sim, cmt, quoteId } = bondedWithQuote();
-    sim.call(taker(TAKER_ADDR), 'openSettlementChallenge', quoteId, 250n, BigInt(T0));
-    const cid = deriveChallengeId(quoteId, TAKER_ADDR);
-
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: true, value: cid }, RECIPIENT);
-
-    expect(sim.ledger.challenges.lookup(cid).resolved).toBe(true);
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId);
     const bond = sim.ledger.bonds.lookup(cmt);
-    expect(bond.openChallenges).toBe(0n);
-    expect(bond.liveQuotes).toBe(0n);
-    expect(sim.ledger.settled.lookup(cmt).read()).toBe(1n);
+    expect(bond.amount).toBe(1000n);
+    expect(bond.active).toBe(true);
   });
 });
 
@@ -188,9 +116,34 @@ describe('expired quotes must not permanently lock the bond', () => {
 
   it('rejects releasing an already-resolved quote', () => {
     const { sim, quoteId } = bondedWithQuote();
-    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId, { is_some: false, value: bytes32(0) }, RECIPIENT);
+    sim.call(dealer(DEALER_SK), 'recordSettlement', quoteId);
     sim.advanceTo(T0 + 600 + PROOF_GRACE_PERIOD);
     const msg = sim.expectRevert(dealer(DEALER_SK), 'releaseExpiredQuote', quoteId);
     expect(msg).toMatch(/resolved/i);
+  });
+
+  it('a withdrawal cannot outrun a live quote', () => {
+    const { sim, quoteId } = bondedWithQuote();
+    sim.call(dealer(DEALER_SK), 'requestBondWithdrawal', BigInt(sim.time));
+    sim.advance(BOND_WITHDRAW_DELAY);
+    const msg = sim.expectRevert(dealer(DEALER_SK), 'withdrawBond', RECIPIENT);
+    expect(msg).toMatch(/Live quote commitments outstanding/);
+    sim.call(taker(TAKER_ADDR), 'releaseExpiredQuote', quoteId);
+    sim.call(dealer(DEALER_SK), 'withdrawBond', RECIPIENT);
+  });
+});
+
+describe('Class B is removed (owner decision 2026-09-14)', () => {
+  it('the contract exposes no challenge or timeout circuit', () => {
+    const circuits = Object.keys(new Contract(otcWitnesses).impureCircuits);
+    expect(circuits).not.toContain('openSettlementChallenge');
+    expect(circuits).not.toContain('submitFraudProofTimeout');
+    expect(circuits.filter((c) => /challenge|timeout/i.test(c))).toEqual([]);
+  });
+
+  it('the ledger carries no challenge state', () => {
+    const { sim, cmt } = bondedWithQuote();
+    expect('challenges' in sim.ledger).toBe(false);
+    expect('openChallenges' in sim.ledger.bonds.lookup(cmt)).toBe(false);
   });
 });

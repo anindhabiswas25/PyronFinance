@@ -36,7 +36,6 @@ const checks: Array<[string, boolean]> = [
   ['settled is empty', ledgerState.settled.isEmpty()],
   ['slashed is empty', ledgerState.slashed.isEmpty()],
   ['quotes is empty', ledgerState.quotes.isEmpty()],
-  ['challenges is empty', ledgerState.challenges.isEmpty()],
   ['notes is empty', ledgerState.notes.isEmpty()],
   ['burnedTotal is zero', ledgerState.burnedTotal === 0n],
 ];

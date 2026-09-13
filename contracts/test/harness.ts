@@ -36,7 +36,6 @@ import { schnorrPublicKey } from '../../packages/sdk/src/schnorr.js';
 // These mirror the nullary pure circuits in OTCProtocol.compact. Tests assert against them, so a
 // contract change that forgets to update them shows up as a failure rather than silent drift.
 export const MAX_QUOTE_VALIDITY = 900;
-export const CHALLENGE_WINDOW = 600;
 export const PROOF_GRACE_PERIOD = 3600;
 export const BOND_WITHDRAW_DELAY = 86400;
 export const TIME_SLACK = 300;
@@ -44,13 +43,9 @@ export const SLASH_TAKER_BPS = 6000n;
 export const SLASH_PROVER_BPS = 1000n;
 /** CONTRACTS.md §7: notional <= bond * NOTIONAL_CAP_K. */
 export const NOTIONAL_CAP_K = 20n;
-/** CONTRACTS.md §7a: challenge bond >= max(floor, 2% of notional). */
-export const CHALLENGE_BOND_PCT = 2n;
-export const CHALLENGE_BOND_FLOOR = 1n;
 
 /** Default quote notional for tests that are not about sizing: well inside the cap of the default
- *  1000-unit bond (cap 20000), and small enough that the 250-unit challenge bonds used across the
- *  suite clear 2% of it (20). */
+ *  1000-unit bond (cap 20000). */
 export const NOTIONAL = 1000n;
 
 /** A plausible unix-seconds base time. Arbitrary but fixed, so tests are deterministic. */

@@ -201,7 +201,10 @@ given up the protocol's actual guarantee.
 ### 3.3 `cancel` — dealer withdraws before expiry
 
 Signed. Advisory only: **it has no on-chain effect and does not release the dealer from the
-commitment.** A dealer who cancels but is challenged inside the validity window is still slashed.
+commitment.** ~~A dealer who cancels but is challenged inside the validity window is still slashed.~~
+(Class B challenges were removed 2026-09-14.) A cancel does not revoke the Offer File the taker
+already holds: the taker can still settle it, and a dealer who makes it fail by spending its inputs
+leaves attributable failure evidence either way.
 This exists so takers do not waste time on quotes the dealer has already replaced, not as an escape
 hatch — an off-chain cancel that released an on-chain obligation would be precisely the last-look
 loophole this protocol exists to close.

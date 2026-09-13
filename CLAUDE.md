@@ -36,9 +36,14 @@ identity ever required.
    *before* revealing a price, then reveal point-to-point and encrypted to the taker only —
    never broadcast, so competitors can't copy or undercut. Two fraud classes:
    **Class A** (commitment mismatch) is objectively provable from a dealer-signed reveal and slashable
-   by anyone. **Class B** (silently failing to honor a live quote) leaves no on-chain trace, so a
+   by anyone. ~~**Class B** (silently failing to honor a live quote) leaves no on-chain trace, so a
    taker converts it into one via an on-chain settlement challenge with a bond; an unanswered
-   challenge is slashable by anyone.
+   challenge is slashable by anyone.~~ **Class B was removed (owner decision, 2026-09-14).** A
+   taker holding the dealer's pre-proved Offer File settles alone, so a dealer cannot stall; the
+   residual failure (the dealer spends the offer's inputs first) could not be punished by a
+   challenge whose answer was self-attested. It is handled by immediate settlement, an input
+   pre-check, and publicly verifiable failure evidence feeding the dealer's track record — see
+   `docs/ROADMAP.md` "Research: what Class B is still for".
 
 3. **Decentralized relay network + programmable disclosure.** The relay is a gossip *message format*
    anyone can run a node for — not our hosted backend. RFQs and commitment references gossip; priced

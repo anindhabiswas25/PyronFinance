@@ -170,7 +170,7 @@ describe('verifyQuoteRef — relay-sourced fields are hints, chain-sourced field
   it('REJECTS a quote already resolved on-chain', async () => {
     const sim = fresh();
     const qid = commit(sim);
-    sim.call(dealer(DEALER_SK), 'recordSettlement', qid, { is_some: false, value: bytes32(0) }, bytes32(0xab));
+    sim.call(dealer(DEALER_SK), 'recordSettlement', qid);
     const v = await verifyQuoteRef(quoteRef(qid), rfqBody(), simChain(sim));
     expect(v).toEqual({ ok: false, reason: expect.stringMatching(/already resolved/) });
   });

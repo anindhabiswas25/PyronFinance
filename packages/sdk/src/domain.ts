@@ -39,8 +39,3 @@ export function dealerCommitment(sk: Uint8Array): Uint8Array {
 export function deriveQuoteId(dealerCmt: Uint8Array, rfqId: Uint8Array, commitment: Uint8Array): Uint8Array {
   return hash4(pad32('otc:quote:v1'), dealerCmt, rfqId, commitment);
 }
-
-/** Mirrors `deriveChallengeId` in OTCProtocol.compact. */
-export function deriveChallengeId(quoteId: Uint8Array, taker: Uint8Array): Uint8Array {
-  return hash3(pad32('otc:challenge:v1'), quoteId, taker);
-}
