@@ -484,6 +484,26 @@ also explain S4's unexplained observation: raising `additionalFeeOverhead` makes
 more coins. Controlled test running (same trade, same wallet, only `additionalFeeOverhead` varied,
 local verdicts, nothing submitted) before anything is built on it.
 
+**Controlled test of the revised model (2026-09-14, `probe-fee-calc`, local verdicts, nothing submitted).**
+Same two-asset trade, same consolidated main wallet (one tNIGHT coin, one input per side), only
+`additionalFeeOverhead` varied:
+
+| Overhead | DUST spends | Merged size | Compute | Allowance | Verdict |
+|---|---|---|---|---|---|
+| 3e15 | 3 | 10267 B | 19.616 ms | 20.534 ms | PASS (0.9 ms margin) |
+| 3e16 | **4** | 13256 B | 21.876 ms | 26.512 ms | PASS (4.6 ms margin) |
+| 3e17 | 3 | 10271 B | 19.616 ms | 20.542 ms | PASS |
+
+The 3→4 step added +2.26 ms of compute and +2989 B (≈ +6 ms of allowance) — the per-spend figures the
+model predicted from uncontrolled runs. **Supported:** above the floor, each DUST spend widens the
+margin. **Operating rule, with its evidence:** a compact one-input-per-side unshielded settlement fails
+at 1 DUST spend (15.1 vs 15.0, node-confirmed) and 2 (17.4 vs 15.0), and passes at 3 and 4. **Caveats:**
+this wallet could not produce 1- or 2-spend shapes itself, so those points come from other wallets; and
+`additionalFeeOverhead` is not a reliable dial — the spend count depends on the wallet's DUST coin
+values (3e17 still spent 3). **Consequence:** a fresh faucet wallet holds one DUST coin, so as a taker
+it cannot reach 3 spends and cannot settle this pair — which is exactly what blocked A2. Whether a
+wallet can raise its own DUST coin count (split tNIGHT, register each piece) is the next test.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
