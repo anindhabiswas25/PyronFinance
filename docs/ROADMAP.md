@@ -666,7 +666,19 @@ two more live problems appeared, fixed in turn:
    at most one transaction per tick. Node stopped 07:36:08Z and restarted with all four fixes.
 
 A keeper rejection had also been logged with no node code ("Transaction submission error"); keeper
-self-transfers now carry `nodeErrorCode()` like settlements do. The taker driver kept
+self-transfers now carry `nodeErrorCode()` like settlements do.
+
+After the 07:36Z restart the DUST fix held (0 ALERTs, no failed commits, one keeper transaction per tick),
+and one more loop appeared:
+5. **Merge/split oscillation on tNIGHT.** 07:38Z merge "5 coins > 4" (3 in → 1 out), 07:39Z split "2 backing
+   coin(s) < target 3" (2 in → 5 out), 07:40Z merge again. The count-based merge ignored the ladder, and the run
+   config had `consolidate_above` 4 — at the ladder target — so a split tripped a merge that destroyed backing
+   coins. Fixed: a count-based merge may only consume surplus backing coins beyond the target, and config now
+   rejects `consolidate_above ≤ ladder_coins + 1`. Also seen, not explained: one TESTUSD split logged 2 in → 2 out.
+
+Five defects in one run, each invisible to the offline suite — the keeper had only ever been tested as a pure
+planner, never as a loop acting on a wallet that changes under it. Same lesson as S2/S3: the guards and keepers
+are as untested as the code they protect until they run against a chain. The taker driver kept
 running through the stop, so cycles missed while the node was down are recorded as unanswered.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
