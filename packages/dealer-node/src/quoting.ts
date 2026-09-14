@@ -99,6 +99,9 @@ export function sealedFromRecord(rec: QuoteRecord): SealedQuote {
 
 export class QuotingEngine {
   private halted = false;
+  /** Quotes already alerted as invalidated. The live run logged the same ALERT every 15 s for 38 minutes;
+   *  one alert per quote is the signal, the rest is noise that buries it. */
+  private readonly alerted = new Set<string>();
   /** Offers handed to quotes, by quoteId, until their OFFER FILE expires — a taker may settle a
    *  revealed offer after validUntil, so the coins stay booked until then even if the quote is terminal. */
   private readonly taken = new Map<string, PoolEntry>();
@@ -339,7 +342,10 @@ export class QuotingEngine {
         // keeper spending them is the normal case. Found live 2026-09-14 (run #3): the keeper split coins
         // freed from run #2's expired offers, this check fired an ALERT for each, and halted the node.
         if (now < rec.offerExpiresAt) {
-          this.emit({ kind: 'ALERT', quoteId: id, detail: 'offer inputs spent by another transaction while the offer was still settleable: this node invalidated its own live quote' });
+          if (!this.alerted.has(id)) {
+            this.alerted.add(id);
+            this.emit({ kind: 'ALERT', quoteId: id, detail: 'offer inputs spent by another transaction while the offer was still settleable: this node invalidated its own live quote' });
+          }
           await this.halt(`offer for ${id} invalidated`);
           if (now >= rec.validUntil && rec.state !== 'expired') journal.transition(id, 'expired', { note: 'offer invalidated' });
           continue;

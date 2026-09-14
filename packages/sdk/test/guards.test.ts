@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { counterAmountFor, type QuoteTerms } from '../src/terms.js';
 import { nodeErrorCode } from '../src/offers.js';
+import { forbiddenClash } from '../src/inventory.js';
 
 const t = (side: 'buy' | 'sell', price: string, size: string): QuoteTerms => ({ pair: 'tNIGHT/USDM', side, price, size });
 
@@ -46,5 +47,18 @@ describe('nodeErrorCode — the node rejection code the facade buries', () => {
   it('returns undefined rather than guessing when there is no code', () => {
     expect(nodeErrorCode(new Error('Transaction submission error'))).toBeUndefined();
     expect(nodeErrorCode(undefined)).toBeUndefined();
+  });
+});
+
+describe('forbiddenClash — the keeper may never spend a live offer\'s coin', () => {
+  const live = 'a83d6079458b6fdf1837689903f0a573e0745417eb62780a2f39da41e8c59cde:1';
+  it('catches the exact live M3 run #3 self-invalidation (split spent the cycle-1 offer coin)', () => {
+    expect(forbiddenClash([live], new Set([live]))).toEqual([live]);
+  });
+  it('ignores 0x and case differences between journal, wallet and ledger', () => {
+    expect(forbiddenClash(['0x' + live.toUpperCase().replace(':1', ':1')], new Set([live]))).toHaveLength(1);
+  });
+  it('does not confuse sibling outputs of the same transaction', () => {
+    expect(forbiddenClash([live.replace(/:1$/, ':0'), live.replace(/:1$/, ':2')], new Set([live]))).toEqual([]);
   });
 });

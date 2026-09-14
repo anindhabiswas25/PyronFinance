@@ -25,7 +25,7 @@ import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { HeadlessWallet } from './wallet.js';
-import { checkTimeToDismiss, describeIntents, nodeErrorCode } from './offers.js';
+import { checkTimeToDismiss, describeIntents, nodeErrorCode, inputsOf } from './offers.js';
 
 export interface InventoryCoin {
   /** "intentHash:outputNo" — stable identity of an unshielded UTXO. */
@@ -68,11 +68,20 @@ export interface TransferOutcome {
 
 /** Builds, dismiss-checks and submits a self-transfer of `outputs` (amounts of `token`). Refuses to
  *  submit anything the node would reject with 168. */
+/** Inputs of a built transaction that appear in `forbidden`. Refs are `intentHash:outputNo`, compared
+ *  case- and 0x-insensitively because the journal, the wallet and the ledger do not agree on either. */
+export function forbiddenClash(inputs: readonly string[], forbidden: ReadonlySet<string>): string[] {
+  const norm = (r: string) => r.toLowerCase().replace(/^0x/, '');
+  const banned = new Set([...forbidden].map(norm));
+  return inputs.filter((i) => banned.has(norm(i)));
+}
+
 async function selfTransfer(
   wallet: HeadlessWallet,
   token: string,
   outputs: bigint[],
   ledgerParameters: ledger.LedgerParameters,
+  forbiddenInputs?: ReadonlySet<string>,
 ): Promise<TransferOutcome> {
   const self = new UnshieldedAddress(Buffer.from(wallet.unshieldedAddressHex, 'hex'));
   const recipe = await wallet.facade.transferTransaction(
@@ -86,6 +95,18 @@ async function selfTransfer(
   } catch (err) {
     await wallet.facade.revert(recipe).catch(() => undefined);
     throw err;
+  }
+  // THE LAST-MOMENT GUARD. Coin selection is the wallet's, smallest-first over whatever it believes is
+  // available; a caller's exclusion list shapes the plan, not the selection. Found live (M3 run #3): a keeper
+  // split consumed a83d6079…:1, the coin backing a quote still settleable for another 38 minutes — the
+  // booking that should have hidden it had been lost across a restart. So the built transaction's REAL inputs
+  // are checked against every coin a live offer depends on, and nothing is submitted on any overlap.
+  if (forbiddenInputs && forbiddenInputs.size > 0) {
+    const clash = forbiddenClash(inputsOf(tx), forbiddenInputs);
+    if (clash.length > 0) {
+      await wallet.facade.revert(recipe).catch(() => undefined);
+      throw new InventoryError(`refusing to submit: selection picked ${clash.length} coin(s) a live offer depends on (${clash.join(', ')})`);
+    }
   }
   const dismiss = checkTimeToDismiss(tx, ledgerParameters);
   if (!dismiss.ok) {
@@ -126,7 +147,7 @@ export async function consolidateSmallest(
   token: string,
   k: number,
   ledgerParameters: ledger.LedgerParameters,
-  options: { keepLargest?: number; exclude?: ReadonlySet<string> } = {},
+  options: { keepLargest?: number; exclude?: ReadonlySet<string>; forbiddenInputs?: ReadonlySet<string> } = {},
 ): Promise<TransferOutcome | undefined> {
   if (k < 2) throw new InventoryError('consolidation needs k >= 2');
   const coins = (await listCoins(wallet, token)).filter((c) => !options.exclude?.has(c.ref));
@@ -134,7 +155,7 @@ export async function consolidateSmallest(
   const batch = candidates.slice(0, k);
   if (batch.length < 2) return undefined;
   const sum = batch.reduce((a, c) => a + c.value, 0n);
-  return selfTransfer(wallet, token, [sum], ledgerParameters);
+  return selfTransfer(wallet, token, [sum], ledgerParameters, options.forbiddenInputs ?? options.exclude);
 }
 
 /** Carves exact-denomination coins of `token` (plus change). */
@@ -143,9 +164,10 @@ export async function splitExact(
   token: string,
   amounts: bigint[],
   ledgerParameters: ledger.LedgerParameters,
+  options: { forbiddenInputs?: ReadonlySet<string> } = {},
 ): Promise<TransferOutcome> {
   if (amounts.length === 0 || amounts.some((a) => a <= 0n)) throw new InventoryError('split amounts must be positive');
-  return selfTransfer(wallet, token, amounts, ledgerParameters);
+  return selfTransfer(wallet, token, amounts, ledgerParameters, options.forbiddenInputs);
 }
 
 /** Registers any unregistered native tNIGHT coins for DUST generation (see the caveat above). */
