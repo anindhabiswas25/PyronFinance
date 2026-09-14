@@ -37,17 +37,21 @@ import {
   type RevealMessage,
 } from '@otc/sdk/browser';
 
+// Shapes below are copied from the REAL installed @midnight-ntwrk/dapp-connector-api types
+// (node_modules/@midnight-ntwrk/dapp-connector-api/dist/api.d.ts), not guessed — a first version
+// of this probe guessed makeTransfer's argument shape and it broke on a real 1AM wallet
+// ("Cannot read properties of undefined (reading 'toString')"), which is exactly the kind of thing
+// Phase 0 exists to catch before it's built into real UI.
+type DesiredOutput = { kind: 'shielded' | 'unshielded'; type: string; value: bigint; recipient: string };
+
 type WalletApi = {
   getConfiguration: () => Promise<{ indexerUri: string; indexerWsUri: string; networkId: string }>;
   getUnshieldedAddress: () => Promise<{ unshieldedAddress: string }>;
   getUnshieldedBalances: () => Promise<Record<string, bigint>>;
   getDustBalance: () => Promise<{ balance: bigint; cap?: bigint }>;
-  // Not yet in the narrow @midnight-ntwrk/dapp-connector-api@4.0.1 types — real methods per
-  // CLAUDE.md/the prompt's §2, called with `any` args/return per the 1am-wallet skill's guidance
-  // for wallet-API surface ahead of its published types.
-  balanceSealedTransaction: (offerHex: string) => Promise<{ tx: string }>;
-  makeTransfer: (outputs: unknown[]) => Promise<{ tx: string }>;
-  submitTransaction: (txHex: string) => Promise<string | { transactionId?: string; id?: string } | void>;
+  balanceSealedTransaction: (offerHex: string, options?: { payFees?: boolean }) => Promise<{ tx: string }>;
+  makeTransfer: (outputs: DesiredOutput[], options?: { payFees?: boolean }) => Promise<{ tx: string }>;
+  submitTransaction: (txHex: string) => Promise<void>;
 };
 
 type InitialApi = { name: string; connect: (network: string) => Promise<WalletApi> };
@@ -102,13 +106,15 @@ export function SettleProbe() {
     record('attempting a self-transfer to merge coins (the "prepare wallet" idea)...');
     try {
       const before = await wallet.getUnshieldedBalances();
-      // A minimal self-transfer output; exact shape depends on the connected wallet's
-      // `makeTransfer` signature — this is the one DApp Connector call this probe cannot fully
-      // pin down without a live wallet in front of it, per the Phase 0 gate note.
-      const result = await wallet.makeTransfer([{ receiverAddress: address }]);
+      const tokenType = Object.keys(before)[0];
+      if (!tokenType) throw new Error('wallet holds no unshielded tokens to self-transfer');
+      const half = before[tokenType] / 2n;
+      if (half <= 0n) throw new Error(`balance of ${tokenType} too small to split`);
+      const output: DesiredOutput = { kind: 'unshielded', type: tokenType, value: half, recipient: address };
+      const result = await wallet.makeTransfer([output]);
       record(`makeTransfer returned a tx (${result.tx.length / 2} bytes) — submitting...`);
-      const submitResult = await wallet.submitTransaction(result.tx);
-      record(`submitted: ${JSON.stringify(submitResult)}`);
+      await wallet.submitTransaction(result.tx);
+      record('submitted (submitTransaction resolves void on success)');
       const after = await wallet.getUnshieldedBalances();
       record(`balances before: ${JSON.stringify(before, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
       record(`balances after:  ${JSON.stringify(after, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
@@ -123,6 +129,7 @@ export function SettleProbe() {
     const started = Date.now();
     try {
       // 1. Parse and decrypt the pasted reveal.
+      if (!revealJson.trim()) throw new Error('paste a reveal message JSON first — see step 2');
       const msg = JSON.parse(revealJson) as RevealMessage;
       const takerEncSk = hexToBytes(takerEncSkHex);
       const dealerEncPk = hexToBytes(dealerEncPkHex);
@@ -182,10 +189,10 @@ export function SettleProbe() {
         return;
       }
 
-      // 6. Submit for real.
+      // 6. Submit for real. Resolves void on success (dapp-connector-api's real signature).
       record('calling submitTransaction (approve the popup)...');
-      const result = await wallet.submitTransaction(balanced.tx);
-      record(`SETTLED: ${JSON.stringify(result)} — elapsed ${Date.now() - started} ms`);
+      await wallet.submitTransaction(balanced.tx);
+      record(`SETTLED — elapsed ${Date.now() - started} ms`);
     } catch (err) {
       const code = nodeErrorCode(err);
       record(`FAILED: ${(err as Error).message}${code !== undefined ? ` (node code: ${code})` : ''} — elapsed ${Date.now() - started} ms`);
