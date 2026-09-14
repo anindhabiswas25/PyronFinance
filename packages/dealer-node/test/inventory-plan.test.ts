@@ -41,7 +41,18 @@ describe('planInventory', () => {
 
   it('does nothing — and says why — when the largest coin cannot spare a rung-sized piece', () => {
     const plan = planInventory({ coins: [c('a', 50_000n)], rungAmount: 41_316n, targetCoins: 3, consolidateAbove: 8 });
-    expect(plan).toMatchObject({ action: 'none', reason: expect.stringMatching(/cannot spare/) });
+    expect(plan).toMatchObject({ action: 'none', reason: expect.stringMatching(/cannot fund/) });
+  });
+
+  it('never plans a split that smallest-first selection would fund from existing small coins (live churn, run #3)', () => {
+    // Live: coins {1500, 1500, large}, rung 1000, target 4 — a one-piece split of 1500 made the wallet spend an
+    // existing 1500 coin to create another, every tick. The split total must exceed the smaller coins' sum.
+    const plan = planInventory({ coins: [c('s1', 1_500n), c('s2', 1_500n), c('big', 4_999_998_164n)], rungAmount: 1_000n, targetCoins: 4, consolidateAbove: 8 });
+    expect(plan.action).toBe('split');
+    if (plan.action !== 'split') return;
+    const total = plan.pieces.reduce((a, p) => a + p, 0n);
+    expect(total).toBeGreaterThan(3_000n);
+    expect(plan.pieces).toEqual([1_500n, 1_500n, 1_500n]);
   });
 
   it('keeps the split source able to back a rung itself', () => {
