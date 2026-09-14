@@ -44,20 +44,23 @@ export function planInventory(input: PlanInput): InventoryPlan {
 
   // Dust first: any coin smaller than a rung will be swept into an offer as a second input.
   const dust = coins.filter((c) => c.value < rungAmount);
-  if (dust.length >= 2 || coins.length > consolidateAbove) {
+  const backing = coins.filter((c) => c.value >= rungAmount);
+  if (dust.length >= 2) {
     // Merge the smallest coins, at most 3 (a larger merge risks its own time-to-dismiss refusal).
     const batch = coins.slice(0, Math.min(3, coins.length));
+    return { action: 'merge', refs: batch.map((c) => c.ref), total: batch.reduce((a, c) => a + c.value, 0n), reason: `${dust.length} coins smaller than a rung` };
+  }
+  // A count-based merge may only consume SURPLUS backing coins. Found live (M3 run #3): with the merge blind to
+  // the ladder, a split created enough coins to trip "N coins > consolidate_above", the merge destroyed backing
+  // coins, and the next tick split again — merge, split, merge, each a DUST-paying transaction.
+  const surplus = backing.length - Math.max(targetCoins, 1);
+  if (coins.length > consolidateAbove && surplus >= 2) {
+    const batch = coins.slice(0, Math.min(3, surplus + (dust.length ? 1 : 0), coins.length));
     if (batch.length >= 2) {
-      return {
-        action: 'merge',
-        refs: batch.map((c) => c.ref),
-        total: batch.reduce((a, c) => a + c.value, 0n),
-        reason: dust.length >= 2 ? `${dust.length} coins smaller than a rung` : `${coins.length} coins > ${consolidateAbove}`,
-      };
+      return { action: 'merge', refs: batch.map((c) => c.ref), total: batch.reduce((a, c) => a + c.value, 0n), reason: `${coins.length} coins > ${consolidateAbove}, ${surplus} surplus backing` };
     }
   }
 
-  const backing = coins.filter((c) => c.value >= rungAmount);
   const missing = targetCoins - backing.length;
   if (missing <= 0) return { action: 'none', reason: `${backing.length} coins can each back a rung (target ${targetCoins})` };
 
