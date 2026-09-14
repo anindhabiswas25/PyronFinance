@@ -160,8 +160,32 @@ describe('walletStateDir', () => {
     expect(walletStateDir()).toBe(dir);
   });
 
-  it('defaults to .wallet-state under the cwd when unset', () => {
+  it('defaults to .wallet-state at the workspace root, from any subdirectory (README timing run, 2026-09-14)', () => {
     delete process.env.MN_WALLET_STATE_DIR;
-    expect(walletStateDir()).toBe(path.resolve(process.cwd(), '.wallet-state'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'otc-ws-'));
+    fs.writeFileSync(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n');
+    const sub = path.join(root, 'packages', 'dealer-node');
+    fs.mkdirSync(sub, { recursive: true });
+    const cwd = process.cwd();
+    try {
+      process.chdir(sub);
+      expect(fs.realpathSync(path.dirname(walletStateDir()))).toBe(fs.realpathSync(root));
+      process.chdir(root);
+      expect(fs.realpathSync(path.dirname(walletStateDir()))).toBe(fs.realpathSync(root));
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it('falls back to the cwd outside any workspace', () => {
+    delete process.env.MN_WALLET_STATE_DIR;
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'otc-bare-'));
+    const cwd = process.cwd();
+    try {
+      process.chdir(bare);
+      expect(walletStateDir()).toBe(path.resolve(process.cwd(), '.wallet-state'));
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
