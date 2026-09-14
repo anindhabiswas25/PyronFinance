@@ -46,6 +46,7 @@ interface Harness {
   bond: { amount: bigint; active: boolean } | undefined;
   rfq(over?: Partial<RfqBody>): RfqBody;
   failCommit: boolean;
+  releaseLandsButThrows: boolean;
   commitLandsAnyway: boolean;
   revealDown: boolean;
   journalOnDiskAtCommit: string;
@@ -96,6 +97,7 @@ async function harness(opts: { cfg?: DealerConfig; file?: string; bond?: bigint 
     offerStatus: new Map<string, OfferStatus>(),
     bond: { amount: opts.bond ?? 1000n, active: true } as { amount: bigint; active: boolean } | undefined,
     failCommit: false,
+    releaseLandsButThrows: false,
     commitLandsAnyway: false,
     revealDown: false,
     journalOnDiskAtCommit: '',
@@ -142,6 +144,7 @@ async function harness(opts: { cfg?: DealerConfig; file?: string; bond?: bigint 
     async release(id) {
       h.releases.push(id);
       h.chainQuotes.set(id, { resolved: true });
+      if (h.releaseLandsButThrows) throw new Error('Transaction submission error\n  RpcError: 1010: Invalid Transaction: Custom error: 104');
     },
     nowSecs: () => now.t,
   };
@@ -300,6 +303,18 @@ describe('QuotingEngine — failures', () => {
     await h.engine.watch();
     expect(h.releases).toEqual([id]);
     expect(h.journal.get(id)!.state).toBe('released');
+  });
+
+  it('release "fails" but landed (live, run #3, code 104): released, no false "another party" alert', async () => {
+    const h = await harness();
+    const id = (await h.engine.handleRfq(h.rfq()))!;
+    h.releaseLandsButThrows = true;
+    h.now.t += 3900;
+    await h.engine.watch();
+    expect(h.journal.get(id)!.state).toBe('released');
+    await h.engine.watch();
+    expect(h.journal.get(id)!.state).toBe('released');
+    expect(h.events.some((e) => e.kind === 'ALERT' || e.kind === 'release-failed')).toBe(false);
   });
 
   it('a quote resolved by someone else is closed with an alert', async () => {

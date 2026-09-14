@@ -293,6 +293,27 @@ export class QuotingEngine {
     return true;
   }
 
+  /** Release an expired quote, trusting the chain over the submission result. Found live (M3 run #3,
+   *  08:25Z): releaseExpiredQuote landed in block 2543615 at 08:25:24Z, yet the wallet reported a
+   *  submission failure (node code 104) 11 s later — and the next watch pass, seeing the quote resolved
+   *  with a journal still at 'expired', raised "resolved by another party". */
+  private async releaseQuote(id: string): Promise<void> {
+    const { chain, journal } = this.o;
+    try {
+      await chain.release(id);
+      journal.transition(id, 'released');
+      this.emit({ kind: 'released', quoteId: id });
+    } catch (err) {
+      const onChain = await chain.quoteOnChain(id).catch(() => undefined);
+      if (onChain?.resolved) {
+        journal.transition(id, 'released', { note: 'submission reported failure; chain shows the quote resolved' });
+        this.emit({ kind: 'released', quoteId: id, detail: `resolved on-chain despite: ${(err as Error).message.split('\n')[0]}` });
+        return;
+      }
+      this.emit({ kind: 'release-failed', quoteId: id, detail: (err as Error).message });
+    }
+  }
+
   private async retireOffer(quoteId: string, release: boolean): Promise<void> {
     const entry = this.taken.get(quoteId);
     if (!entry) return;
@@ -370,13 +391,7 @@ export class QuotingEngine {
         this.emit({ kind: 'expired', quoteId: id });
       }
       if (now >= rec.validUntil + PROOF_GRACE_PERIOD_SECS) {
-        try {
-          await chain.release(id);
-          journal.transition(id, 'released');
-          this.emit({ kind: 'released', quoteId: id });
-        } catch (err) {
-          this.emit({ kind: 'release-failed', quoteId: id, detail: (err as Error).message });
-        }
+        await this.releaseQuote(id);
       }
     }
 
@@ -418,13 +433,7 @@ export class QuotingEngine {
           }
           break;
         case 'release':
-          try {
-            await chain.release(a.quoteId);
-            journal.transition(a.quoteId, 'released');
-            this.emit({ kind: 'released', quoteId: a.quoteId });
-          } catch (err) {
-            this.emit({ kind: 'release-failed', quoteId: a.quoteId, detail: (err as Error).message });
-          }
+          await this.releaseQuote(a.quoteId);
           break;
         case 'offer-invalidated':
           this.emit({ kind: 'ALERT', quoteId: a.quoteId, detail: 'restart: offer inputs spent by another transaction' });
