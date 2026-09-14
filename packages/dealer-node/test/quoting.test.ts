@@ -265,6 +265,21 @@ describe('QuotingEngine — failures', () => {
     expect(await h.engine.handleRfq(h.rfq())).toBeUndefined();
   });
 
+  it('inputs of an EXPIRED offer spent elsewhere: no ALERT, no halt — dead offers are free inventory (live run #3)', async () => {
+    const h = await harness();
+    const id = (await h.engine.handleRfq(h.rfq()))!;
+    h.now.t += 3600 + 60; // past the Offer File's expiry (built at T with a 3600 s life)
+    h.offerStatus.set(id, 'spent-elsewhere'); // e.g. the inventory keeper split the freed coins
+    await h.engine.watch();
+    expect(h.events.some((e) => e.kind === 'ALERT')).toBe(false);
+    expect(h.engine.isHalted).toBe(false);
+    expect(h.records).toEqual([]);
+    expect(h.journal.get(id)!.state).toBe('expired');
+    h.now.t += 3600; // past validUntil + grace
+    await h.engine.watch();
+    expect(h.releases).toEqual([id]);
+  });
+
   it('expired unsettled: expired at validUntil, released only after the grace period, coins freed after offer expiry', async () => {
     const h = await harness();
     const id = (await h.engine.handleRfq(h.rfq()))!;

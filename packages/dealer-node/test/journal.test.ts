@@ -250,6 +250,21 @@ describe('crash points — the node must always be able to reveal a live quote',
     expect(hostageInputs).toEqual([]);
   });
 
+  it('spent-elsewhere AFTER the Offer File expired is inventory reuse, not an invalidation', async () => {
+    const file = tmpFile();
+    const j = QuoteJournal.open(file, { now: () => T });
+    j.recordIntent(intent(20));
+    for (const s of ['submitted', 'committed', 'revealed'] as const) j.transition(hex32(20), s);
+    j.close();
+
+    const { actions } = await recover(
+      QuoteJournal.open(file),
+      fakeChain({ onChain: { [hex32(20)]: { resolved: false } }, offers: { [hex32(20)]: 'spent-elsewhere' }, now: T + 3600 + 1 }),
+    );
+    expect(actions.map((a) => a.action)).not.toContain('offer-invalidated');
+    expect(actions).toEqual([expect.objectContaining({ action: 'await-release' })]);
+  });
+
   it('a quote resolved on-chain by someone else is closed, and flagged for a bond check', async () => {
     const file = tmpFile();
     const j = QuoteJournal.open(file, { now: () => T });

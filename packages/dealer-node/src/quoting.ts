@@ -327,10 +327,17 @@ export class QuotingEngine {
         continue;
       }
       if (status === 'spent-elsewhere') {
-        this.emit({ kind: 'ALERT', quoteId: id, detail: 'offer inputs spent by another transaction: this node invalidated its own live quote' });
-        await this.halt(`offer for ${id} invalidated`);
-        if (now >= rec.validUntil && rec.state !== 'expired') journal.transition(id, 'expired', { note: 'offer invalidated' });
-        continue;
+        // Only a spend BEFORE the Offer File expires breaks a promise: until then a taker holding the reveal
+        // could still settle it. After expiry the offer is dead and its coins are free inventory — the
+        // keeper spending them is the normal case. Found live 2026-09-14 (run #3): the keeper split coins
+        // freed from run #2's expired offers, this check fired an ALERT for each, and halted the node.
+        if (now < rec.offerExpiresAt) {
+          this.emit({ kind: 'ALERT', quoteId: id, detail: 'offer inputs spent by another transaction while the offer was still settleable: this node invalidated its own live quote' });
+          await this.halt(`offer for ${id} invalidated`);
+          if (now >= rec.validUntil && rec.state !== 'expired') journal.transition(id, 'expired', { note: 'offer invalidated' });
+          continue;
+        }
+        // Dead offer: fall through to the ordinary expiry / release path below.
       }
 
       const onChain = await chain.quoteOnChain(id);

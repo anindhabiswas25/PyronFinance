@@ -331,8 +331,10 @@ export async function recover(
       actions.push({ quoteId: id, action: 'closed-externally', record: rec });
       continue;
     }
-    if (status === 'spent-elsewhere') {
+    if (status === 'spent-elsewhere' && now < rec.offerExpiresAt) {
       // Never record this as a settlement. The quote can no longer be honoured; surface it loudly.
+      // Only while the Offer File could still settle: after it expires, its coins being spent elsewhere
+      // is ordinary inventory reuse, not an invalidation (found live, M3 run #3).
       actions.push({ quoteId: id, action: 'offer-invalidated', record: rec });
       if (rec.state !== 'expired' && now >= rec.validUntil) journal.transition(id, 'expired', { note: 'recovered: offer invalidated' });
       continue;

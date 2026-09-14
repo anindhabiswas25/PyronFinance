@@ -63,12 +63,21 @@ export function planInventory(input: PlanInput): InventoryPlan {
 
   const largest = coins[coins.length - 1];
   if (!largest) return { action: 'none', reason: 'no coins to split' };
-  // Split off as many rung-sized pieces as the largest coin can spare while its change still backs a rung.
-  const spare = largest.value - rungAmount;
+  // A split is a self-transfer, and the wallet funds it SMALLEST coin first. If the pieces add up to no more
+  // than the smaller coins combined, selection never touches the largest coin: it spends existing small
+  // coins to recreate coins of the same size — a real transaction that changes nothing. Found live in M3
+  // run #3: "split … 1 in / 1 out" every tick, one 1,500 coin recycled into another. So the split total must
+  // exceed the sum of every smaller coin, which forces the largest coin in and makes each split add coins.
+  const smallerSum = coins.slice(0, -1).reduce((a, c) => a + c.value, 0n);
+  const forcing = Number(smallerSum / piece) + 1; // pieces needed so that pieces × piece > smallerSum
+  const spare = largest.value + smallerSum - rungAmount; // everything selection may draw, keeping one rung as change
   const affordable = spare > 0n ? Number(spare / piece) : 0;
-  const count = Math.min(missing, affordable, 8);
-  if (count <= 0) {
-    return { action: 'none', reason: `need ${missing} more backing coin(s) but the largest (${largest.value}) cannot spare a ${piece} piece` };
+  const count = Math.min(Math.max(missing, forcing), affordable, 8);
+  if (count <= 0 || count < forcing) {
+    return {
+      action: 'none',
+      reason: `need ${missing} more backing coin(s) but a split must exceed the ${smallerSum} held in smaller coins, and the largest (${largest.value}) cannot fund ${forcing} × ${piece} pieces`,
+    };
   }
   return {
     action: 'split',
