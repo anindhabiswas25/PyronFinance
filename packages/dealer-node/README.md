@@ -76,7 +76,11 @@ rejected by the node's time-to-dismiss rule (`Custom error 168`). Merging each a
 **necessary, but not proven sufficient**: a two-wallet settlement with one input per side still came
 out 0.1 ms over the 15 ms floor when the transaction was very small (see `docs/ROADMAP.md`, S5
 recurrence). The node checks every settlement shape locally and reports the numbers; treat a 168
-refusal as an inventory-shape problem, never a fee problem. Merge each asset down to one coin before quoting:
+refusal as an inventory-shape problem, never a fee problem. ~~Merge each asset down to one coin before quoting:~~
+**Corrected 2026-09-14 (M3 runs #2–#3):** one coin per asset is too few. An offer books a **whole** coin until
+its Offer File expires (up to an hour), so a node with one TESTUSD coin can hold one buy quote at a time.
+Merge the dust first, then let the running node's keeper split toward `[pool].ladder_coins` coins that can
+each back a rung:
 
 ```bash
 cd ../..
@@ -85,7 +89,11 @@ env $(grep -v '^#' .env.preprod | grep = | xargs) CONSOLIDATE_TOKEN=<counter tok
 cd packages/dealer-node
 ```
 
-The running node keeps inventory consolidated after that (`[pool].consolidate_above`).
+The running node then keeps each token's inventory shaped: it merges dust and splits the largest coin
+toward `ladder_coins` rung-sized coins, one transaction per tick, never while fewer than two DUST coins
+are free, and never spending a coin a live offer depends on. **`ladder_coins` is your per-side
+concurrency limit:** keep `[risk].max_live_quotes` ≤ `ladder_coins` (the node warns at startup otherwise).
+With every RFQ on one side, the fifth quote finds no coin while the risk limit still allows more.
 
 ## 5. Bond (2 min + chain time)
 
@@ -127,10 +135,13 @@ and ~20–55 s per on-chain call. Those are the network, not setup.
 
 | Log | Meaning |
 |---|---|
-| `ALERT … offer inputs spent by another transaction` | The node spent coins behind a live quote. It halts. Investigate before restarting. |
+| `ALERT … offer inputs spent by another transaction` | Coins behind a still-settleable quote were spent (once seen live: the node's own keeper, now prevented). It halts. Investigate before restarting; after the Offer File expires the alarm no longer applies. |
 | `halted … bond inactive or slashed` | Your bond was slashed or withdrawn. The node stops quoting. |
 | `[pool] reserve-blocked` | Not enough inventory above the reserve and floor for that rung. Fund or shrink the ladder. |
 | `[pool] build-failed … spends N coins` | Inventory is fragmented. Let the keeper consolidate, or run step 4. |
+| `[pool] build-failed … Insufficient funds` | Every coin of that token is booked by live offers (at most `ladder_coins` per side). Clears as offers expire; RFQs that arrive meanwhile are retried when a warm offer returns, while they are still open. |
+| `[inventory] … failed: refusing to submit: selection picked … coin(s) a live offer depends on` | The wallet wanted to spend a coin behind a live quote; nothing was sent. Harmless by itself; if it repeats, the wallet has lost an offer's booking — restart the node. |
+| `release-failed … Custom error: 104` on an expired quote | Seen on every live release in M3 run #3, and every one had landed. The node re-reads the chain and journals the quote `released`; no action. |
 | `[pool] stale-mid` | The price source is older than `refresh_secs / 2`. The node quotes nothing until it recovers. |
 
 ## Limits of this build
