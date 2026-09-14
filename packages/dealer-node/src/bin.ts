@@ -290,6 +290,11 @@ async function shapeInventory(
   // (M3 run #3): back-to-back keeper splits left no free DUST coin, a split failed "could not balance dust",
   // and the next commitQuote failed — the keeper cost a quote. So: keep at least 2 DUST coins free for the
   // node's own commit/record/release transactions, and submit at most ONE keeper transaction per tick.
+  const owed = engine.owedTransactions();
+  if (owed.length > 0) {
+    log(`[inventory] skipped: ${owed.length} settlement record(s) / release(s) owed first (${owed.map((id) => id.slice(0, 8)).join(', ')})`);
+    return;
+  }
   const dustState = await Rx.firstValueFrom(wallet.facade.state().pipe(Rx.filter((x) => x.isSynced)));
   if (dustState.dust.availableCoins.length < 2) {
     log(`[inventory] skipped: only ${dustState.dust.availableCoins.length} free DUST coin(s); reserved for quote transactions`);

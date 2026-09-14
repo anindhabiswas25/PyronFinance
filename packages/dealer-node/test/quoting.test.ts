@@ -47,6 +47,7 @@ interface Harness {
   rfq(over?: Partial<RfqBody>): RfqBody;
   failCommit: boolean;
   releaseLandsButThrows: boolean;
+  recordFails: boolean;
   commitLandsAnyway: boolean;
   revealDown: boolean;
   journalOnDiskAtCommit: string;
@@ -98,6 +99,7 @@ async function harness(opts: { cfg?: DealerConfig; file?: string; bond?: bigint 
     bond: { amount: opts.bond ?? 1000n, active: true } as { amount: bigint; active: boolean } | undefined,
     failCommit: false,
     releaseLandsButThrows: false,
+    recordFails: false,
     commitLandsAnyway: false,
     revealDown: false,
     journalOnDiskAtCommit: '',
@@ -138,6 +140,7 @@ async function harness(opts: { cfg?: DealerConfig; file?: string; bond?: bigint 
       return h.offerStatus.get(rec.quoteId) ?? 'unspent';
     },
     async recordSettlement(id) {
+      if (h.recordFails) throw new Error('Wallet.InsufficientFunds: Insufficient Funds: could not balance dust');
       h.records.push(id);
       h.chainQuotes.set(id, { resolved: true });
     },
@@ -215,6 +218,32 @@ describe('QuotingEngine — happy path', () => {
     await h.engine.watch();
     expect(h.records).toEqual([id]);
     expect(h.journal.get(id)!.state).toBe('recorded');
+  });
+
+  it('a settlement that cannot be recorded yet is owed before any keeper work, and logs once (fresh-wallet DUST)', async () => {
+    const h = await harness();
+    const id = (await h.engine.handleRfq(h.rfq()))!;
+    expect(h.engine.owedTransactions()).toEqual([]);
+    h.offerStatus.set(id, 'settled');
+    h.recordFails = true;
+    for (let i = 0; i < 5; i++) await h.engine.watch();
+    expect(h.journal.get(id)!.state).toBe('settled');
+    expect(h.engine.owedTransactions()).toEqual([id]);
+    expect(h.events.filter((e) => e.kind === 'record-failed')).toHaveLength(1);
+    h.recordFails = false;
+    await h.engine.watch();
+    expect(h.journal.get(id)!.state).toBe('recorded');
+    expect(h.engine.owedTransactions()).toEqual([]);
+  });
+
+  it('an expired quote past its grace period is owed until released', async () => {
+    const h = await harness();
+    const id = (await h.engine.handleRfq(h.rfq()))!;
+    h.now.t += 300;
+    await h.engine.watch();
+    expect(h.engine.owedTransactions()).toEqual([]); // expired, grace still open
+    h.now.t += 3600;
+    expect(h.engine.owedTransactions()).toEqual([id]);
   });
 
   it('uses a fresh nonce per quote', async () => {
