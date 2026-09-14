@@ -632,6 +632,14 @@ Offer Files expire (07:16:27Z, 07:17:28Z), so startup un-books their coins and t
 (`inventory-plan.ts`, `ladder_coins` 4) can split TESTUSD into rung-sized coins before quoting. Same driver:
 13 cycles × 15 min, settle every 4th verified quote, disclosure round-trip on each settlement.
 
+**M3 run #3 started 2026-09-14T07:18:49Z — the ladder keeper's first live use.** Startup, in order:
+`recover` → both run-#2 quotes `await-release` (grace period still open — correct); `unbook` freed the dead
+offers' coins; then the keeper split **both** assets towards `ladder_coins` 4 — tNIGHT (3 in / 3 out, which
+also absorbed the dust coins) and TESTUSD (2 in / 3 out), each logged "2 backing coin(s) < target 4". For
+the first time in any run **both rungs warmed**: buy @ 41.315680 and **sell @ 41.564320**. The sell rung had
+been refused every tick of runs #1 and #2 ("offer half spends 2 coins"). Taker driver started 07:20:07Z;
+the node took the buy offer for cycle 1 immediately.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
