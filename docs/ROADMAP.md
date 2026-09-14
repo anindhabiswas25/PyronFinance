@@ -573,6 +573,36 @@ A first lifecycle on the pre-Class-B contract `f365…` was abandoned at "bonded
 changed every prover key (see the compact-contracts skill): its 75-unit test bond and one quote remain
 there. `attachDisclosureNote` is exercised on-chain by the M3 run's taker driver.
 
+**M3 first unattended run — partial, 2026-09-13T21:30–21:48Z; killed by host memory pressure.** Dealer Node
+(`bin.ts start`, main wallet, dealer `4fc729d4…`, bond 100) plus `taker-pinger` (second wallet) over the two
+long-lived relays. What ran live:
+
+| Cycle | RFQ → verified on live indexer | Reveal | Offer File | Dealer journal |
+|---|---|---|---|---|
+| 1 | 31 s, via 2 relays | buy 0.001 @ 41.315680 | expires 22:30:39Z; **matches terms** | committed → announced → revealed |
+| 2 | 26 s, via 2 relays | buy 0.001 @ 41.315680 | expires 22:31:40Z; **matches terms** | committed → announced → revealed |
+
+At 21:48:23Z the host ran low on memory and the harness killed the background jobs. The node took the
+**graceful path** live: SIGTERM → pool halted → "the journal keeps every live quote for the next start";
+the run script's trap removed both wallet locks. No settlement had been attempted (the driver settles every
+4th cycle). **The M3 definition of done is therefore NOT met yet** — it needs a run across several expiry cycles.
+
+Three things the run exposed:
+1. **Defect — inventory counted twice.** After the second quote the pool logged `reserve-blocked … balance 0,
+   committed 82632` and stopped refilling. `liveInventory` returned the wallet's *available* balance, which
+   already excludes coins booked by our offers, and the pool then subtracted those offers again. Fixed:
+   balance = available + pending.
+2. **Design fact — an offer books a WHOLE coin.** The 41,316 TESTUSD bid booked the wallet's large TESTUSD
+   coin outright (smallest-first selection). N concurrent quotes need N coins of roughly rung size.
+   Consolidation (fewer inputs per half) and splitting (more concurrent quotes) pull in opposite directions;
+   the inventory target is a **ladder of rung-sized coins**, not one big coin. `DEALER-NODE.md` §5.2 to be
+   updated with the pool's split keeper.
+3. **The live guard held.** The sell rung was refused every tick ("offer half spends 2 coins"), so the node
+   never quoted an unsettleable half.
+
+Operational: the host's memory (a ~4 GB Docker VM beside several ~300 MB wallet processes) is a real
+constraint on unattended runs here; the next run is launched detached so a harness kill cannot stop it.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
