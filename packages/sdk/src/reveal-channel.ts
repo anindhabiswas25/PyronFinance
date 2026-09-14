@@ -11,7 +11,7 @@
 // is non-repudiable fraud evidence even without decrypting anything.
 //
 // BROWSER-SAFE (Phase 0 task 0.1): uses @noble/ciphers instead of node:crypto and Uint8Array
-// instead of Buffer throughout, so this module is importable from apps/web via browser.ts. Output
+// instead of Buffer throughout, so this module is importable from client/ via browser.ts. Output
 // is byte-for-byte identical to the previous node:crypto implementation — see
 // test/aead-parity.test.ts.
 

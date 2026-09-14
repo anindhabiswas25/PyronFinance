@@ -1,6 +1,6 @@
 // Shared ChaCha20-Poly1305 AEAD wrapper on @noble/ciphers (pure JS, audited, no native deps) —
 // used by both reveal-channel.ts (docs/RELAY.md §4) and disclosure.ts (docs/DISCLOSURE.md), so
-// apps/web can import either without pulling in node:crypto.
+// client/ can import either without pulling in node:crypto.
 //
 // PARITY: verified byte-for-byte identical to node:crypto's `chacha20-poly1305` cipher for a fixed
 // key/nonce/plaintext, with and without AAD — see test/aead-parity.test.ts. Both implement RFC 8439;

@@ -211,7 +211,7 @@ export async function verifyQuoteRef(
 
 /** The minimal WebSocket surface `RelayAggregator` needs — satisfied by both a browser's native
  *  `WebSocket` and the `ws` package's client (both implement the same W3C event-listener API),
- *  so this file never imports either directly. `browser.ts` re-exports this type so `apps/web`
+ *  so this file never imports either directly. `browser.ts` re-exports this type so `client/`
  *  can pass `(url) => new WebSocket(url)`; Node scripts pass `nodeSocketFactory` from
  *  `relay-client-node.ts` instead. */
 export interface WebSocketLike {
@@ -266,7 +266,7 @@ export interface RelayAggregatorOptions {
   relays: string[];
   chain: ChainReader;
   /** Constructs one relay connection. Required — this file never assumes a WebSocket
-   *  implementation. `apps/web` passes the browser global; Node code passes
+   *  implementation. `client/` passes the browser global; Node code passes
    *  `nodeSocketFactory` from `relay-client-node.ts`. */
   socketFactory: SocketFactory;
   minRelays?: number;

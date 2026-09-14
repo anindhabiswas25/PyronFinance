@@ -1,5 +1,5 @@
 // Browser-safe SDK entry point (Phase 0 task 0.1,
-// docs/prompts/FRONTEND-IMPLEMENTATION-PROMPT.md §3). `apps/web` MUST import from here, never
+// docs/prompts/FRONTEND-IMPLEMENTATION-PROMPT.md §3). `client/` MUST import from here, never
 // from individual `src/*.ts` files directly — that is what keeps a future Node-only addition
 // elsewhere in the package from silently breaking the Vite build.
 //
@@ -9,7 +9,7 @@
 //                                  instead (docs/prompts/FRONTEND-IMPLEMENTATION-PROMPT.md §4).
 //   - contract.ts               — resolves ZK assets from the filesystem via node:path. The
 //                                  browser needs a fetch-based zk-config provider instead (task 0.3).
-//   - relay-client-node.ts      — the Node `ws`-backed socket factory. apps/web passes the
+//   - relay-client-node.ts      — the Node `ws`-backed socket factory. client/ passes the
 //                                  browser's native `WebSocket` global as `socketFactory` instead.
 //   - wallet-state.ts           — Node wallet snapshot persistence (fs).
 //   - inventory.ts              — Dealer Node's UTXO consolidation keeper; not a taker concern.

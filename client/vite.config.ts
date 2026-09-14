@@ -21,12 +21,27 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 // outside every package, so it resolves `@midnight-ntwrk/compact-runtime` from the repo-root
 // node_modules, whose onchain-runtime-v3 is 3.1.0 against the SDK's 3.1.1. Unpinned, the bundle
 // carried two runtime WASM instances, and a ContractState built by one was read by the other.
-const sdkModules = path.resolve(import.meta.dirname, '../../packages/sdk/node_modules');
+//
+// "The SDK's own copy" is resolved the way Node resolves it from packages/sdk: its nested
+// node_modules first, then upwards. pnpm's hoisted linker only nests a copy there when versions
+// conflict; a clean install from the committed lockfile (onchain-runtime-v3 3.1.0 only) nests
+// nothing, and a hardcoded nested path then fails to load the config at all.
+const sdkDir = path.resolve(import.meta.dirname, '../packages/sdk');
 const pinned = ['@midnight-ntwrk/compact-runtime', '@midnight-ntwrk/onchain-runtime-v3', '@midnight-ntwrk/ledger-v8'];
+
+function resolveFromSdk(name: string): string {
+  for (let dir = sdkDir; ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, 'node_modules', name);
+    if (fs.existsSync(candidate)) return fs.realpathSync(candidate);
+    if (path.dirname(dir) === dir) throw new Error(`${name} is not resolvable from ${sdkDir}`);
+  }
+}
 
 export default defineConfig({
   plugins: [react(), wasm(), topLevelAwait()],
   resolve: {
-    alias: pinned.map((name) => ({ find: new RegExp(`^${name}$`), replacement: fs.realpathSync(path.join(sdkModules, name)) })),
+    alias: pinned.map((name) => ({ find: new RegExp(`^${name}$`), replacement: resolveFromSdk(name) })),
   },
+  // 5173 is left free for other dev servers on this machine; strictPort fails loudly instead of drifting.
+  server: { port: 5174, strictPort: true },
 });

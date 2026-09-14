@@ -3,7 +3,7 @@
 ## What the relay is, and what it is not
 
 The relay is a **protocol-level message format that anyone can run a node for.** It is not this
-project's hosted backend, and `apps/web` must never depend on a relay that only we operate.
+project's hosted backend, and the web client (`client/`) must never depend on a relay that only we operate.
 
 This mirrors Midnight's own design intent for Offer Files: proved locally, serialized, and postable
 anywhere — a Discord channel, a Telegram group, a shared namespace. The relay is the well-specified

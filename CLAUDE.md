@@ -92,7 +92,7 @@ contracts/               OTCProtocol.compact + managed compiler output
 packages/sdk/            Bonding, quote commit/reveal, fraud proofs, Zswap offer construction
 packages/relay-node/     Standalone gossip node — runnable by anyone
 packages/dealer-node/    Reference dealer client — standing quotes, auto-refresh, commit→reveal
-apps/web/                React 18 + Vite + TS + Tailwind + Zustand; Lace via DApp Connector API
+client/                  Web client (@otc/client): React 18 + Vite + TS + Tailwind + Zustand; wallets via DApp Connector API
 .claude/skills/          Project skills — update IN PLACE when Compact reveals new constraints
 ```
 

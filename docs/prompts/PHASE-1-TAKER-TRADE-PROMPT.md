@@ -1,3 +1,5 @@
+> **Note (2026-09-15):** `apps/web` moved to `client/` (package `@otc/client`). Paths below are kept as written.
+
 # Prompt — Phase 1A: the taker trade flow in `apps/web`
 
 Paste everything below the line into a fresh Claude Code session opened at the repo root

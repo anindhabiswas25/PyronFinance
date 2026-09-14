@@ -363,7 +363,7 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
 }
 
 /** Base64 wire form for `RevealPlaintext.offerFile` (reveal-channel.ts). Browser-safe (Phase 0
- *  task 0.1/0.2 — apps/web's settlement probe deserializes an Offer File in-browser). */
+ *  task 0.1/0.2 — client/'s settlement probe deserializes an Offer File in-browser). */
 export function serializeOffer(tx: ledger.FinalizedTransaction): string {
   return bytesToBase64(tx.serialize());
 }
@@ -672,7 +672,7 @@ async function receiverAddressFor(wallet: OfferWallet, kind: TokenKind): Promise
     // path is Node-only (OfferWallet always wraps the Node headless wallet), so Buffer is fine.
     // Imported lazily through a variable specifier: address-format pulls in @subsquid/scale-codec,
     // which requires Node's `assert`. A static (or literal dynamic) import lets Vite bundle it into
-    // apps/web through browser.ts, where the dev-mode `assert` stub throws on first property access.
+    // client/ through browser.ts, where the dev-mode `assert` stub throws on first property access.
     const addressFormat: string = '@midnight-ntwrk/wallet-sdk-address-format';
     const { UnshieldedAddress } = (await import(/* @vite-ignore */ addressFormat)) as typeof import('@midnight-ntwrk/wallet-sdk-address-format');
     return new UnshieldedAddress(Buffer.from(wallet.unshieldedAddressHex, 'hex'));
