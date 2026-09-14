@@ -115,6 +115,13 @@ export class QuotingEngine {
     return [...this.taken.values()].flatMap((e) => e.offer.inputs);
   }
 
+  /** Offers handed to quotes that give `token` and may still settle — each holds one whole coin of it. The
+   *  inventory keeper counts these toward `ladder_coins`, or it keeps splitting to replace coins that are
+   *  merely in use (found live, M3 run #3). */
+  offersGiving(token: string): number {
+    return [...this.taken.values()].filter((e) => e.give.token === token).length;
+  }
+
   private emit(e: QuotingEvent): void {
     this.o.onEvent?.(e);
   }

@@ -292,7 +292,11 @@ async function shapeInventory(
   const rungs: Array<[string, bigint]> = [[tokens.base.token, maxSize], [tokens.counter.token, counterRung]];
   for (const [token, rungAmount] of rungs) {
     const coins = (await listCoins(wallet, token)).filter((c) => !exclude.has(c.ref));
-    const plan = planInventory({ coins, rungAmount, targetCoins: cfg.pool.ladderCoins, consolidateAbove: cfg.pool.consolidateAbove });
+    // Coins held by live offers are part of the ladder: counting only unbooked coins made the keeper split
+    // again every time a warm offer booked one (M3 run #3, "3 backing coin(s) < target 4" each tick).
+    const inUse = pool.list().filter((e) => e.give.token === token).length + engine.offersGiving(token);
+    const targetCoins = Math.max(0, cfg.pool.ladderCoins - inUse);
+    const plan = planInventory({ coins, rungAmount, targetCoins, consolidateAbove: cfg.pool.consolidateAbove });
     if (plan.action === 'none') continue;
     const { params } = await retry('ledger parameters', () => queryLedgerParameters(cfg.network.indexer));
     try {

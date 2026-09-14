@@ -25,7 +25,7 @@ import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { HeadlessWallet } from './wallet.js';
-import { checkTimeToDismiss, describeIntents } from './offers.js';
+import { checkTimeToDismiss, describeIntents, nodeErrorCode } from './offers.js';
 
 export interface InventoryCoin {
   /** "intentHash:outputNo" — stable identity of an unshielded UTXO. */
@@ -102,7 +102,18 @@ async function selfTransfer(
       outs += offer?.outputs.length ?? 0;
     }
   }
-  const txId = await wallet.facade.submitTransaction(tx);
+  let txId: string;
+  try {
+    txId = await wallet.facade.submitTransaction(tx);
+  } catch (err) {
+    // The facade's message is only "Transaction submission error"; the node's code is nested. The first
+    // live keeper failure (M3 run #3, TESTUSD split) was recorded with no code at all.
+    await wallet.facade.revert(recipe).catch(() => undefined);
+    throw new InventoryError(
+      `self-transfer rejected on submission: node code ${nodeErrorCode(err) ?? '(none found)'}; ` +
+        `${inputs} in / ${outs} out, ${tx.serialize().length} B; ${describeIntents(tx)}; ${(err as Error).message}`,
+    );
+  }
   return { txId, inputs, outputs: outs, bytes: tx.serialize().length };
 }
 
