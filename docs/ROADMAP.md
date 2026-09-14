@@ -676,7 +676,20 @@ and one more loop appeared:
    coins. Fixed: a count-based merge may only consume surplus backing coins beyond the target, and config now
    rejects `consolidate_above ≤ ladder_coins + 1`. Also seen, not explained: one TESTUSD split logged 2 in → 2 out.
 
-Five defects in one run, each invisible to the offline suite — the keeper had only ever been tested as a pure
+6. **The keeper invalidated a live quote — a TRUE alarm, traced on the indexer.** After the 07:43Z restart
+   the node alerted that cycle 1's quote `16f11a9f…` (Offer File settleable until 08:19:57Z) had its input
+   spent, and halted. Evidence: the journal records that offer's only input as `a83d6079…:1` (61,974
+   TESTUSD); the indexer shows the keeper's TESTUSD split at **07:41:06Z** spent exactly that coin. The earlier
+   keeper split at 07:34:12Z had correctly avoided `:1` (spending `:0` and `:2`), so the booking held within
+   that process and was lost somewhere across the 07:36 stop/restart — **how, exactly, is not established.**
+   What is established is the design error: the keeper's exclusion list shaped the *plan*, but the wallet
+   selects the *inputs*, smallest-first over whatever it considers available. So a live offer's coin was
+   protected only by the wallet's booking. Fixed with a last-moment invariant: every keeper self-transfer's
+   real inputs (`inputsOf(tx)`) are checked against every coin a live offer, pool offer or recovery hostage
+   depends on, and nothing is submitted on overlap. The alarm itself behaved exactly as designed — it caught
+   the node double-spending its own quote and stopped quoting; it now fires once per quote, not every 15 s.
+
+Six defects in one run, each invisible to the offline suite — the keeper had only ever been tested as a pure
 planner, never as a loop acting on a wallet that changes under it. Same lesson as S2/S3: the guards and keepers
 are as untested as the code they protect until they run against a chain. The taker driver kept
 running through the stop, so cycles missed while the node was down are recorded as unanswered.
