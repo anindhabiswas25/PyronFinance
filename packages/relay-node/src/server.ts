@@ -37,9 +37,22 @@ export interface RelayServer {
 
 let peerCounter = 0;
 
+/** RELAY.md §1: HTTP endpoints MUST allow cross-origin reads so a browser taker served from any
+ *  origin can use them. A wildcard is safe: a relay holds only public gossip and ciphertext it
+ *  cannot read, and never uses cookies or credentials. */
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type',
+} as const;
+
 function jsonResponse(res: import('node:http').ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) });
+  res.writeHead(status, {
+    ...CORS_HEADERS,
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(payload),
+  });
   res.end(payload);
 }
 
@@ -55,6 +68,16 @@ export function startRelayServer(options: RelayServerOptions): RelayServer {
 
   const http = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+
+    // CORS preflight. A browser sends one before a POST with `content-type: application/json`.
+    if (
+      req.method === 'OPTIONS' &&
+      (url.pathname === '/health' || url.pathname === '/rfqs' || (enableMailbox && url.pathname.startsWith('/mailbox/')))
+    ) {
+      res.writeHead(204, { ...CORS_HEADERS, 'access-control-max-age': '600', 'content-length': 0 });
+      res.end();
+      return;
+    }
 
     if (req.method === 'GET' && url.pathname === '/health') {
       jsonResponse(res, 200, {

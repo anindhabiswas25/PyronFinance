@@ -84,6 +84,33 @@ describe('HTTP endpoints', () => {
     expect(entries2).toHaveLength(0);
   });
 
+  it('allows cross-origin reads on every HTTP endpoint and answers preflight with 204', async () => {
+    const server = track(startRelayServer({ port: 0, enableMailbox: true }));
+    const base = `http://127.0.0.1:${portOf(server)}`;
+    const origin = { origin: 'http://localhost:5173' };
+
+    for (const path of ['/health', '/rfqs', `/mailbox/${hexOf(0x42)}`]) {
+      const get = await fetch(`${base}${path}`, { headers: origin });
+      expect(get.status).toBe(200);
+      expect(get.headers.get('access-control-allow-origin')).toBe('*');
+
+      const preflight = await fetch(`${base}${path}`, {
+        method: 'OPTIONS',
+        headers: { ...origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+      expect(preflight.headers.get('access-control-allow-methods')).toContain('GET');
+      expect(preflight.headers.get('access-control-allow-methods')).toContain('OPTIONS');
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('content-type');
+    }
+
+    // Error responses carry the header too, or a browser reports a CORS failure instead of the error.
+    const bad = await fetch(`${base}/mailbox/not-hex`, { headers: origin });
+    expect(bad.status).toBe(400);
+    expect(bad.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
   it('mailbox routes 404 when RELAY_ENABLE_MAILBOX is off', async () => {
     const server = track(startRelayServer({ port: 0, enableMailbox: false }));
     const port = portOf(server);
