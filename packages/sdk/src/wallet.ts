@@ -368,8 +368,13 @@ export async function createHeadlessWallet(
     // No `as any` on these state getters: both DustWalletState.availableCoins and
     // UnshieldedWalletState.availableCoins are real, typed members. Casting here is what let the
     // walletBalance -> balance rename above reach production undetected.
+    // NIGHT ONLY. Found 2026-09-14 timing the operator README on a brand-new wallet funded with tNIGHT and
+    // TESTUSD: without the type filter the TESTUSD coin was passed too, and the SDK aborted the whole
+    // registration with "Wallet.Other: Token of a non-Night type received" after a 28-minute first sync.
+    // Every earlier wallet had been funded with tNIGHT alone before it ever held a second token.
+    const night = ledger.nativeToken().raw;
     const nightUtxos = s.unshielded.availableCoins.filter(
-      (coin) => coin.meta?.registeredForDustGeneration !== true,
+      (coin) => coin.utxo.type === night && coin.meta?.registeredForDustGeneration !== true,
     );
     if (nightUtxos.length === 0) {
       throw new Error('No unregistered NIGHT UTXOs found — wallet may not be funded yet');
