@@ -625,6 +625,13 @@ Two things recorded as they are, not explained:
 - **Cosmetic:** `[unbook] released coins booked by 2 dead offer(s)` repeats on every start for the same
   already-reverted offers — reverting an unbooked offer is a no-op, but the count misleads.
 
+**M3 run #2 stopped (owner decision, 2026-09-14T07:00Z); run #3 started with the ladder keeper.** Run #2
+answered cycles 1–2 and ignored 3–4 — at best ~2 answered requests per hour from two coins, which cannot
+demonstrate a standing quote. Stopped with SIGTERM (graceful halt). Run #3 restarts the node after both
+Offer Files expire (07:16:27Z, 07:17:28Z), so startup un-books their coins and the new keeper
+(`inventory-plan.ts`, `ladder_coins` 4) can split TESTUSD into rung-sized coins before quoting. Same driver:
+13 cycles × 15 min, settle every 4th verified quote, disclosure round-trip on each settlement.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
