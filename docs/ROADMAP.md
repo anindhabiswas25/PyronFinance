@@ -603,6 +603,22 @@ Three things the run exposed:
 Operational: the host's memory (a ~4 GB Docker VM beside several ~300 MB wallet processes) is a real
 constraint on unattended runs here; the next run is launched detached so a harness kill cannot stop it.
 
+**M3 unattended run #2 — started 2026-09-14T06:16Z (in progress).** Launched detached (own process group) so
+a harness memory kill cannot stop it. Before it, on restart from run #1's journal, the node's recovery
+did exactly what §3.1 now says: `recover` → 2 releases, both landed on-chain; `unbook` reverted both dead
+offers; the pool warmed. Cycle 1: RFQ 06:16:38.8Z → offer taken 06:16:39.0Z → commit confirmed and
+announced and revealed by 06:17:02.7Z (24 s).
+
+Two things recorded as they are, not explained:
+- **The TESTUSD ladder split hung.** `split-for-dust` (SPLIT_TOKEN=TESTUSD, 6 × 60,000) logged only its
+  "before" line (coins 83,040 and 999,834,000) and was killed by the watchdog after 900 s of silence —
+  no transaction was logged, and the restarted node found no stuck coins. Cause unknown. So this run
+  quotes from **two** TESTUSD coins: with each offer booking a whole coin for up to an hour, at most two
+  buy quotes can be live at once, and some 15-minute cycles are expected to go unanswered. That limit
+  is itself what the run measures.
+- **Cosmetic:** `[unbook] released coins booked by 2 dead offer(s)` repeats on every start for the same
+  already-reverted offers — reverting an unbooked offer is a no-op, but the count misleads.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
