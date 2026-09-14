@@ -640,6 +640,21 @@ the first time in any run **both rungs warmed**: buy @ 41.315680 and **sell @ 41
 been refused every tick of runs #1 and #2 ("offer half spends 2 coins"). Taker driver started 07:20:07Z;
 the node took the buy offer for cycle 1 immediately.
 
+**M3 run #3 — two live defects, node stopped 07:29:36Z, fixed and restarted.** Cycle 1 had completed
+(verified on-chain after 31 s via both relays; reveal matched its terms; offer live to 08:19Z). Then:
+1. **False invalidation alarm → self-halt.** At 07:26:57Z the node began logging, every 15 s, an ALERT for
+   each of run #2's two quotes — "offer inputs spent by another transaction: this node invalidated its own
+   live quote" — and halted its pool. Those Offer Files had **expired** (07:16/07:17Z); startup freed their
+   coins and the keeper then split them. Spending a dead offer's coins is ordinary inventory reuse. `watch()`
+   and `recover()` did not check `offerExpiresAt`. Fixed: only a spend before the Offer File expires counts
+   as invalidation.
+2. **Keeper churn.** "split … 1 in / 1 out" every tick (07:27:19Z, 07:28:19Z): the plan asked for one 1,500
+   piece and smallest-first selection funded it from an existing 1,500 coin — a real transaction, spending
+   DUST, changing nothing. Fixed: a split's total must exceed the sum of all smaller coins, forcing the
+   largest coin in.
+Both fixes carry tests built from the exact live shapes (88 dealer-node tests pass). The taker driver kept
+running through the stop, so cycles missed while the node was down are recorded as unanswered.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
