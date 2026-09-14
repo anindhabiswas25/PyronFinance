@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { loadConfig, type DealerConfig, type QuotePolicy } from './config.js';
@@ -282,6 +283,15 @@ async function shapeInventory(
   engine: QuotingEngine,
   hostage: string[],
 ): Promise<void> {
+  // DUST guard. Every keeper transaction books a whole DUST coin for its fee until it confirms. Found live
+  // (M3 run #3): back-to-back keeper splits left no free DUST coin, a split failed "could not balance dust",
+  // and the next commitQuote failed — the keeper cost a quote. So: keep at least 2 DUST coins free for the
+  // node's own commit/record/release transactions, and submit at most ONE keeper transaction per tick.
+  const dustState = await Rx.firstValueFrom(wallet.facade.state().pipe(Rx.filter((x) => x.isSynced)));
+  if (dustState.dust.availableCoins.length < 2) {
+    log(`[inventory] skipped: only ${dustState.dust.availableCoins.length} free DUST coin(s); reserved for quote transactions`);
+    return;
+  }
   const exclude = new Set([...hostage, ...engine.bookedInputs(), ...pool.list().flatMap((e) => e.offer.inputs)]);
   const maxSize = policy.ladderSizes.reduce((a, b) => (a > b ? a : b), 0n);
   // The counter rung is what the dealer PAYS on its bid for the largest size (the larger of its two legs).
@@ -309,6 +319,7 @@ async function shapeInventory(
     } catch (err) {
       log(`[inventory] ${token.slice(0, 8)}…: ${plan.action} failed: ${(err as Error).message.split('\n')[0]}`);
     }
+    return; // one keeper transaction per tick — the next token waits for the next tick
   }
 }
 
