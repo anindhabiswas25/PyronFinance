@@ -64,7 +64,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
 | **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
-| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; **unattended multi-expiry run done (run #3, 08:20–10:24Z, 9/9 RFQs with a warm offer answered, two renewals)** — M3 DoD met; 3.10 timing in progress |
+| **M3** | Dealer Node + disclosure | ✅ **Complete 2026-09-14 — awaiting owner confirmation before M4.** Open decisions below are surfaced, not decided. ~~🟡 In progress (owner-approved start 2026-09-14).~~ 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; **unattended multi-expiry run done (run #3, 08:20–10:24Z, 9/9 RFQs with a warm offer answered, two renewals)** — M3 DoD met; **3.10 timed end to end on a fresh wallet (4 operator-facing defects fixed)** |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ complete · 🔴 blocked
@@ -754,6 +754,51 @@ Three findings, all non-fatal:
 Preprod ✅; a settled trade's disclosure note round-trips ✅. The fixes in `9e2b599`, `4cb8ec6` and
 `d53fd5d` were committed during the run and have not yet run live.
 
+**3.10 — the operator README timed on a brand-new wallet, 2026-09-14T10:08–11:31Z.** A fresh `git clone`
+of `harden-m1`, a newly generated seed, and a new dealer key, following `packages/dealer-node/README.md`
+step by step. The faucet was replaced by a transfer from the main wallet (500 tNIGHT, 1,000,000 TESTUSD);
+nothing else was pre-seeded.
+
+| Step | Time |
+|---|---|
+| clone + `pnpm install` + `pnpm run compact` | 16 s (warm pnpm store) |
+| generate seed + address | 4 s |
+| funding (transfer, faucet stand-in) | 63 s |
+| `fund`: first wallet sync | **~28.5 min** |
+| `fund`: DUST registration | 35 s |
+| `gen-key` | 3 s |
+| consolidate | 10 s |
+| `bond 100` | 24 s (bond 100, active, read back on-chain) |
+| `start` → both offers warm | 65 s |
+| taker RFQ → quote verified | 26 s (quote `b495644d…`, via 2 relays) |
+| settlement | tx `3e43c82d…` SUCCESS, 53 s after the RFQ |
+| `recordSettlement` | landed 11:31:02Z, **11.5 min** after settlement: DUST-starved |
+
+The new dealer `3556af8c…` ended at bond 100, active, settled 1, slashed 0. The disclosure note was not
+exercised for this dealer: the taker driver gives up after 10 minutes waiting for the record, and the record
+took 11.5 (disclosure itself is proven above, run #3 cycle 10).
+
+**Four operator-facing defects, none visible to the M3 runs** (which all ran from the repo root, on
+long-lived wallets funded with tNIGHT first):
+
+1. **DUST registration failed on a wallet holding a second token.** `registerForDustGeneration` passed
+   every unshielded coin; the SDK aborted with `Wallet.Other: Token of a non-Night type received` after
+   the 28-minute sync. Fixed `d5dc0a8` (tNIGHT coins only).
+2. **The bond step began a second full sync.** The wallet snapshot directory was cwd-relative: `fund`
+   (repo root) saved it where `bond` (`packages/dealer-node`) did not look. Fixed `5f4d461` (workspace
+   root from any directory).
+3. **A hex private-state password passed our check and failed at `bond`.** The store requires 3 of 4
+   character classes and says so only on first open, after the sync. Fixed `fc5bc06` (checked before the
+   wallet is created; README states the rule).
+4. **A young wallet could not afford to record its first trade.** The keeper's 1→4 tNIGHT split at start
+   spent DUST that `recordSettlement` then lacked; the node logged the failure every 15 s for 11.5
+   minutes. Fixed `63450db` (keeper defers while a record or release is owed; failures log once, then
+   every 20th); README "What takes time" now says so.
+
+**Verdict on the 30-minute target:** met for operator work, and it takes minutes. Not met for wall-clock time on a new
+wallet: the first sync is ~28.5 min, and for the next ~30 minutes DUST limits how fast the node can record trades. Both are the network, and
+the README now says so with numbers.
+
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
 settlement on the Class-B-removed contract, and the first live execution of the one-argument
@@ -985,7 +1030,7 @@ material beyond the measured table above.
 | 3.7 | Disclosure: named-recipient shape (`0x0001`) attach + decrypt in SDK | ✅ `packages/sdk/src/disclosure.ts`; encodings fixed in `DISCLOSURE.md`. On-chain attach runs in `taker-pinger` (pending) |
 | 3.8 | Frontend: Screen 4 (settled trades feed) + disclosure note affordance | ⬜ |
 | 3.9 | Disclosure test suite — **including the negative cases** (`DISCLOSURE.md` test plan 4, 5, 7) | ✅ items 1–7 against the compiled contract in the simulator |
-| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | 🟡 `packages/dealer-node/README.md` written. **Clean-checkout run, 2026-09-14 (partial):** clone → install → config → `gen-key` worked from nothing in 4 s (warm pnpm store — not representative of a fresh machine). It exposed a real gap: a clean clone has **no prover keys** (`*.prover` is git-ignored), so nothing could be proved; the README now installs Compact 0.30.0 and runs `pnpm run compact` (**20 s**). Compilation is **deterministic**: recompiled keys were byte-identical to the committed verifier keys (the deployed contract's) and to the developer's prover keys. Still to time: faucet/DUST wait, consolidation, bond, start |
+| 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | ✅ **Timed end to end on a brand-new Preprod wallet, 2026-09-14 (see below).** Operator work is minutes; the first wallet sync is ~28.5 min. Three operator-facing bugs found and fixed on the way. Not measured: the CAPTCHA faucet wait and a cold pnpm store. ~~`packages/dealer-node/README.md` written. **Clean-checkout run, 2026-09-14 (partial):** clone → install → config → `gen-key` worked from nothing in 4 s (warm pnpm store — not representative of a fresh machine). It exposed a real gap: a clean clone has **no prover keys** (`*.prover` is git-ignored), so nothing could be proved; the README now installs Compact 0.30.0 and runs `pnpm run compact` (**20 s**). Compilation is **deterministic**: recompiled keys were byte-identical to the committed verifier keys (the deployed contract's) and to the developer's prover keys. Still to time: faucet/DUST wait, consolidation, bond, start~~ |
 
 **Definition of done:** a Dealer Node instance holds a standing quote alive unattended across
 multiple Offer File expiry cycles; a settled trade's disclosure note round-trips (attach → decrypt by
