@@ -689,7 +689,15 @@ and one more loop appeared:
    depends on, and nothing is submitted on overlap. The alarm itself behaved exactly as designed — it caught
    the node double-spending its own quote and stopped quoting; it now fires once per quote, not every 15 s.
 
-Six defects in one run, each invisible to the offline suite — the keeper had only ever been tested as a pure
+7. **A successful release reported as a failure.** After the restart, the node released the expired
+   quote `16f11a9f…`: `releaseExpiredQuote` landed in block 2543615 at 08:25:24Z (tx `fa787986…`), but
+   the wallet surfaced a submission failure with node code 104 at 08:25:35Z, and the next watch pass —
+   seeing the quote resolved while the journal still said `expired` — alerted "resolved by another
+   party". The taker pinger never releases quotes, so the alert was false. Why the wallet reported 104 for
+   a transaction that landed is not established. Fixed by trusting the chain: after any release
+   failure the node re-reads the quote, and a resolved quote is journaled `released`.
+
+Seven defects in one run, each invisible to the offline suite — the keeper had only ever been tested as a pure
 planner, never as a loop acting on a wallet that changes under it. Same lesson as S2/S3: the guards and keepers
 are as untested as the code they protect until they run against a chain. The taker driver kept
 running through the stop, so cycles missed while the node was down are recorded as unanswered.
