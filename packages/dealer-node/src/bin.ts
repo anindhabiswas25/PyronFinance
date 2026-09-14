@@ -25,7 +25,10 @@ import { compiledOTCContract } from '../../sdk/src/contract.js';
 import { postBond, topUpBond, maxNotionalForBond } from '../../sdk/src/bonding.js';
 import { indexerChainReader } from '../../sdk/src/relay-client.js';
 import { usdmFor } from '../../sdk/src/assets.js';
-import { listCoins, consolidateSmallest, registerNewNight } from '../../sdk/src/inventory.js';
+import { listCoins, consolidateSmallest, splitExact, registerNewNight } from '../../sdk/src/inventory.js';
+import { planInventory } from './inventory-plan.js';
+import { counterAmountFor } from '../../sdk/src/terms.js';
+import { quotePrice, toFixed, fromFixed } from './pool.js';
 import { queryLedgerParameters } from '../../sdk/src/indexer.js';
 import { deserializeOffer } from '../../sdk/src/offers.js';
 import { TERMINAL } from './journal.js';
@@ -210,7 +213,7 @@ async function cmdStart(cfg: DealerConfig): Promise<void> {
     busy = true;
     try {
       await engine.watch();
-      await consolidateIfNeeded(wallet, cfg, tokens, pool, engine, hostageInputs);
+      await shapeInventory(wallet, cfg, policy, tokens, pool, engine, hostageInputs);
       await pool.tick();
       log(`[tick] pool ${pool.size} warm; live quotes ${journal.live().length}; relays ${relays.connectedCount()}/${cfg.relays.endpoints.length}`);
     } catch (err) {
@@ -265,24 +268,43 @@ async function unbookDeadOffers(wallet: HeadlessWallet, journal: QuoteJournal): 
   }
 }
 
-/** Consolidation keeper (DEALER-NODE.md §5.3). Runs between pool ticks, never while a build is in
- *  progress, and never touches coins that live offers or restarted quotes still depend on. */
-async function consolidateIfNeeded(
+/** Inventory keeper (DEALER-NODE.md §5.3). Runs between pool ticks, never while a build is in progress,
+ *  and never touches coins that live offers or restarted quotes still depend on. Asks `planInventory` for
+ *  one action per token per tick — merge dust (smallest-first selection sweeps it into halves) or split a
+ *  large coin into rung-sized pieces (each offer books a WHOLE coin, so N concurrent quotes need N coins;
+ *  M3 run #2 starved on two). */
+async function shapeInventory(
   wallet: HeadlessWallet,
   cfg: DealerConfig,
+  policy: QuotePolicy,
   tokens: PairTokens,
   pool: WarmPool,
   engine: QuotingEngine,
   hostage: string[],
 ): Promise<void> {
   const exclude = new Set([...hostage, ...engine.bookedInputs(), ...pool.list().flatMap((e) => e.offer.inputs)]);
-  for (const token of [tokens.base.token, tokens.counter.token]) {
+  const maxSize = policy.ladderSizes.reduce((a, b) => (a > b ? a : b), 0n);
+  // The counter rung is what the dealer PAYS on its bid for the largest size (the larger of its two legs).
+  const mid = policy.midPrice ? toFixed(policy.midPrice) : undefined;
+  const counterRung = mid
+    ? counterAmountFor({ pair: policy.pair, side: 'buy', price: fromFixed(quotePrice(mid, 'buy', policy.spreadBps)), size: fromFixed(maxSize) })
+    : 0n;
+  const rungs: Array<[string, bigint]> = [[tokens.base.token, maxSize], [tokens.counter.token, counterRung]];
+  for (const [token, rungAmount] of rungs) {
     const coins = (await listCoins(wallet, token)).filter((c) => !exclude.has(c.ref));
-    if (coins.length <= cfg.pool.consolidateAbove) continue;
+    const plan = planInventory({ coins, rungAmount, targetCoins: cfg.pool.ladderCoins, consolidateAbove: cfg.pool.consolidateAbove });
+    if (plan.action === 'none') continue;
     const { params } = await retry('ledger parameters', () => queryLedgerParameters(cfg.network.indexer));
-    const out = await consolidateSmallest(wallet, token, 3, params, { exclude });
-    log(`[consolidate] ${token.slice(0, 8)}…: ${coins.length} coins; merged ${out?.inputs ?? 0} -> ${out?.outputs ?? 0} (${out?.txId ?? 'skipped'})`);
-    if (out && token === NIGHT) await registerNewNight(wallet).catch((err) => log(`[consolidate] DUST re-registration failed: ${(err as Error).message}`));
+    try {
+      const out =
+        plan.action === 'merge'
+          ? await consolidateSmallest(wallet, token, plan.refs.length, params, { exclude })
+          : await splitExact(wallet, token, plan.pieces, params);
+      log(`[inventory] ${token.slice(0, 8)}…: ${plan.action} (${plan.reason}) -> ${out?.inputs ?? 0} in / ${out?.outputs ?? 0} out, tx ${out?.txId ?? 'skipped'}`);
+      if (out && token === NIGHT) await registerNewNight(wallet).catch((err) => log(`[inventory] DUST registration: ${(err as Error).message}`));
+    } catch (err) {
+      log(`[inventory] ${token.slice(0, 8)}…: ${plan.action} failed: ${(err as Error).message.split('\n')[0]}`);
+    }
   }
 }
 

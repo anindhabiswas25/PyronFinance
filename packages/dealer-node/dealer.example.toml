@@ -41,6 +41,7 @@ min_utxo_value = "1"
 [pool]
 max_offer_inputs  = 1                        # refuse offer halves spending more coins: only 1-in/1-in settlements have been accepted
 consolidate_above = 8                        # merge small UTXOs when the wallet holds more than this many
+ladder_coins      = 4                        # coins per token that can each back a rung: an offer books a WHOLE coin, so this caps concurrent quotes
 
 # One block per pair. Adding a pair is config, not code.
 [[quote_policy]]
