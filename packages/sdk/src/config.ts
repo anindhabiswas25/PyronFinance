@@ -55,6 +55,16 @@ export function requirePrivateStatePassword(): string {
         'put it in .env (git-ignored).',
     );
   }
+  // The store also demands 3 of 4 character classes, but says so only when it is first opened — after a
+  // wallet sync. Found 2026-09-14 timing the operator README: a hex password (`openssl rand -hex 16`,
+  // lowercase + digits) passed this check and failed at `bond`. Checked here so it fails before any sync.
+  const classes = [/[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
+  if (classes < 3) {
+    throw new Error(
+      `MN_PRIVATE_STATE_PASSWORD must contain at least 3 of: uppercase letters, lowercase letters, digits, ` +
+        `special characters (found ${classes}). A hex string does not qualify; \`openssl rand -base64 24\` normally does.`,
+    );
+  }
   return pw;
 }
 

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { counterAmountFor, type QuoteTerms } from '../src/terms.js';
 import { nodeErrorCode } from '../src/offers.js';
 import { forbiddenClash } from '../src/inventory.js';
+import { requirePrivateStatePassword } from '../src/config.js';
 
 const t = (side: 'buy' | 'sell', price: string, size: string): QuoteTerms => ({ pair: 'tNIGHT/USDM', side, price, size });
 
@@ -60,5 +61,22 @@ describe('forbiddenClash — the keeper may never spend a live offer\'s coin', (
   });
   it('does not confuse sibling outputs of the same transaction', () => {
     expect(forbiddenClash([live.replace(/:1$/, ':0'), live.replace(/:1$/, ':2')], new Set([live]))).toEqual([]);
+  });
+});
+
+describe('requirePrivateStatePassword — fails before a wallet sync, not after', () => {
+  const withPw = (pw: string | undefined, fn: () => void) => {
+    const old = process.env.MN_PRIVATE_STATE_PASSWORD;
+    if (pw === undefined) delete process.env.MN_PRIVATE_STATE_PASSWORD; else process.env.MN_PRIVATE_STATE_PASSWORD = pw;
+    try { fn(); } finally { if (old === undefined) delete process.env.MN_PRIVATE_STATE_PASSWORD; else process.env.MN_PRIVATE_STATE_PASSWORD = old; }
+  };
+  it('rejects a 32-char hex password (the README timing run: 2 classes)', () => {
+    withPw('0123456789abcdef0123456789abcdef', () => expect(() => requirePrivateStatePassword()).toThrow(/at least 3 of/));
+  });
+  it('rejects a short one', () => {
+    withPw('Ab1!', () => expect(() => requirePrivateStatePassword()).toThrow(/16 characters/));
+  });
+  it('accepts three classes', () => {
+    withPw('Op-0123456789abcdef', () => expect(requirePrivateStatePassword()).toBe('Op-0123456789abcdef'));
   });
 });
