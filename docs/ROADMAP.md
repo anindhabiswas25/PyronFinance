@@ -64,7 +64,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
 | **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
-| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; unattended multi-expiry live run pending |
+| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; unattended multi-expiry live run in progress |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ complete · 🔴 blocked
@@ -701,6 +701,22 @@ Seven defects in one run, each invisible to the offline suite — the keeper had
 planner, never as a loop acting on a wallet that changes under it. Same lesson as S2/S3: the guards and keepers
 are as untested as the code they protect until they run against a chain. The taker driver kept
 running through the stop, so cycles missed while the node was down are recorded as unanswered.
+
+**M3 run #3, after the 08:20:38Z restart — first live settlement and disclosure round-trip (2026-09-14).**
+Relays do not replay: cycle 7's RFQ (08:20:08Z) predates the node's relay connection (08:21:01Z) and went
+unanswered. From cycle 8 on, verified by the pinger against the chain:
+
+| Cycle | Quote | Verified after | Outcome |
+|---|---|---|---|
+| 8 | `df77ede1…` | 26 s | reveal matches offer (buy 0.001 @ 41.315680) |
+| 9 | `a354db7d…` | 26 s | reveal matches offer |
+| 10 | `08a89df5…` | 31 s | **settled** tx `cad6f3b5…` status SUCCESS (09:00:08Z); dealer node journaled `settled`, then `recorded`; on-chain dealer settled counter **1**; **disclosure note attached on-chain, intended recipient verifies, a different key refused (AEAD)** |
+
+The last-moment keeper guard held on its first live use: the keeper's split at 09:00:49Z (identifier
+`00f8b377…`, hash `e104d51c…`) spent `c31d1819…:1` (20,658) and `2d3d770e…:2` (the large coin), while the
+still-settleable quotes are backed by `2d3d770e…:1` (cycle 8) and `8c9cc584…:1` (cycle 9) — checked on the
+indexer. **Disclosure round-trip: done.** **Still open for the M3 DoD:** the standing quote held unattended
+across multiple Offer File expiry cycles (first expiry since the restart is 09:21:02Z).
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
