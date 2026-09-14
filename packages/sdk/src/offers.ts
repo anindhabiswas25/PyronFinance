@@ -49,7 +49,6 @@
 //     therefore distinct entries. `balanceKey()` below flattens them to stable strings.
 
 import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { bytesToBase64, base64ToBytes } from './aead.js';
 
@@ -671,6 +670,11 @@ async function receiverAddressFor(wallet: OfferWallet, kind: TokenKind): Promise
   if (kind === 'unshielded') {
     // UnshieldedAddress's constructor is typed to Buffer specifically (not Uint8Array) — this
     // path is Node-only (OfferWallet always wraps the Node headless wallet), so Buffer is fine.
+    // Imported lazily through a variable specifier: address-format pulls in @subsquid/scale-codec,
+    // which requires Node's `assert`. A static (or literal dynamic) import lets Vite bundle it into
+    // apps/web through browser.ts, where the dev-mode `assert` stub throws on first property access.
+    const addressFormat: string = '@midnight-ntwrk/wallet-sdk-address-format';
+    const { UnshieldedAddress } = (await import(/* @vite-ignore */ addressFormat)) as typeof import('@midnight-ntwrk/wallet-sdk-address-format');
     return new UnshieldedAddress(Buffer.from(wallet.unshieldedAddressHex, 'hex'));
   }
   const state = await wallet.facade.waitForSyncedState();

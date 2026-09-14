@@ -20,6 +20,15 @@
 // browser-needed surface — including `serializeOffer`/`deserializeOffer`, now Uint8Array/base64
 // based rather than `Buffer`-based — is re-exported individually below.
 
+import { nativeToken } from '@midnight-ntwrk/ledger-v8';
+
+/** The native token's `RawTokenType` — the base leg of every tNIGHT pair, as `offerMatchesTerms`
+ *  expects it. ledger-v8 itself is not re-exported. */
+export function nativeTokenRaw(): string {
+  return nativeToken().raw;
+}
+
+export type { RfqBody, QuoteRefBody } from '../../relay-node/src/schema.js';
 export * from './domain.js';
 export * from './terms.js';
 export * from './schnorr.js';

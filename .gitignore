@@ -5,6 +5,8 @@ contracts/managed/*/keys/*.prover
 .env.local
 secrets/
 *.log
+# Operator config: never committed (CLAUDE.md "Do not"). dealer.example.toml is the template.
+packages/dealer-node/dealer.toml
 
 .wallet-state/
 otc-midnight-db/
