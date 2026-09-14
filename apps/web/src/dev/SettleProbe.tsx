@@ -112,9 +112,18 @@ export function SettleProbe() {
       if (half <= 0n) throw new Error(`balance of ${tokenType} too small to split`);
       const output: DesiredOutput = { kind: 'unshielded', type: tokenType, value: half, recipient: address };
       const result = await wallet.makeTransfer([output]);
-      record(`makeTransfer returned a tx (${result.tx.length / 2} bytes) — submitting...`);
-      await wallet.submitTransaction(result.tx);
-      record('submitted (submitTransaction resolves void on success)');
+      // Log the REAL resolved shape before touching any field — the type declares { tx: string }
+      // (an unsubmitted tx the caller then submits), but 1AM's own UI showed "TRANSACTION
+      // SUBMITTED" with a real hash immediately after makeTransfer resolved, meaning it may
+      // balance+sign+submit as one step for a plain send. Don't guess a second time.
+      record(`makeTransfer resolved: ${JSON.stringify(result, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
+      if (result && typeof (result as { tx?: unknown }).tx === 'string') {
+        record('result has a .tx string — submitting it...');
+        await wallet.submitTransaction((result as { tx: string }).tx);
+        record('submitted (submitTransaction resolves void on success)');
+      } else {
+        record('no .tx field on the result — 1AM appears to submit inside makeTransfer itself; not calling submitTransaction again');
+      }
       const after = await wallet.getUnshieldedBalances();
       record(`balances before: ${JSON.stringify(before, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
       record(`balances after:  ${JSON.stringify(after, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}`);
