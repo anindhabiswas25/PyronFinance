@@ -50,6 +50,7 @@ import { counterAmountFor } from '../packages/sdk/src/terms.js';
 import { usdmFor } from '../packages/sdk/src/assets.js';
 import { queryLedgerParameters, queryLatestContractState, waitForTransaction } from '../packages/sdk/src/indexer.js';
 import { RelayAggregator, indexerChainReader } from '../packages/sdk/src/relay-client.js';
+import { nodeSocketFactory } from '../packages/sdk/src/relay-client-node.js';
 import { computeId, encodeSignature, signBody, WIRE_VERSION, type Envelope, type QuoteRefBody, type RfqBody } from '../packages/relay-node/src/schema.js';
 import { ledger as otcLedger, type Contract } from '../contracts/managed/otc-protocol/contract/index.js';
 import type { OTCPrivateState } from '../packages/sdk/src/private-state.js';
@@ -347,6 +348,7 @@ await Promise.all(sockets.map((ws) => new Promise((r) => ws.once('open', r))));
 const aggregator = new RelayAggregator({
   relays: RELAY_PORTS.map(gossipUrl),
   chain: indexerChainReader(chain.indexerHttp, contractAddress),
+  socketFactory: nodeSocketFactory,
 });
 const status = await aggregator.connect();
 console.log(`${t()} taker connected to ${aggregator.connectedCount}/${status.length} relays`);

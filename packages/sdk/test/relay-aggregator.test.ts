@@ -19,6 +19,7 @@ import {
   verifyQuoteRef,
   type ChainReader,
 } from '../src/relay-client.js';
+import { nodeSocketFactory } from '../src/relay-client-node.js';
 import { startRelayServer, type RelayServer } from '../../relay-node/src/server.js';
 import {
   computeId,
@@ -245,7 +246,7 @@ async function waitFor(pred: () => boolean, timeoutMs = 3000): Promise<void> {
 }
 
 async function aggregatorOver(urls: string[], chain: ChainReader): Promise<RelayAggregator> {
-  const agg = new RelayAggregator({ relays: urls, chain, connectTimeoutMs: 1000 });
+  const agg = new RelayAggregator({ relays: urls, chain, connectTimeoutMs: 1000, socketFactory: nodeSocketFactory });
   aggregators.push(agg);
   await agg.connect();
   return agg;

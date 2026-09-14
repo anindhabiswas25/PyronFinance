@@ -16,18 +16,33 @@
 //     attachDisclosureNote checks, and it is publicly recomputable.
 //   * HKDF info is the UTF-8 tag followed by the 32 raw tradeId bytes, and the AEAD additional data is
 //     the tradeId too, so a blob for trade X fails authentication under trade Y twice over.
+//
+// BROWSER-SAFE (Phase 0 task 0.1): uses @noble/ciphers instead of node:crypto and Uint8Array
+// instead of Buffer throughout. Output is byte-for-byte identical to the previous node:crypto
+// implementation — see test/aead-parity.test.ts.
 
 import { x25519 } from '@noble/curves/ed25519';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
 import { blake2b } from '@noble/hashes/blake2';
-import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { canonicalJSON } from '../../relay-node/src/schema.js';
+import {
+  aeadSeal,
+  aeadOpen,
+  AeadError,
+  randomBytesU8,
+  bytesToHex,
+  hexToBytes,
+  bytesToBase64,
+  base64ToBytes,
+  utf8ToBytes,
+  bytesToUtf8,
+  concatBytes,
+} from './aead.js';
 
 export const POLICY_NAMED_RECIPIENT = 0x0001;
-const INFO_TAG = new TextEncoder().encode('otc:disclosure:v1');
-const HINT_TAG = new TextEncoder().encode('otc:recipient:v1');
-const AEAD = 'chacha20-poly1305';
+const INFO_TAG = utf8ToBytes('otc:disclosure:v1');
+const HINT_TAG = utf8ToBytes('otc:recipient:v1');
 const NONCE_LEN = 12;
 const TAG_LEN = 16;
 
@@ -65,10 +80,10 @@ export class DisclosureError extends Error {
   }
 }
 
-const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+const hex = (b: Uint8Array) => bytesToHex(b);
 const unhex = (s: string, len: number, what: string) => {
   if (!new RegExp(`^[0-9a-f]{${len * 2}}$`).test(s)) throw new DisclosureError(`${what} must be ${len}-byte hex`);
-  return new Uint8Array(Buffer.from(s, 'hex'));
+  return hexToBytes(s);
 };
 
 function blake2b256(bytes: Uint8Array): Uint8Array {
@@ -76,21 +91,16 @@ function blake2b256(bytes: Uint8Array): Uint8Array {
 }
 
 function deriveKey(shared: Uint8Array, tradeId: Uint8Array): Uint8Array {
-  const info = new Uint8Array(INFO_TAG.length + tradeId.length);
-  info.set(INFO_TAG);
-  info.set(tradeId, INFO_TAG.length);
+  const info = concatBytes(INFO_TAG, tradeId);
   return hkdf(sha256, shared, undefined, info, 32);
 }
 
 export function recipientHintFor(recipientPk: Uint8Array): Uint8Array {
-  const buf = new Uint8Array(HINT_TAG.length + recipientPk.length);
-  buf.set(HINT_TAG);
-  buf.set(recipientPk, HINT_TAG.length);
-  return blake2b256(buf);
+  return blake2b256(concatBytes(HINT_TAG, recipientPk));
 }
 
 export function ciphertextHashOf(blob: DisclosureBlob): Uint8Array {
-  return blake2b256(new TextEncoder().encode(canonicalJSON(blob)));
+  return blake2b256(utf8ToBytes(canonicalJSON(blob)));
 }
 
 /** Seals a note to one recipient. Returns the off-chain blob and the exact arguments for
@@ -101,17 +111,16 @@ export function sealNote(
 ): { blob: DisclosureBlob; attach: AttachArgs; note: DisclosureNote } {
   const tradeId = unhex(note.tradeId, 32, 'tradeId');
   if (recipientPk.length !== 32) throw new DisclosureError('recipientPk must be a 32-byte X25519 key');
-  const full: DisclosureNote = { v: 1, ...note, salt: note.salt ?? hex(randomBytes(32)) };
+  const full: DisclosureNote = { v: 1, ...note, salt: note.salt ?? hex(randomBytesU8(32)) };
 
   const esk = x25519.utils.randomSecretKey();
   const epk = x25519.getPublicKey(esk);
   const key = deriveKey(x25519.getSharedSecret(esk, recipientPk), tradeId);
-  const nonce = randomBytes(NONCE_LEN);
-  const cipher = createCipheriv(AEAD, key, nonce, { authTagLength: TAG_LEN });
-  cipher.setAAD(tradeId, { plaintextLength: Buffer.byteLength(canonicalJSON(full)) });
-  const ct = Buffer.concat([cipher.update(canonicalJSON(full), 'utf8'), cipher.final(), cipher.getAuthTag()]);
+  const nonce = randomBytesU8(NONCE_LEN);
+  const plaintext = utf8ToBytes(canonicalJSON(full));
+  const sealed = aeadSeal(key, nonce, plaintext, tradeId); // ct || tag(16), AAD = tradeId
 
-  const blob: DisclosureBlob = { v: 1, epk: hex(epk), nonce: nonce.toString('hex'), ct: ct.toString('base64') };
+  const blob: DisclosureBlob = { v: 1, epk: hex(epk), nonce: hex(nonce), ct: bytesToBase64(sealed) };
   return {
     blob,
     note: full,
@@ -131,19 +140,19 @@ export function openNote(blob: DisclosureBlob, recipientSk: Uint8Array, tradeIdH
   if (blob.v !== 1) throw new DisclosureError(`unsupported blob version ${blob.v}`);
   const epk = unhex(blob.epk, 32, 'blob.epk');
   const nonce = unhex(blob.nonce, NONCE_LEN, 'blob.nonce');
-  const raw = Buffer.from(blob.ct, 'base64');
-  if (raw.length < TAG_LEN) throw new DisclosureError('ciphertext too short');
+  const sealed = base64ToBytes(blob.ct);
+  if (sealed.length < TAG_LEN) throw new DisclosureError('ciphertext too short');
   const key = deriveKey(x25519.getSharedSecret(recipientSk, epk), tradeId);
-  const decipher = createDecipheriv(AEAD, key, nonce, { authTagLength: TAG_LEN });
-  decipher.setAAD(tradeId, { plaintextLength: raw.length - TAG_LEN });
-  decipher.setAuthTag(raw.subarray(raw.length - TAG_LEN));
-  let plain: Buffer;
+  let plain: Uint8Array;
   try {
-    plain = Buffer.concat([decipher.update(raw.subarray(0, raw.length - TAG_LEN)), decipher.final()]);
-  } catch {
-    throw new DisclosureError('AEAD authentication failed — wrong recipient, wrong trade, or tampered blob');
+    plain = aeadOpen(key, nonce, sealed, tradeId);
+  } catch (err) {
+    if (err instanceof AeadError) {
+      throw new DisclosureError('AEAD authentication failed — wrong recipient, wrong trade, or tampered blob');
+    }
+    throw err;
   }
-  const note = JSON.parse(plain.toString('utf8')) as DisclosureNote;
+  const note = JSON.parse(bytesToUtf8(plain)) as DisclosureNote;
   if (note.tradeId !== tradeIdHex) throw new DisclosureError('note names a different tradeId than it was opened for');
   return note;
 }

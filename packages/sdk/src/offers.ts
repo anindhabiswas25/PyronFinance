@@ -48,10 +48,10 @@
 //     `Transaction.imbalances` is not). Shielded and unshielded balances of the SAME token are
 //     therefore distinct entries. `balanceKey()` below flattens them to stable strings.
 
-import { inspect } from 'node:util';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
+import { bytesToBase64, base64ToBytes } from './aead.js';
 
 /** Offer Files expire in roughly one hour — zswap-offer-files SKILL.md §4. This is the single most
  *  operationally significant constraint on the protocol, and it is why packages/dealer-node exists
@@ -363,9 +363,10 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
   }
 }
 
-/** Base64 wire form for `RevealPlaintext.offerFile` (reveal-channel.ts). */
+/** Base64 wire form for `RevealPlaintext.offerFile` (reveal-channel.ts). Browser-safe (Phase 0
+ *  task 0.1/0.2 — apps/web's settlement probe deserializes an Offer File in-browser). */
 export function serializeOffer(tx: ledger.FinalizedTransaction): string {
-  return Buffer.from(tx.serialize()).toString('base64');
+  return bytesToBase64(tx.serialize());
 }
 
 /** Inverse of `serializeOffer`.
@@ -375,7 +376,7 @@ export function serializeOffer(tx: ledger.FinalizedTransaction): string {
  *  a WASM `Invalid signature value.` thrown from inside deserialize, which reads like a corrupt
  *  payload rather than a wrong marker. */
 export function deserializeOffer(offerFileBase64: string): ledger.FinalizedTransaction {
-  const raw = Buffer.from(offerFileBase64, 'base64');
+  const raw = base64ToBytes(offerFileBase64);
   if (raw.length === 0) throw new OfferError('offer file is empty');
   try {
     return ledger.Transaction.deserialize(
@@ -587,12 +588,32 @@ export async function settleFromOffer(params: SettleParams): Promise<SettlementR
   return { txId, mergedBalanceVector, fee, dustSurplus, ledgerDefaultFee };
 }
 
+/** Browser-safe stand-in for `node:util`'s `inspect` (Phase 0 task 0.1 — this module must not
+ *  import `node:util`). Walks nested own-properties to a bounded depth so a "Custom error: N" code
+ *  buried in a facade error's non-standard fields is still findable by regex, same as `inspect`
+ *  produced. Not meant to be pretty, only greppable. */
+function deepStringifyForErrorScan(value: unknown, depth = 12, seen = new Set<unknown>()): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== 'object' && typeof value !== 'function') return String(value);
+  if (seen.has(value) || depth <= 0) return '[Circular or max depth]';
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => deepStringifyForErrorScan(v, depth - 1, seen)).join(', ')}]`;
+  }
+  const keys = value instanceof Error ? Object.getOwnPropertyNames(value).filter((k) => k !== 'stack') : Object.keys(value as object);
+  try {
+    return `{${keys.map((k) => `${k}: ${deepStringifyForErrorScan((value as Record<string, unknown>)[k], depth - 1, seen)}`).join(', ')}}`;
+  } catch {
+    return String(value);
+  }
+}
+
 /** The node's `Custom error: N` code, dug out of a submission failure. The facade wraps the node's
  *  reason in an Effect failure whose top-level message is only "Transaction submission error"; the code
  *  sits in nested fields that are neither `.message` nor a plain `.cause` chain (first seen in
  *  probe-fee-calc; a forced A2 submission on 2026-09-14 lost it the same way). */
 export function nodeErrorCode(err: unknown): number | undefined {
-  const m = inspect(err, { depth: 12, maxStringLength: 20_000 }).match(/Custom error:?\s*(\d+)/);
+  const m = deepStringifyForErrorScan(err).match(/Custom error:?\s*(\d+)/);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -648,6 +669,8 @@ function ledgerFeeWithMarginOf(tx: ledger.FinalizedTransaction, margin: number):
 /** The address a swap half's own outputs are paid to. */
 async function receiverAddressFor(wallet: OfferWallet, kind: TokenKind): Promise<unknown> {
   if (kind === 'unshielded') {
+    // UnshieldedAddress's constructor is typed to Buffer specifically (not Uint8Array) — this
+    // path is Node-only (OfferWallet always wraps the Node headless wallet), so Buffer is fine.
     return new UnshieldedAddress(Buffer.from(wallet.unshieldedAddressHex, 'hex'));
   }
   const state = await wallet.facade.waitForSyncedState();

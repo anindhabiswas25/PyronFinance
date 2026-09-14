@@ -5,14 +5,23 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --root ../.."
   },
   "dependencies": {
-    "@noble/curves": "^1.9.7",
-    "@noble/hashes": "^1.8.0",
+    "@midnight-ntwrk/compact-js": "2.5.0",
     "@midnight-ntwrk/compact-runtime": "0.15.0",
     "@midnight-ntwrk/ledger-v8": "8.1.2",
     "@midnight-ntwrk/midnight-js-contracts": "4.0.2",
@@ -28,14 +37,16 @@
     "@midnight-ntwrk/wallet-sdk-hd": "3.0.1",
     "@midnight-ntwrk/wallet-sdk-shielded": "3.0.2",
     "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "3.1.0",
-    "@midnight-ntwrk/compact-js": "2.5.0",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
     "rxjs": "^7.8.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
     "@types/node": "^22.0.0",
-    "@types/ws": "^8.5.12"
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.0"
   },
   "engines": {
     "node": ">=22.0.0"

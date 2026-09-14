@@ -9,17 +9,33 @@
 // `buildReveal` in quotes.ts) travels alongside the ciphertext unencrypted — RELAY.md §4: "The
 // signature is over the plaintext terms," and it must stay independently checkable so a mismatch
 // is non-repudiable fraud evidence even without decrypting anything.
+//
+// BROWSER-SAFE (Phase 0 task 0.1): uses @noble/ciphers instead of node:crypto and Uint8Array
+// instead of Buffer throughout, so this module is importable from apps/web via browser.ts. Output
+// is byte-for-byte identical to the previous node:crypto implementation — see
+// test/aead-parity.test.ts.
 
 import { x25519 } from '@noble/curves/ed25519';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
-import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import {
+  aeadSeal,
+  aeadOpen,
+  AeadError,
+  randomBytesU8,
+  bytesToHex,
+  hexToBytes,
+  bytesToBase64,
+  base64ToBytes,
+  utf8ToBytes,
+  bytesToUtf8,
+  concatBytes,
+} from './aead.js';
 import { encodeSchnorrSignature, decodeSchnorrSignature } from './schnorr.js';
 import type { QuoteReveal } from './quotes.js';
 import type { QuoteTerms } from './terms.js';
 
-const HKDF_INFO = new TextEncoder().encode('otc:reveal-channel:v1');
-const AEAD_ALG = 'chacha20-poly1305';
+const HKDF_INFO = utf8ToBytes('otc:reveal-channel:v1');
 const NONCE_LEN = 12;
 const TAG_LEN = 16;
 
@@ -77,7 +93,7 @@ function revealToPlaintext(reveal: QuoteReveal): RevealPlaintext {
     side: reveal.terms.side,
     price: reveal.terms.price,
     size: reveal.terms.size,
-    nonce: Buffer.from(reveal.nonce).toString('hex'),
+    nonce: bytesToHex(reveal.nonce),
     offerFile: reveal.offerFile,
     expiresAt: reveal.expiresAt,
   };
@@ -94,18 +110,16 @@ export function encryptReveal(
 ): RevealMessage {
   const shared = x25519.getSharedSecret(dealerEncSk, takerEncPk);
   const key = deriveSymmetricKey(shared);
-  const nonce = randomBytes(NONCE_LEN);
-  const plaintext = Buffer.from(JSON.stringify(revealToPlaintext(reveal)), 'utf8');
+  const nonce = randomBytesU8(NONCE_LEN);
+  const plaintext = utf8ToBytes(JSON.stringify(revealToPlaintext(reveal)));
 
-  const cipher = createCipheriv(AEAD_ALG, key, nonce, { authTagLength: TAG_LEN });
-  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
+  const sealed = aeadSeal(key, nonce, plaintext); // ct || tag(16)
 
   return {
     v: 1,
     type: 'reveal',
-    quoteId: Buffer.from(quoteId).toString('hex'),
-    ciphertext: Buffer.concat([nonce, ct, tag]).toString('base64'),
+    quoteId: bytesToHex(quoteId),
+    ciphertext: bytesToBase64(concatBytes(nonce, sealed)),
     sig: encodeSchnorrSignature(reveal.signature),
   };
 }
@@ -123,31 +137,29 @@ export function decryptReveal(
   takerEncSk: Uint8Array,
   dealerEncPk: Uint8Array,
 ): { plaintext: RevealPlaintext; encodedTermsSignature: ReturnType<typeof decodeSchnorrSignature> } {
-  const blob = Buffer.from(msg.ciphertext, 'base64');
+  const blob = base64ToBytes(msg.ciphertext);
   if (blob.length < NONCE_LEN + TAG_LEN) {
     throw new RevealDecryptError('ciphertext too short');
   }
   const nonce = blob.subarray(0, NONCE_LEN);
-  const tag = blob.subarray(blob.length - TAG_LEN);
-  const ct = blob.subarray(NONCE_LEN, blob.length - TAG_LEN);
+  const sealed = blob.subarray(NONCE_LEN); // ct || tag(16), what aeadOpen expects
 
   const shared = x25519.getSharedSecret(takerEncSk, dealerEncPk);
   const key = deriveSymmetricKey(shared);
 
-  const decipher = createDecipheriv(AEAD_ALG, key, nonce, { authTagLength: TAG_LEN });
-  decipher.setAuthTag(tag);
-  let plaintextBytes: Buffer;
+  let plaintextBytes: Uint8Array;
   try {
-    plaintextBytes = Buffer.concat([decipher.update(ct), decipher.final()]);
-  } catch {
-    // node:crypto throws a generic "Unsupported state or unable to authenticate data" on AEAD
-    // failure; normalize to our own error type rather than leaking that string as an API contract.
-    throw new RevealDecryptError('AEAD authentication failed — tampered ciphertext or wrong key');
+    plaintextBytes = aeadOpen(key, nonce, sealed);
+  } catch (err) {
+    if (err instanceof AeadError) {
+      throw new RevealDecryptError('AEAD authentication failed — tampered ciphertext or wrong key');
+    }
+    throw err;
   }
 
   let plaintext: RevealPlaintext;
   try {
-    plaintext = JSON.parse(plaintextBytes.toString('utf8')) as RevealPlaintext;
+    plaintext = JSON.parse(bytesToUtf8(plaintextBytes)) as RevealPlaintext;
   } catch {
     throw new RevealDecryptError('decrypted payload is not valid JSON');
   }
@@ -162,3 +174,6 @@ export function decryptReveal(
 export function plaintextToTerms(plaintext: RevealPlaintext): QuoteTerms {
   return { pair: plaintext.pair, side: plaintext.side, price: plaintext.price, size: plaintext.size };
 }
+
+// Re-exported so hexToBytes is still usable via reveal-channel.ts without importing Node's Buffer.
+export { hexToBytes };
