@@ -8,8 +8,12 @@
 // Steps: report coins -> dismiss-checked split -> wait for the pieces -> register new tNIGHT for DUST ->
 // report DUST coin count now, and again after SPLIT_WAIT_SECS of generation.
 //
-// Env: SPLIT_PIECES (default 3), SPLIT_PIECE (base units per piece, default 100000), SPLIT_WAIT_SECS
-// (default 300). Uses MN_WALLET_SEED — point it at the wallet under test.
+// Env: SPLIT_TOKEN (RawTokenType; default native tNIGHT), SPLIT_PIECES (default 3), SPLIT_PIECE (base units
+// per piece, default 100000), SPLIT_WAIT_SECS (default 300). Uses MN_WALLET_SEED — point it at the wallet.
+//
+// Also used to shape a DEALER's inventory: an offer books a WHOLE coin until its Offer File expires, so N
+// concurrent quotes need N coins of roughly rung size (ROADMAP, M3 partial run). For a non-native token the
+// DUST steps are reported but have nothing to register.
 
 import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
@@ -25,6 +29,7 @@ const PIECES = Number(process.env.SPLIT_PIECES ?? '3');
 const PIECE = BigInt(process.env.SPLIT_PIECE ?? '100000');
 const WAIT = Number(process.env.SPLIT_WAIT_SECS ?? '300');
 const NIGHT = ledger.nativeToken().raw;
+const TOKEN = process.env.SPLIT_TOKEN ?? NIGHT;
 
 const wallet = await createHeadlessWallet(requireWalletSeed(), chain);
 await wallet.waitForSync();
@@ -33,20 +38,20 @@ const dust = async () => {
   return { coins: s.dust.availableCoins.length, balance: s.dust.balance(new Date()) };
 };
 const report = async (label: string) => {
-  const night = await listCoins(wallet, NIGHT);
+  const night = await listCoins(wallet, TOKEN);
   const d = await dust();
-  console.log(`${label}: tNIGHT coins [${night.map((c) => `${c.value}${c.registeredForDust ? '*' : ''}`).join(', ')}]; DUST coins ${d.coins}, balance ${d.balance}`);
+  console.log(`${label}: ${TOKEN === NIGHT ? 'tNIGHT' : TOKEN.slice(0, 8) + '…'} coins [${night.map((c) => `${c.value}${c.registeredForDust ? '*' : ''}`).join(', ')}]; DUST coins ${d.coins}, balance ${d.balance}`);
   return { night, d };
 };
 
 const before = await report('before');
 const { params } = await queryLedgerParameters(chain.indexerHttp);
-const out = await splitExact(wallet, NIGHT, Array.from({ length: PIECES }, () => PIECE), params);
+const out = await splitExact(wallet, TOKEN, Array.from({ length: PIECES }, () => PIECE), params);
 const tx = await waitForTransaction(chain.indexerHttp, { identifier: out.txId });
 console.log(`split: ${out.inputs} in -> ${out.outputs} out, ${out.bytes} B; tx ${tx.hash} status ${tx.status}`);
 for (let i = 0; i < 60; i++) {
   await wallet.waitForSync();
-  if ((await listCoins(wallet, NIGHT)).length >= before.night.length + PIECES) break;
+  if ((await listCoins(wallet, TOKEN)).length >= before.night.length + PIECES) break;
   await new Promise((r) => setTimeout(r, 5000));
 }
 await report('after split');
