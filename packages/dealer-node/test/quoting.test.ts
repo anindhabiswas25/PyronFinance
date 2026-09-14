@@ -392,6 +392,28 @@ describe('QuotingEngine — risk filters (all silent)', () => {
     await h.engine.handleRfq(h.rfq()); // the one 0.001 sell-side offer is taken
     expect(ignoredBecause(h)).toEqual(['no warm offer for this side and size']);
   });
+
+  it('answers a deferred RFQ once the pool refills while it is still open (live, run #3, cycle 2)', async () => {
+    const h = await harness();
+    await h.engine.handleRfq(h.rfq());
+    const late = h.rfq();
+    expect(await h.engine.handleRfq(late)).toBeUndefined();
+    expect(h.commits).toHaveLength(1);
+    await h.pool.tick();
+    const quoted = await h.engine.retryDeferred();
+    expect(quoted).toHaveLength(1);
+    expect(h.journal.get(quoted[0])!.rfqId).toBe(late.rfqId);
+    expect(await h.engine.retryDeferred()).toEqual([]); // answered once, never twice
+  });
+
+  it('drops a deferred RFQ too close to its expiry to be verified by the taker', async () => {
+    const h = await harness();
+    await h.engine.handleRfq(h.rfq());
+    await h.engine.handleRfq(h.rfq({ expiry: h.now.t + 30 }));
+    await h.pool.tick();
+    expect(await h.engine.retryDeferred()).toEqual([]);
+    expect(h.commits).toHaveLength(1);
+  });
 });
 
 describe('QuotingEngine — restart', () => {
