@@ -33,7 +33,7 @@ import { quotePrice, toFixed, fromFixed } from './pool.js';
 import { queryLedgerParameters } from '../../sdk/src/indexer.js';
 import { deserializeOffer } from '../../sdk/src/offers.js';
 import { TERMINAL } from './journal.js';
-import type { ChainConfig } from '../../sdk/src/config.js';
+import { requirePrivateStatePassword, type ChainConfig } from '../../sdk/src/config.js';
 
 const NIGHT = ledger.nativeToken().raw;
 
@@ -90,6 +90,7 @@ function tokensFor(cfg: DealerConfig, policy: QuotePolicy): PairTokens {
 async function openWalletAndContract(cfg: DealerConfig, identity: DealerIdentity) {
   const chain = chainConfigOf(cfg);
   initNetworkId(chain.network);
+  requirePrivateStatePassword(); // before the sync, not after it
   const wallet = await createHeadlessWallet(loadWalletSeed(cfg.identity.walletSeedPath), chain);
   log(`[wallet] ${wallet.unshieldedAddress} — syncing`);
   await wallet.waitForSync();

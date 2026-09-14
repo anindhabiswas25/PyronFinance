@@ -40,12 +40,14 @@ image that accepts requests and spins at 100% CPU forever — it looks exactly l
 
 ## 2. Secrets (2 min)
 
-Put these in the repo-root `.env` (git-ignored). **Never in the TOML** — the node refuses any config key
+Put these in the repo-root `.env` (git-ignored). The password rule is enforced by the private-state store
+at the first on-chain call (`bond`), not before — a hex string such as `openssl rand -hex 16` fails it
+(found timing this README on a fresh wallet, 2026-09-14). **Never in the TOML** — the node refuses any config key
 that looks like a secret.
 
 ```bash
 MN_WALLET_SEED=<64 hex>                       # the funded wallet
-MN_PRIVATE_STATE_PASSWORD=<16+ chars>          # encrypts the local private-state cache
+MN_PRIVATE_STATE_PASSWORD=<16+ chars, 3 of: upper, lower, digit, symbol>   # encrypts the local private-state cache
 ```
 
 ## 3. Config and dealer key (5 min)
