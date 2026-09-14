@@ -616,6 +616,12 @@ Two things recorded as they are, not explained:
   quotes from **two** TESTUSD coins: with each offer booking a whole coin for up to an hour, at most two
   buy quotes can be live at once, and some 15-minute cycles are expected to go unanswered. That limit
   is itself what the run measures.
+- **Detaching worked.** At ~06:48Z the host again ran low on memory and the harness killed its background
+  jobs — but the detached Dealer Node and taker driver kept running; only a heartbeat timer died.
+- **The two-coin limit showed up live, as predicted.** Cycles 1 and 2 were quoted and expired unsettled
+  after their 300 s window; cycle 3 (06:46:39Z) was ignored — "no warm offer for this side and size" —
+  because both TESTUSD coins stayed booked by offers that expire at 07:16/07:17Z. The keeper that splits
+  toward `ladder_coins` was written in response (`inventory-plan.ts`) and is not loaded by this run.
 - **Cosmetic:** `[unbook] released coins booked by 2 dead offer(s)` repeats on every start for the same
   already-reverted offers — reverting an unbooked offer is a no-op, but the count misleads.
 
