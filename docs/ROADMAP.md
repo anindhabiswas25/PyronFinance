@@ -64,7 +64,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
 | **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
-| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; unattended multi-expiry live run in progress |
+| **M3** | Dealer Node + disclosure | 🟡 **In progress (owner-approved start 2026-09-14).** 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; **unattended multi-expiry run done (run #3, 08:20–10:24Z, 9/9 RFQs with a warm offer answered, two renewals)** — M3 DoD met; 3.10 timing in progress |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ complete · 🔴 blocked
@@ -717,6 +717,42 @@ The last-moment keeper guard held on its first live use: the keeper's split at 0
 still-settleable quotes are backed by `2d3d770e…:1` (cycle 8) and `8c9cc584…:1` (cycle 9) — checked on the
 indexer. **Disclosure round-trip: done.** **Still open for the M3 DoD:** the standing quote held unattended
 across multiple Offer File expiry cycles (first expiry since the restart is 09:21:02Z).
+
+**M3 run #3 — closed 2026-09-14T10:24:43Z. The node held its standing quotes unattended for 2 h 04 min
+across multiple Offer File expiry cycles.** From the 08:20:38Z start to the SIGTERM stop, with no operator
+action:
+
+- **Every RFQ that reached a warm offer was answered: 9 of 9**, each committed, gossiped via both relays,
+  revealed and verified on-chain by the taker in 26–36 s (driver 1, cycles 8–13; driver 2, cycles 1, 3, 4).
+  Two RFQs were not: cycle 7 arrived before the node's relay connection (relays do not replay), and driver
+  2's cycle 2 is item 3 below.
+- **Offer File renewal:** the node discarded and rebuilt the standing sell offer within its expiry margin at
+  **09:06:03Z** and again at **09:51:03Z**, the second offer being the first one's replacement.
+  Buy offers were consumed by quotes and rebuilt each cycle; coins booked by expired offers came back as
+  inventory (e.g. the TESTUSD coin freed at ~10:01Z, buy offer warm 10:02:03Z).
+- **Quote lifecycle:** four expired quotes were released on-chain by the node (08:25, 09:34, 09:49,
+  10:19Z); one settled, was recorded, and carried a disclosure note (09:00Z, above).
+- **No halt, no invalidation, no keeper refusal.** One keeper transaction (09:00:49Z split), checked on
+  the indexer against live offers' coins.
+
+Three findings, all non-fatal:
+
+1. **Every release was reported as a failure, and every one had landed (4 of 4).** Blocks 2543615,
+   2544306, 2544456 and 2544756; in each case the wallet reported `1010: Invalid Transaction: Custom
+   error: 104` ~6–11 s after the block, and the next watch pass raised a false "resolved by another
+   party" alert. Systematic, not intermittent. Handled since `9e2b599` (the node re-reads the chain after
+   a failed release); **why the wallet re-reports a landed transaction as 104 is not established.**
+2. **`ladder_coins`, not `max_live_quotes`, is the per-side concurrency limit.** 09:46–10:02Z: a one-sided
+   taker filled all four TESTUSD coins with booked offers and the buy side logged "Insufficient funds"
+   for 16 minutes while the risk limit (6) allowed more. Startup warning since `4cb8ec6`; README and
+   DEALER-NODE.md corrected.
+3. **An RFQ was judged once, on arrival.** Driver 2's cycle 2 (10:00:04Z, open until ~10:09Z) arrived with
+   no free coin; a buy offer was warm at 10:02:03Z but the RFQ was never looked at again. Fixed in
+   `d53fd5d`: such RFQs are kept and re-offered after each pool tick while ≥ 60 s remain.
+
+**M3 definition of done:** standing quote held unattended across multiple Offer File expiry cycles on
+Preprod ✅; a settled trade's disclosure note round-trips ✅. The fixes in `9e2b599`, `4cb8ec6` and
+`d53fd5d` were committed during the run and have not yet run live.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
 settle 22.0 s, `commitQuote` 53.4 s — with bond untouched and `liveQuotes` back to 0. It is also the first
