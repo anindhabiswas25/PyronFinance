@@ -110,6 +110,9 @@ export class QuotingEngine {
    *  booked; a coin freed at 10:01 and an offer was warm at 10:02, but nothing looked at the RFQ again.
    *  Bounded: the oldest is dropped past DEFERRED_MAX. */
   private readonly deferred = new Map<string, RfqBody>();
+  /** Consecutive recordSettlement failures per quote, so a retry every watch pass logs once, then every 20th.
+   *  Found timing the README on a fresh wallet: DUST ran out and the node logged the same failure every 15 s. */
+  private readonly recordFailures = new Map<string, number>();
   /** Offers handed to quotes, by quoteId, until their OFFER FILE expires — a taker may settle a
    *  revealed offer after validUntil, so the coins stay booked until then even if the quote is terminal. */
   private readonly taken = new Map<string, PoolEntry>();
@@ -173,6 +176,18 @@ export class QuotingEngine {
     if (bond.amount < config.bond.minimumBalance) return { ok: false, reason: 'bond below minimum_balance' };
     if (size > bond.amount * NOTIONAL_CAP_K) return { ok: false, reason: 'notional above bond cap' };
     return { ok: true, side: rfq.side === 'buy' ? 'sell' : 'buy', size };
+  }
+
+  /** Quotes that still owe this node's own chain transaction: a settlement to record, or an expired quote
+   *  past its grace period to release. The keeper must not spend DUST ahead of these. Found timing the
+   *  README on a fresh wallet (2026-09-14): the keeper split tNIGHT right after start, and when a trade
+   *  settled the node could not afford recordSettlement ("could not balance dust") for many minutes. */
+  owedTransactions(): string[] {
+    const now = this.o.chain.nowSecs();
+    return this.o.journal
+      .live()
+      .filter((r) => r.state === 'settled' || (r.state === 'expired' && now >= r.validUntil + PROOF_GRACE_PERIOD_SECS))
+      .map((r) => r.quoteId);
   }
 
   /** Re-offer deferred RFQs to a refilled pool. Called by the keeper after each pool tick. An RFQ with
@@ -377,7 +392,11 @@ export class QuotingEngine {
             journal.transition(id, 'recorded');
             this.emit({ kind: 'recorded', quoteId: id });
           } catch (err) {
-            this.emit({ kind: 'record-failed', quoteId: id, detail: (err as Error).message });
+            const n = (this.recordFailures.get(id) ?? 0) + 1;
+            this.recordFailures.set(id, n);
+            if (n === 1 || n % 20 === 0) {
+              this.emit({ kind: 'record-failed', quoteId: id, detail: `attempt ${n}: ${(err as Error).message.split('\n')[0]}` });
+            }
             continue;
           }
         }
