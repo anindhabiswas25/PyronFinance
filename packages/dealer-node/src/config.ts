@@ -303,6 +303,25 @@ export function parseConfig(text: string, file = '<inline>'): DealerConfig {
   return cfg;
 }
 
+/** Settings that are valid but will not behave as an operator reading them expects. Printed at startup;
+ *  never fatal, because a two-sided flow legitimately runs more live quotes than one side's coins.
+ *
+ *  Found live (M3 run #3, 2026-09-14T09:46Z): with max_live_quotes = 6 and ladder_coins = 4, a one-sided
+ *  taker flow (every RFQ a sell, so every quote gives TESTUSD) filled all four TESTUSD coins with offers that
+ *  stay booked for their Offer File's hour, and the node answered the next RFQ with "Insufficient funds"
+ *  while the risk limit still allowed two more quotes. */
+export function configWarnings(cfg: DealerConfig): string[] {
+  const out: string[] = [];
+  if (cfg.risk.maxLiveQuotes > cfg.pool.ladderCoins) {
+    out.push(
+      `risk.max_live_quotes (${cfg.risk.maxLiveQuotes}) exceeds pool.ladder_coins (${cfg.pool.ladderCoins}): each offer books a whole coin ` +
+        `until its Offer File expires, so at most ${cfg.pool.ladderCoins} concurrent quotes can give the same token — a one-sided flow ` +
+        `hits that limit first ("Insufficient funds") and max_live_quotes is only reachable with flow on both sides`,
+    );
+  }
+  return out;
+}
+
 export function loadConfig(file: string): DealerConfig {
   return parseConfig(fs.readFileSync(file, 'utf-8'), file);
 }

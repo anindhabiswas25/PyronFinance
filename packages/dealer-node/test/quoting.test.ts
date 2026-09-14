@@ -360,7 +360,7 @@ describe('QuotingEngine — risk filters (all silent)', () => {
   });
 
   it('enforces max_live_quotes', async () => {
-    const h = await harness({ cfg: config((t) => t.replace('max_live_quotes    = 20', 'max_live_quotes    = 1')) });
+    const h = await harness({ cfg: config((t) => t.replace(/max_live_quotes\s*=\s*\d+/, 'max_live_quotes = 1')) });
     await h.engine.handleRfq(h.rfq());
     await h.engine.handleRfq(h.rfq({ side: 'buy' }));
     expect(ignoredBecause(h)).toEqual(['max_live_quotes reached']);
