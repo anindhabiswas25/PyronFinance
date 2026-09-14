@@ -312,8 +312,8 @@ async function shapeInventory(
     try {
       const out =
         plan.action === 'merge'
-          ? await consolidateSmallest(wallet, token, plan.refs.length, params, { exclude })
-          : await splitExact(wallet, token, plan.pieces, params);
+          ? await consolidateSmallest(wallet, token, plan.refs.length, params, { exclude, forbiddenInputs: exclude })
+          : await splitExact(wallet, token, plan.pieces, params, { forbiddenInputs: exclude });
       log(`[inventory] ${token.slice(0, 8)}…: ${plan.action} (${plan.reason}) -> ${out?.inputs ?? 0} in / ${out?.outputs ?? 0} out, tx ${out?.txId ?? 'skipped'}`);
       if (out && token === NIGHT) await registerNewNight(wallet).catch((err) => log(`[inventory] DUST registration: ${(err as Error).message}`));
     } catch (err) {
