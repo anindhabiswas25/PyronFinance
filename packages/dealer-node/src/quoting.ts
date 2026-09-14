@@ -97,11 +97,19 @@ export function sealedFromRecord(rec: QuoteRecord): SealedQuote {
   };
 }
 
+const DEFERRED_MAX = 32;
+const DEFERRED_MIN_LEFT_SECS = 60;
+
 export class QuotingEngine {
   private halted = false;
   /** Quotes already alerted as invalidated. The live run logged the same ALERT every 15 s for 38 minutes;
    *  one alert per quote is the signal, the rest is noise that buries it. */
   private readonly alerted = new Set<string>();
+  /** RFQs that passed every filter but arrived while no warm offer could back them. Found live (M3 run #3,
+   *  2026-09-14T10:00:04Z): an RFQ open for nine more minutes was ignored because all TESTUSD coins were
+   *  booked; a coin freed at 10:01 and an offer was warm at 10:02, but nothing looked at the RFQ again.
+   *  Bounded: the oldest is dropped past DEFERRED_MAX. */
+  private readonly deferred = new Map<string, RfqBody>();
   /** Offers handed to quotes, by quoteId, until their OFFER FILE expires — a taker may settle a
    *  revealed offer after validUntil, so the coins stay booked until then even if the quote is terminal. */
   private readonly taken = new Map<string, PoolEntry>();
@@ -167,6 +175,21 @@ export class QuotingEngine {
     return { ok: true, side: rfq.side === 'buy' ? 'sell' : 'buy', size };
   }
 
+  /** Re-offer deferred RFQs to a refilled pool. Called by the keeper after each pool tick. An RFQ with
+   *  less than DEFERRED_MIN_LEFT_SECS to run is dropped: a commit takes ~25 s to become visible, and a
+   *  quote the taker cannot verify before its RFQ closes only books a coin for nothing. */
+  async retryDeferred(): Promise<string[]> {
+    const quoted: string[] = [];
+    const now = this.o.chain.nowSecs();
+    for (const [id, rfq] of [...this.deferred]) {
+      this.deferred.delete(id);
+      if (this.halted || rfq.expiry - now < DEFERRED_MIN_LEFT_SECS) continue;
+      const quoteId = await this.handleRfq(rfq);
+      if (quoteId) quoted.push(quoteId);
+    }
+    return quoted;
+  }
+
   // ── One RFQ ───────────────────────────────────────────────────────────────────────────────────
   async handleRfq(rfq: RfqBody): Promise<string | undefined> {
     const verdict = await this.filter(rfq);
@@ -178,8 +201,12 @@ export class QuotingEngine {
     const entry = pool.take(verdict.side, verdict.size);
     if (!entry) {
       this.emit({ kind: 'ignored', rfqId: rfq.rfqId, reason: 'no warm offer for this side and size' });
+      this.deferred.delete(rfq.rfqId);
+      this.deferred.set(rfq.rfqId, rfq);
+      while (this.deferred.size > DEFERRED_MAX) this.deferred.delete(this.deferred.keys().next().value!);
       return undefined;
     }
+    this.deferred.delete(rfq.rfqId);
 
     const validUntil = BigInt(chain.nowSecs() + policy.validitySecs);
     const sealed = sealQuote(entry.terms, unhex(rfq.rfqId), validUntil);

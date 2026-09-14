@@ -217,6 +217,7 @@ async function cmdStart(cfg: DealerConfig): Promise<void> {
       await engine.watch();
       await shapeInventory(wallet, cfg, policy, tokens, pool, engine, hostageInputs);
       await pool.tick();
+      for (const id of await engine.retryDeferred()) log(`[quote] deferred RFQ answered: ${id.slice(0, 12)}…`);
       log(`[tick] pool ${pool.size} warm; live quotes ${journal.live().length}; relays ${relays.connectedCount()}/${cfg.relays.endpoints.length}`);
     } catch (err) {
       log(`[tick] error: ${(err as Error).message}`);
