@@ -310,8 +310,14 @@ Consequences for the node:
   checked against the rule before submitting. The keeper runs it when a token has more than
   `consolidate_above` coins, only while no offer is being built, and re-registers consolidated tNIGHT
   for DUST generation (a new UTXO is not registered, and unregistered NIGHT generates no DUST).
-- **Size inventory to the ladder.** With smallest-first selection, the cheapest shape is a wallet with
-  no coin smaller than the smallest rung.
+- **Size inventory to the ladder — in both directions.** With smallest-first selection the cheapest
+  shape has no coin smaller than a rung (merge dust). But an offer also books a **whole** coin until its
+  Offer File expires, so N concurrent quotes need N coins that can each back a rung (split large coins).
+  Measured, M3 run #2 (2026-09-14): with two TESTUSD coins the node answered two 15-minute cycles, then
+  every buy build failed with "Insufficient funds" until the first offers expired an hour later.
+  `inventory-plan.ts` returns one action per token per tick — merge up to three of the smallest coins, or
+  split the largest into ⌈1.5 × rung⌉ pieces while its change still backs a rung — towards
+  `[pool].ladder_coins` (default 4).
 
 ---
 

@@ -75,6 +75,9 @@ export interface DealerConfig {
     maxOfferInputs: number;
     /** Merge small UTXOs when a wallet holds more than this many. */
     consolidateAbove: number;
+    /** Coins per token that can each back a rung on their own. An offer books a WHOLE coin until its Offer
+     *  File expires, so this caps concurrent live quotes per side (M3 run #2 starved on two). */
+    ladderCoins: number;
   };
   policies: QuotePolicy[];
   risk: { maxLiveQuotes: number; maxTotalNotional: bigint; haltOnSlash: boolean };
@@ -275,6 +278,7 @@ export function parseConfig(text: string, file = '<inline>'): DealerConfig {
         return int(pool, 'max_offer_inputs', 'pool', 1, 8, 1);
       })(),
       consolidateAbove: int(pool, 'consolidate_above', 'pool', 2, 1000, 8),
+      ladderCoins: int(pool, 'ladder_coins', 'pool', 1, 32, 4),
     },
     policies,
     risk: {
