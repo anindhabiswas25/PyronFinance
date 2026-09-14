@@ -80,8 +80,20 @@ export function installedSdkVersions(): Record<string, string> {
   return out;
 }
 
+/** `<workspace root>/.wallet-state`, whatever directory a command runs from. Found 2026-09-14 timing the
+ *  operator README on a brand-new wallet: `pnpm run fund` (repo root) saved the snapshot to
+ *  `./.wallet-state`, then `pnpm bond` (packages/dealer-node) looked in `packages/dealer-node/.wallet-state`,
+ *  found nothing and re-synced from genesis — a second ~28-minute sync the README said would take seconds.
+ *  The workspace root is the nearest ancestor holding pnpm-workspace.yaml; outside a workspace, the cwd. */
 export function walletStateDir(): string {
-  return process.env.MN_WALLET_STATE_DIR ?? path.resolve(process.cwd(), '.wallet-state');
+  if (process.env.MN_WALLET_STATE_DIR) return process.env.MN_WALLET_STATE_DIR;
+  let dir = process.cwd();
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return path.join(dir, '.wallet-state');
+    const parent = path.dirname(dir);
+    if (parent === dir) return path.resolve(process.cwd(), '.wallet-state');
+    dir = parent;
+  }
 }
 
 /** Keyed by network AND address: restoring one wallet's state into another would produce a wallet
