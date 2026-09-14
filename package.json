@@ -15,6 +15,7 @@
     "generate-seed": "tsx scripts/generate-seed.ts",
     "print-address": "tsx --env-file=.env scripts/print-address.ts",
     "fund": "tsx --env-file=.env scripts/fund.ts",
+    "transfer": "tsx --env-file=.env scripts/transfer.ts",
     "deploy": "tsx --env-file=.env scripts/deploy.ts",
     "init": "tsx --env-file=.env scripts/init.ts",
     "e2e-fraud": "tsx --env-file=.env scripts/e2e-fraud.ts",
