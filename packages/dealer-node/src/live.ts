@@ -214,11 +214,19 @@ export function liveBuilder(wallet: HeadlessWallet, indexerHttp: string, maxInpu
   };
 }
 
+/** Everything the wallet OWNS of a token: available coins PLUS coins booked (pending) by transactions
+ *  it has built. The pool subtracts its own `committed` offers itself, so this must include the coins
+ *  those offers booked — found live 2026-09-14: using the wallet's AVAILABLE balance counted every taken
+ *  offer twice, and after two quotes the pool reported "balance 0, committed 82632" and stopped quoting.
+ *  Note also that an offer books a WHOLE coin (smallest-first selection), so N concurrent quotes need
+ *  N coins of roughly the rung size — see DEALER-NODE.md §5.2. */
 export function liveInventory(wallet: HeadlessWallet): InventoryView {
   return {
     async balance(token) {
       const s = await Rx.firstValueFrom(wallet.facade.state().pipe(Rx.filter((x) => x.isSynced)));
-      return (s.unshielded.balances[token] ?? 0n) as bigint;
+      const sum = (coins: ReadonlyArray<{ utxo: { type: string; value: bigint } }>) =>
+        coins.filter((c) => c.utxo.type === token).reduce((a, c) => a + c.utxo.value, 0n);
+      return sum(s.unshielded.availableCoins) + sum(s.unshielded.pendingCoins);
     },
   };
 }
