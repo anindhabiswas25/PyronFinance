@@ -129,9 +129,33 @@ chain and re-sends any reveal a taker is still owed.
 
 ## What takes time
 
-Everything above is minutes of operator work. The chain adds: a first wallet sync (~20 min from genesis
+~~Everything above is minutes of operator work. The chain adds: a first wallet sync (~20 min from genesis
 on Preprod, seconds afterwards from `.wallet-state/`), faucet DUST generation for a brand-new wallet,
-and ~20–55 s per on-chain call. Those are the network, not setup.
+and ~20–55 s per on-chain call. Those are the network, not setup.~~
+
+**Measured 2026-09-14 on a brand-new Preprod wallet**, following this README from a fresh `git clone`
+(funded by a transfer instead of the faucet, so the faucet's own wait is not included):
+
+| Step | Operator work | Chain / network wait |
+|---|---|---|
+| 1. clone, install, compile | seconds (16 s with a warm pnpm store; a cold machine downloads more) | — |
+| 2. seed, `.env`, address | seconds | — |
+| funding | a human at the faucet (CAPTCHA) | not measured |
+| `pnpm run fund`: first sync, DUST registration | — | **~28.5 min** first sync, then 35 s |
+| 3. config + `gen-key` | ~5 min of editing | 3 s |
+| 4. consolidate | — | 10 s (nothing to merge on a fresh wallet) |
+| 5. `bond` | — | 24 s; sync from `.wallet-state/` 5 s |
+| 6. `start` → both offers warm | — | 65 s |
+| first RFQ → quote verified by the taker | — | 26 s |
+
+**Operator work is well under 30 minutes; the first wallet sync alone is about as long.**
+
+**DUST is the first-hour limit.** A wallet registered for DUST minutes ago can afford only a handful of
+transactions. On the measured wallet (500 tNIGHT, registered 10:55Z) the bond, one keeper split and one
+quote commit used it up: when the first trade settled at 11:19Z, `recordSettlement` failed with
+`could not balance dust` for **11.5 minutes** before it landed. The node keeps retrying, and now defers
+inventory shaping while a record or release is owed, but expect a new node to be slow to record its first
+trades. More tNIGHT generates DUST faster.
 
 ## Alerts that need a human
 
