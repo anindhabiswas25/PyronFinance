@@ -652,7 +652,21 @@ the node took the buy offer for cycle 1 immediately.
    piece and smallest-first selection funded it from an existing 1,500 coin — a real transaction, spending
    DUST, changing nothing. Fixed: a split's total must exceed the sum of all smaller coins, forcing the
    largest coin in.
-Both fixes carry tests built from the exact live shapes (88 dealer-node tests pass). The taker driver kept
+Both fixes carry tests built from the exact live shapes (88 dealer-node tests pass).
+
+After the 07:31Z restart the fixes held (0 ALERTs; the tNIGHT split went 3 in → 4 out, adding coins) — and
+two more live problems appeared, fixed in turn:
+3. **The ladder target ignored coins held by live offers.** "3 backing coin(s) < target 4" each tick: every
+   warm offer books a whole backing coin, so the keeper kept splitting to replace coins that were merely in
+   use. Fixed: target = `ladder_coins` − offers currently giving that token.
+4. **The keeper starved quotes of DUST — and cost cycle 2.** Back-to-back keeper splits each booked a DUST coin
+   for their fee until confirmed; a split failed "Insufficient Funds: could not balance dust" (07:34:47Z) and
+   cycle 2's `commitQuote` failed (07:35:11Z). This is `DEALER-NODE.md` §5's reserve concern biting through
+   **DUST coins**, not unshielded coins. Fixed: the keeper skips unless ≥ 2 DUST coins are free, and submits
+   at most one transaction per tick. Node stopped 07:36:08Z and restarted with all four fixes.
+
+A keeper rejection had also been logged with no node code ("Transaction submission error"); keeper
+self-transfers now carry `nodeErrorCode()` like settlements do. The taker driver kept
 running through the stop, so cycles missed while the node was down are recorded as unanswered.
 
 Attempt 4 settled on `c85b6b93…` — tx id `0012b050ee60e69a2bd8ebc06e15c116e6eaffcd5a4110cffdaeb8ef1c5800032c`,
