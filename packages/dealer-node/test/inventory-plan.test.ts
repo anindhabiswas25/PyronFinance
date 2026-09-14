@@ -28,6 +28,19 @@ describe('planInventory', () => {
     expect(plan).toMatchObject({ action: 'merge', refs: ['k0', 'k1', 'k2'], total: 150_003n });
   });
 
+  it('never merges backing coins the ladder needs — no merge/split oscillation (live, M3 run #3)', () => {
+    // Live: tNIGHT split to 5 coins, "5 coins > 4" merged 3 of them, "2 backing < target 3" split again, repeat.
+    const coins = [c('a', 1_500n), c('b', 1_500n), c('c', 1_500n), c('d', 1_500n), c('big', 4_999_990_000n)];
+    const plan = planInventory({ coins, rungAmount: 1_000n, targetCoins: 3, consolidateAbove: 4 });
+    // 5 backing vs target 3 leaves surplus 2: at most 2 coins may merge, never dropping below the target.
+    expect(plan.action).toBe('merge');
+    if (plan.action !== 'merge') return;
+    expect(plan.refs.length).toBe(2);
+    // ...and after that merge (4 coins, 4 backing) nothing further happens.
+    const after = [c('ab', 3_000n), c('c', 1_500n), c('d', 1_500n), c('big', 4_999_990_000n)];
+    expect(planInventory({ coins: after, rungAmount: 1_000n, targetCoins: 3, consolidateAbove: 4 }).action).toBe('none');
+  });
+
   it('never merges more than three coins at once', () => {
     const coins = Array.from({ length: 12 }, (_, i) => c(`k${i}`, 10n));
     const plan = planInventory({ coins, rungAmount: 1_000n, targetCoins: 1, consolidateAbove: 4 });

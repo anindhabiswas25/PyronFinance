@@ -288,6 +288,12 @@ export function parseConfig(text: string, file = '<inline>'): DealerConfig {
     },
     journalPath: rel((root.journal_path as string | undefined) ?? './dealer-journal.log'),
   };
+  if (cfg.pool.consolidateAbove <= cfg.pool.ladderCoins + 1) {
+    throw new ConfigError(
+      `pool.consolidate_above (${cfg.pool.consolidateAbove}) must exceed pool.ladder_coins + 1 (${cfg.pool.ladderCoins + 1}); ` +
+        'otherwise a split toward the ladder immediately trips the count-based merge (seen live: merge/split oscillation)',
+    );
+  }
   if (cfg.bond.autoTopup && cfg.bond.topupTarget <= cfg.bond.minimumBalance) {
     throw new ConfigError('bond.topup_target must exceed bond.minimum_balance when auto_topup = true');
   }
