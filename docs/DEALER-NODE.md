@@ -100,7 +100,7 @@ expiry_margin_secs = 900
 refresh_secs    = 1800
 
 [risk]
-max_live_quotes    = 20
+max_live_quotes    = 4                        # <= pool.ladder_coins, or a one-sided flow runs out of coins first (startup warns)
 max_total_notional = "50000"                 # across all live quotes — the contract's cap is per quote
 halt_on_slash      = true
 # challenge_response_secs = 120              # REMOVED 2026-09-14 with Class B; now rejected at startup
@@ -318,6 +318,11 @@ Consequences for the node:
   `inventory-plan.ts` returns one action per token per tick — merge up to three of the smallest coins, or
   split the largest into ⌈1.5 × rung⌉ pieces while its change still backs a rung — towards
   `[pool].ladder_coins` (default 4).
+- **`ladder_coins` is the real per-side concurrency limit, not `max_live_quotes`.** Measured, M3 run #3
+  (2026-09-14T09:46Z): `max_live_quotes = 6`, `ladder_coins = 4`, and a taker that only ever sold. Four
+  buy quotes booked all four TESTUSD coins for their Offer Files' hour, and the fifth RFQ found no coin
+  while the risk limit still allowed two more quotes. The node warns at startup when
+  `max_live_quotes > ladder_coins`; it does not refuse, because two-sided flow can use both sides' coins.
 
 ---
 

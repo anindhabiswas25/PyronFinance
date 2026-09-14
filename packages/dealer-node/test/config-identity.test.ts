@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseConfig, loadConfig, ConfigError } from '../src/config.js';
+import { parseConfig, loadConfig, configWarnings, ConfigError } from '../src/config.js';
 import { deriveIdentity, generateSecretFile, loadSecretFile, IdentityError } from '../src/identity.js';
 import { dealerCommitment } from '../../sdk/src/domain.js';
 import { schnorrSign, schnorrVerify, freshNonce } from '../../sdk/src/schnorr.js';
@@ -24,6 +24,17 @@ describe('config', () => {
     expect(cfg.relays.endpoints.length).toBeGreaterThanOrEqual(2);
     expect(cfg.risk.haltOnSlash).toBe(true);
     expect(cfg.reserve.minUtxos).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the shipped example raises no startup warning', () => {
+    expect(configWarnings(parseConfig(fs.readFileSync(EXAMPLE, "utf-8")))).toEqual([]);
+  });
+
+  it('WARNS when max_live_quotes exceeds ladder_coins — the live run #3 shape (6 vs 4, one-sided flow)', () => {
+    const text = withExample((t) => t.replace(/max_live_quotes\s*=\s*\d+/, 'max_live_quotes = 6'));
+    const warnings = configWarnings(parseConfig(text));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/at most 4 concurrent quotes can give the same token/);
   });
 
   it('REJECTS the removed Class B challenge setting', () => {

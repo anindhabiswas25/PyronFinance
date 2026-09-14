@@ -14,7 +14,7 @@ import path from 'node:path';
 import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { loadConfig, type DealerConfig, type QuotePolicy } from './config.js';
+import { loadConfig, configWarnings, type DealerConfig, type QuotePolicy } from './config.js';
 import { generateSecretFile, loadSecretFile, loadWalletSeed, type DealerIdentity } from './identity.js';
 import { QuoteJournal, recover } from './journal.js';
 import { WarmPool, type PairTokens } from './pool.js';
@@ -148,6 +148,7 @@ async function cmdStatus(cfg: DealerConfig): Promise<void> {
 async function cmdStart(cfg: DealerConfig): Promise<void> {
   const identity = loadSecretFile(cfg.identity.secretKeyPath);
   log(`[start] dealer ${hex(identity.dealerCmt)} on ${cfg.network.network}, contract ${cfg.network.contract}`);
+  for (const w of configWarnings(cfg)) log(`[config] WARNING ${w}`);
   if (!cfg.relays.useMailbox) throw new Error('only relay-mailbox reveals are implemented; set use_mailbox = true');
   if (cfg.policies.length !== 1) throw new Error('this build runs exactly one [[quote_policy]]');
   const policy = cfg.policies[0];

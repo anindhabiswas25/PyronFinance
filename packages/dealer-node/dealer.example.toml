@@ -61,6 +61,6 @@ expiry_margin_secs = 900                     # discard offers this close to expi
 refresh_secs    = 1800                       # pool refresh tick; <= 3600 - expiry_margin
 
 [risk]
-max_live_quotes    = 20
+max_live_quotes    = 4                        # <= pool.ladder_coins, or a one-sided flow runs out of coins first (startup warns)
 max_total_notional = "0.02"                  # across ALL live quotes — the contract's cap is per quote
 halt_on_slash      = true                    # stop everything if slashed; investigate first
