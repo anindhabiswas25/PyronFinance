@@ -88,6 +88,94 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
 
   if (!pair) return <Banner tone="bad" title="No pair on this network">{network.label} has no configured pair.</Banner>;
 
+  const sizeBox = (
+    <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5 focus-within:border-mu">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor="rfq-size" className="label">
+          {form.side === 'sell' ? 'You sell' : 'You buy'}
+        </label>
+        {baseBalance !== undefined && (
+          <span className="text-12.5 text-mu tabular-nums">
+            Balance {formatUnits(baseBalance, pair.base.decimals, { maxFraction: 2 })}
+            {form.side === 'sell' && baseBalance > 0n && (
+              <>
+                {' · '}
+                <button type="button" className="text-seal hover:underline" onClick={() => set({ size: formatUnits(baseBalance, pair.base.decimals, { group: false }) })}>
+                  Max
+                </button>
+              </>
+            )}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <input
+          id="rfq-size"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0"
+          value={form.size}
+          onChange={(e) => {
+            if (isAmountInput(e.target.value, pair.base.decimals)) set({ size: e.target.value });
+          }}
+          className="w-full min-w-0 bg-transparent outline-none font-display font-semibold text-30 tabular-nums placeholder:text-mu"
+          aria-describedby="size-help"
+        />
+        <label className="sr-only" htmlFor="rfq-pair">
+          Pair
+        </label>
+        <select
+          id="rfq-pair"
+          ref={pairRef}
+          value={form.pair}
+          onChange={(e) => set({ pair: e.target.value })}
+          className="h-[38px] rounded-btn-sm border border-line bg-s1 px-2.5 font-medium text-tx"
+          title="Press / to focus"
+        >
+          {network.pairs.map((p) => (
+            <option key={p.code} value={p.code}>
+              {p.code}
+            </option>
+          ))}
+        </select>
+      </div>
+      <span id="size-help" className="sr-only">
+        Amount of {pair.base.symbol}, up to {pair.base.decimals} decimal places
+      </span>
+    </div>
+  );
+
+  // The counter leg never shows an amount: no price exists until dealers reveal.
+  const counterBox = (
+    <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="label">{counterLabel(form.side)}</span>
+        {counterBalance !== undefined && <span className="text-12.5 text-mu tabular-nums">Balance {formatUnits(counterBalance, pair.counter.decimals, { maxFraction: 2 })}</span>}
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2.5 text-seal">
+          <Lock size={20} strokeWidth={1.7} aria-hidden="true" />
+          <span className="text-15 font-medium">Price revealed after dealers seal</span>
+        </span>
+        <span className="font-medium">{pair.counter.symbol}</span>
+      </div>
+    </div>
+  );
+
+  const flip = (
+    <div className="flex justify-center -my-2">
+      <button
+        type="button"
+        onClick={() => set({ side: form.side === 'sell' ? 'buy' : 'sell' })}
+        aria-label={`Switch to ${form.side === 'sell' ? 'buying' : 'selling'} ${pair.base.symbol}`}
+        title={`Switch to ${form.side === 'sell' ? 'buying' : 'selling'} ${pair.base.symbol}`}
+        className="grid place-items-center w-9 h-9 rounded-btn bg-s2 border border-line text-mu hover:text-tx transition-colors duration-hover"
+      >
+        <ArrowUpDown size={16} strokeWidth={1.7} aria-hidden="true" />
+      </button>
+    </div>
+  );
+
   return (
     <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] items-start">
       <Card
@@ -109,80 +197,19 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
             <Segmented label="Side" value={form.side} onChange={(side) => set({ side })} options={[{ value: 'sell', label: 'Sell' }, { value: 'buy', label: 'Buy' }]} />
           </div>
 
-          <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5 focus-within:border-mu">
-            <div className="flex items-center justify-between gap-3">
-              <label htmlFor="rfq-size" className="label">
-                {form.side === 'sell' ? 'You sell' : 'You buy'}
-              </label>
-              {baseBalance !== undefined && (
-                <span className="text-12.5 text-mu tabular-nums">
-                  Balance {formatUnits(baseBalance, pair.base.decimals, { maxFraction: 2 })}
-                  {form.side === 'sell' && baseBalance > 0n && (
-                    <>
-                      {' · '}
-                      <button type="button" className="text-seal hover:underline" onClick={() => set({ size: formatUnits(baseBalance, pair.base.decimals, { group: false }) })}>
-                        Max
-                      </button>
-                    </>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <input
-                id="rfq-size"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="0"
-                value={form.size}
-                onChange={(e) => {
-                  if (isAmountInput(e.target.value, pair.base.decimals)) set({ size: e.target.value });
-                }}
-                className="w-full min-w-0 bg-transparent outline-none font-display font-semibold text-30 tabular-nums placeholder:text-mu"
-                aria-describedby="size-help"
-              />
-              <label className="sr-only" htmlFor="rfq-pair">
-                Pair
-              </label>
-              <select
-                id="rfq-pair"
-                ref={pairRef}
-                value={form.pair}
-                onChange={(e) => set({ pair: e.target.value })}
-                className="h-[38px] rounded-btn-sm border border-line bg-s1 px-2.5 font-medium text-tx"
-                title="Press / to focus"
-              >
-                {network.pairs.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.code}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <span id="size-help" className="sr-only">
-              Amount of {pair.base.symbol}, up to {pair.base.decimals} decimal places
-            </span>
-          </div>
-
-          <div className="flex justify-center -my-2" aria-hidden="true">
-            <span className="grid place-items-center w-9 h-9 rounded-btn bg-s2 border border-line text-mu">
-              <ArrowUpDown size={16} strokeWidth={1.7} />
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <span className="label">{counterLabel(form.side)}</span>
-              {counterBalance !== undefined && <span className="text-12.5 text-mu tabular-nums">Balance {formatUnits(counterBalance, pair.counter.decimals, { maxFraction: 2 })}</span>}
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2.5 text-seal">
-                <Lock size={20} strokeWidth={1.7} aria-hidden="true" />
-                <span className="text-15 font-medium">Price revealed after dealers seal</span>
-              </span>
-              <span className="font-medium">{pair.counter.symbol}</span>
-            </div>
-          </div>
+          {form.side === 'sell' ? (
+            <>
+              {sizeBox}
+              {flip}
+              {counterBox}
+            </>
+          ) : (
+            <>
+              {counterBox}
+              {flip}
+              {sizeBox}
+            </>
+          )}
           {pair.note && <p className="text-12.5 text-mu">{pair.note}</p>}
 
           <details className="group">
