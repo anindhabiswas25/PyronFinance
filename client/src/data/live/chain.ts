@@ -18,7 +18,8 @@ export interface LiveChainOptions {
   ttlMs?: number;
 }
 
-export function createLiveChain(o: LiveChainOptions): ChainPort {
+export function createLiveChain(options: LiveChainOptions): ChainPort {
+  const o = { ...options };
   const ttl = o.ttlMs ?? 2000;
   const knownDealers = new Set<string>();
   let cached: { at: number; value: Promise<LedgerSnapshot> } | undefined;
@@ -76,6 +77,13 @@ export function createLiveChain(o: LiveChainOptions): ChainPort {
     // taker cannot pre-check an offer's inputs. Settle classifies a failure after the fact instead.
     async inputSpent() {
       return 'unsupported';
+    },
+    useIndexer(http, ws) {
+      if (http === o.indexerHttp && ws === o.indexerWs) return;
+      o.indexerHttp = http;
+      o.indexerWs = ws;
+      cached = undefined;
+      reader = undefined;
     },
     chainReader(): ChainReader {
       const get = () => {

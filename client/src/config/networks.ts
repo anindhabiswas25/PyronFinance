@@ -39,6 +39,14 @@ export interface NetworkConfig {
   defaultRelays: string[];
 }
 
+/** RawTokenType of the native token (tNIGHT / NIGHT). Checked against the SDK's nativeTokenRaw() in
+ *  test/unit/networks.test.ts, so balance lookups need no SDK. */
+export const NATIVE_TOKEN_RAW = '0'.repeat(64);
+
+export function tokenTypeOf(asset: AssetConfig): string {
+  return asset.tokenType === 'native' ? NATIVE_TOKEN_RAW : asset.tokenType;
+}
+
 const TNIGHT: AssetConfig = { symbol: 'tNIGHT', tokenType: 'native', decimals: 6, kind: 'unshielded' };
 
 const LOCAL_RELAYS = ['ws://127.0.0.1:18787/gossip', 'ws://127.0.0.1:18788/gossip'];

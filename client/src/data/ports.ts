@@ -137,6 +137,8 @@ export interface ChainPort {
   transaction(by: { hash: Hex } | { identifier: string }): Promise<IndexedTransaction | undefined>;
   ledgerParameters(): Promise<{ height: number; params: LedgerParameters }>;
   inputSpent?(intentHash: Hex, outputNo: number): Promise<InputSpent>;
+  /** Switch to another indexer (the connected wallet's), clearing caches. Live only. */
+  useIndexer?(http: string, ws: string): void;
   /** For verifyQuoteRef / RelayAggregator. May load the SDK lazily on first use. */
   chainReader(): ChainReader;
 }

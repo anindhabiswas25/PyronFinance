@@ -1,8 +1,15 @@
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { useOverlays } from '../src/state/overlays';
+import { useWalletStore } from '../src/state/wallet';
+import { useTray } from '../src/state/tray';
 
 afterEach(() => {
   cleanup();
+  // Zustand stores are module singletons: reset them so one test's open dialog can't leak into the next.
+  useOverlays.setState({ open: undefined, readiness: {} });
+  useWalletStore.getState().reset();
+  useTray.setState({ entries: [] });
   try {
     localStorage.clear();
     sessionStorage.clear();
@@ -24,3 +31,6 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// jsdom has no scrolling; React Router's ScrollRestoration calls it on every navigation.
+if (typeof window !== 'undefined') window.scrollTo = (() => undefined) as typeof window.scrollTo;
