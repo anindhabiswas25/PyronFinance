@@ -1015,15 +1015,33 @@ commitments — runs end to end on Preprod and is demoable.
 Task 2.8 gates every performance claim in `GRANT.md`. No latency figure goes in any external
 material beyond the measured table above.
 
-### Web client (`client/`, branch `client-all-pages`) — built 2026-09-15, NOT yet run live
+### Web client (`client/`) — built 2026-09-15, merged into `harden-m1`, NOT yet run live with a wallet
 
 **Owner decisions (2026-09-15):** build the whole client without waiting on the Phase 0 browser gate;
 "backend" means relays + indexer + wallet (no hosted server); live data only in the UI (fixtures stay in
 the test suite); real contract circuits from the browser; dealer keys encrypted in the browser with a
 forced backup; `/me` history encrypted under a passphrase. `FRONTEND.md` describes what was built.
 
-All 10 pages and 6 overlays exist. Offline evidence: 152 client tests (unit, component, fixture trade
-scenarios), 30 files / 406 repo tests, typecheck clean, one runtime WASM bundled. Added in the SDK:
+All 10 pages and 6 overlays exist. Offline evidence after the merge: 154 client tests (unit, component,
+fixture trade scenarios, and the live relay adapter against two real relay-node servers), 30 files /
+407 repo tests, typecheck clean, one runtime WASM bundled.
+
+**Merge note (2026-09-15):** `client-all-pages` fast-forwarded into `harden-m1`. On the main checkout
+the SDK's offline circuit tests then failed with `expected instance of ContractOperation`: a stale
+`packages/sdk/node_modules` from an older install nested `onchain-runtime-v3` 3.1.1 beside the
+lockfile's root 3.1.0, so the contract and midnight-js built state with different runtime instances.
+The lockfile holds only 3.1.0 (the clean layout the 3.10 fresh-clone Dealer Node run used), so the
+nested directory was removed and the tests pass. Symptom to recognise: any "expected instance of"
+error from the runtime WASM means two copies are loaded.
+
+**Spent-coin pre-check, run against Preprod (2026-09-15).** The v4 indexer has no lookup by coin, only
+`unshieldedTransactions` by owner address, so the client reads each offer input's owner
+(`offerInputsOf` → `addressFromKey`), encodes the address (`encodeMidnightBech32m`, checked against
+`wallet-sdk-address-format`) and replays that owner's history to the progress marker
+(`client/src/data/live/spent.ts`). Replaying the main dealer wallet took 31 s and returned 103 spent
+coins, exactly one of them spent by the A2 settlement `c7b6ec70…` — the dealer's single TESTUSD input
+recorded above. Settle's first stage and `/verify`'s coin check now use it; an indexer that can't
+answer reads "couldn't check", never "unspent". Added in the SDK:
 `browser-contract.ts` (`prepareOtcCall`: the real compiled contract through midnight-js
 `createUnprovenCallTx`, fetched ZK assets, in-memory witnesses) and `bech32m.ts` (wallet keys to hex
 without `Buffer`, checked against `wallet-sdk-address-format`). `postBond` builds an unproven
