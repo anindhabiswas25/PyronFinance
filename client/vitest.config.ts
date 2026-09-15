@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['test/unit/**/*.test.{ts,tsx}', 'test/components/**/*.test.{ts,tsx}'],
+    // *.live.test.ts reach real networks; run them with PYRON_LIVE=1.
+    exclude: process.env.PYRON_LIVE ? ['**/node_modules/**'] : ['**/node_modules/**', '**/*.live.test.ts'],
     setupFiles: ['test/setup.ts'],
     testTimeout: 60_000,
   },

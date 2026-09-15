@@ -39,6 +39,7 @@ export * from './indexer.js';
 export * from './reveal-channel.js';
 export * from './disclosure.js';
 export * from './aead.js';
+export * from './ledger-view.js';
 export * from './types.js';
 export {
   offerMatchesTerms,

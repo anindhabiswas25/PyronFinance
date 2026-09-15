@@ -5,9 +5,11 @@ import { TopBar } from './TopBar';
 import { FixtureBanner } from './FixtureBanner';
 import { AppErrorBoundary } from './ErrorBoundary';
 import { PageSkeleton } from './PageSkeleton';
+import { DataProvider } from '../data/DataProvider';
 
 export function AppShell() {
   return (
+    <DataProvider>
     <div className="min-h-screen flex flex-col">
       <a
         href="#main"
@@ -27,5 +29,6 @@ export function AppShell() {
       <Toaster />
       <ScrollRestoration />
     </div>
+    </DataProvider>
   );
 }

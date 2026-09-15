@@ -33,6 +33,8 @@ export interface NetworkConfig {
   indexerHttp: string;
   indexerWs: string;
   contractAddress: string;
+  /** Block height of the contract's deployment: event replay starts here. */
+  deployHeight?: number;
   pairs: PairConfig[];
   defaultRelays: string[];
 }
@@ -50,6 +52,7 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     indexerHttp: 'https://indexer.preprod.midnight.network/api/v4/graphql',
     indexerWs: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
     contractAddress: 'c85b6b93a12fa0e19121bdd6bb4e15ee98f3783e304bf97cb2e3a49a374b6b34',
+    deployHeight: 2_536_138, // first contractActions entry, read from the Preprod indexer 2026-09-15
     pairs: [
       {
         code: 'tNIGHT/TESTUSD',
@@ -73,6 +76,7 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     indexerHttp: 'https://indexer.preview.midnight.network/api/v4/graphql',
     indexerWs: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
     contractAddress: 'e35b4547d59c7132c021753344d662d445b739af0e78cc39bc771e58fd05d1fa',
+    deployHeight: 851_956, // first contractActions entry, read from the Preview indexer 2026-09-15
     pairs: [
       {
         code: 'tNIGHT/USDM',
@@ -118,6 +122,8 @@ export function networkConfig(id: NetworkId, env: ClientEnv = readEnv()): Networ
   return {
     ...base,
     contractAddress: env.contractAddress ?? base.contractAddress,
+    // A different contract has a different deployment height; replay it from the start.
+    deployHeight: env.contractAddress && env.contractAddress !== base.contractAddress ? undefined : base.deployHeight,
     indexerHttp: env.indexerHttp ?? base.indexerHttp,
     indexerWs: env.indexerWs ?? base.indexerWs,
     defaultRelays: env.relays ?? base.defaultRelays,
