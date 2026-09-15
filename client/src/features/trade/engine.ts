@@ -22,6 +22,7 @@ import { messageOf, WalletError } from '../../lib/errors';
 import { nodeErrorMeaning } from '../../lib/node-errors';
 import { revealsKey, type StoredReveal } from '../../data/relay-util';
 import type { OfferCheck } from '../../lib/compare';
+import { recordTrade, type TradeHistoryEntry } from '../../data/history';
 
 const SETTLE_STAGES: Array<{ id: SettleStageId; label: string }> = [
   { id: 'inputs', label: 'Offer coins still unspent' },
@@ -332,6 +333,7 @@ export class TradeEngine {
       useTray.getState().stage(trayId, id, { status, detail });
     };
     const failWith = (reason: 'inputs-spent' | 'wallet-shape' | 'expired' | 'rejected', detail: string, extra: { code?: number; spentBy?: string } = {}) => {
+      recordTrade(this.ports, this.historyEntry(quoteId, reason === 'expired' ? 'expired' : 'failed', { failure: { reason, detail, code: extra.code } }));
       this.dispatch({ type: 'failed', at: this.now(), failure: { reason, quoteId, detail, ...extra } });
       useTray.getState().fail(trayId, detail);
     };
@@ -415,6 +417,7 @@ export class TradeEngine {
               return failWith('rejected', `The transaction landed with status ${tx.status}; nothing was exchanged.`);
             }
             stage('confirm', 'done', `Block ${tx.blockHeight}`);
+            recordTrade(this.ports, this.historyEntry(quoteId, 'settled', { txHash: tx.hash, blockHeight: tx.blockHeight }));
             this.dispatch({ type: 'settled', at: this.now(), txHash: tx.hash, blockHeight: tx.blockHeight });
             useTray.getState().finish(trayId, { txHash: tx.hash });
             this.saveReceipt(quoteId, tx.hash, tx.blockHeight, pair);
@@ -445,6 +448,28 @@ export class TradeEngine {
       if (r.spent) return { spent: true, byTx: r.byTx };
     }
     return false;
+  }
+
+  private historyEntry(quoteId: string, outcome: TradeHistoryEntry['outcome'], extra: Partial<TradeHistoryEntry>): TradeHistoryEntry {
+    const s = this.state;
+    const q = s.quotes[quoteId];
+    const pair = this.pair(s.rfq?.pair ?? '');
+    return {
+      id: quoteId,
+      network: this.ports.network.id,
+      pair: s.rfq?.pair ?? '',
+      takerSide: s.rfq?.side ?? 'sell',
+      size: s.rfq?.size ?? '',
+      dealerCmt: q?.dealerCmt ?? '',
+      price: q?.terms?.price,
+      amount: q?.amount,
+      baseSymbol: pair?.base.symbol ?? '',
+      counterSymbol: pair?.counter.symbol ?? '',
+      counterDecimals: pair?.counter.decimals ?? 6,
+      outcome,
+      at: this.now(),
+      ...extra,
+    };
   }
 
   private saveReceipt(quoteId: string, txHash: string, blockHeight: number | undefined, pair: NonNullable<ReturnType<TradeEngine['pair']>>) {
