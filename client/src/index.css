@@ -34,7 +34,7 @@
     line-height: 1.2;
     letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: var(--dim);
+    color: var(--mu);
   }
   .skeleton {
     background: linear-gradient(90deg, var(--s2) 0%, var(--line) 50%, var(--s2) 100%);

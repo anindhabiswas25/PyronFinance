@@ -42,10 +42,12 @@ export * from './reveal-channel.js';
 export * from './disclosure.js';
 export * from './aead.js';
 export * from './ledger-view.js';
+export * from './sample-offer.js';
 export * from './types.js';
 export {
   offerMatchesTerms,
   checkTimeToDismiss,
+  dismissReport,
   inputsOf,
   nodeErrorCode,
   balanceVectorNetsToZero,
@@ -63,6 +65,7 @@ export {
   type BalanceVector,
   type SwapLeg,
   type SettlementResult,
+  type DismissReport,
 } from './offers.js';
 export {
   RelayAggregator,

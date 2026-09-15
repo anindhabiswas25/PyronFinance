@@ -1,5 +1,14 @@
-import { StubPage } from '../../app/StubPage';
+import { lazy, Suspense } from 'react';
+import { VerifierSkeleton } from '../../app/PageSkeleton';
+
+// The trade screens import the SDK (and its WASM). This wrapper keeps that out of the route chunk, so
+// the shell and a skeleton render while the verifier downloads.
+const TradeApp = lazy(() => import('./TradeApp'));
 
 export default function TradePage() {
-  return <StubPage title="Trade" summary="Request quotes, watch dealers seal, compare revealed prices and settle." />;
+  return (
+    <Suspense fallback={<VerifierSkeleton />}>
+      <TradeApp />
+    </Suspense>
+  );
 }

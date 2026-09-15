@@ -18,7 +18,7 @@ describe('app shell', () => {
     ['/activity', 'Activity'],
     ['/dealers', 'Dealers'],
     ['/dealers/abcd', 'Dealer'],
-    ['/trade', 'Trade'],
+    ['/trade', 'Request quotes'],
     ['/trade/abcd', 'Trade receipt'],
     ['/me', 'My trades'],
     ['/deal', 'Quote with a bond, not a sign-up.'],

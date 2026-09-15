@@ -464,6 +464,44 @@ export function checkTimeToDismiss(
   }
 }
 
+/** The node's time-to-dismiss verdict plus the numbers behind it, for display ("19.6 of 20.7 ms").
+ *
+ *  `ok`, `fee` and `reason` come from the ledger's own check (`checkTimeToDismiss`) and are
+ *  authoritative. `computePs` is the modelled single-threaded validation time from
+ *  `tx.cost(params, false)`. `allowancePs` uses the limits observed on Preview and Preprod (2 µs per
+ *  byte, 15 ms floor; docs/ROADMAP.md S5) and is informational: if the chain changes its limits, the
+ *  verdict still follows the ledger while this figure goes stale. */
+export interface DismissReport {
+  ok: boolean;
+  fee?: bigint;
+  reason?: string;
+  sizeBytes: number;
+  computePs: bigint;
+  readPs: bigint;
+  allowancePs: bigint;
+}
+
+export function dismissReport(
+  tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>,
+  params: ledger.LedgerParameters,
+): DismissReport {
+  const sizeBytes = tx.serialize().length;
+  let computePs = 0n;
+  let readPs = 0n;
+  try {
+    const c = tx.cost(params, false);
+    computePs = c.computeTime;
+    readPs = c.readTime;
+  } catch {
+    // Some transactions cannot be costed without enforcement; the verdict below still stands.
+  }
+  const allowancePs = BigInt(Math.max(sizeBytes * 2_000_000, 15_000_000_000));
+  const check = checkTimeToDismiss(tx, params);
+  return check.ok
+    ? { ok: true, fee: check.fee, sizeBytes, computePs, readPs, allowancePs }
+    : { ok: false, reason: check.reason, sizeBytes, computePs, readPs, allowancePs };
+}
+
 /** Settles a dealer's Offer File: supplies the complementary half from this wallet, asserts the
  *  combined balance vector nets to zero CLIENT-SIDE, and submits.
  *

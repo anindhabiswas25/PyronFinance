@@ -109,6 +109,8 @@ export interface RfqState {
   settlement?: SettlementState;
   failure?: Failure;
   error?: string;
+  /** Set while the chain can't be read: quotes are paused, not rejected. */
+  chainError?: string;
   source?: string;
 }
 
@@ -158,6 +160,7 @@ export type RfqAction =
   | { type: 'failed'; failure: Omit<Failure, 'at'>; at: number }
   | { type: 'retry-with'; quoteId: string; at: number }
   | { type: 'cancel'; at: number }
+  | { type: 'chain-error'; message?: string; at: number }
   | { type: 'log'; line: LogLine }
   | { type: 'reset'; pair: string };
 
@@ -336,6 +339,10 @@ export function rfqReducer(s: RfqState, a: RfqAction): RfqState {
     case 'cancel':
       if (isTerminal(s.phase) || s.phase === 'idle') return s;
       return withLog({ ...s, phase: 'cancelled', view: 'request', takerEncSk: undefined }, 'Request cancelled', a.at);
+
+    case 'chain-error':
+      if (s.chainError === a.message) return s;
+      return a.message ? withLog({ ...s, chainError: a.message }, `Can’t reach the chain — quotes paused (${a.message})`, a.at, 'bad') : withLog({ ...s, chainError: undefined }, 'Chain reachable again', a.at);
 
     case 'log':
       return { ...s, log: [...s.log, a.line].slice(-200) };

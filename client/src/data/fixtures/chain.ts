@@ -29,6 +29,8 @@ export interface FixtureChain extends ChainPort {
   /** Replaces a dealer's quote key with a real one (the trade scenario signs with it). */
   setQuoteKey(dealerCmt: string, quotePk: BondView['quotePk']): void;
   markInputSpent(input: string, byTx: string): void;
+  /** Makes a submitted sample settlement visible to transaction lookups. */
+  registerTransaction(tx: { hash: string; identifiers: string[]; status?: string }): void;
   dataset: FixtureDataset;
   dispose(): void;
 }
@@ -123,6 +125,9 @@ export function createFixtureChain(o: FixtureChainOptions): FixtureChain {
     },
     markInputSpent(input, byTx) {
       spentInputs.set(input, byTx);
+    },
+    registerTransaction(tx) {
+      txs.set(tx.hash, { hash: tx.hash, identifiers: tx.identifiers, status: tx.status ?? 'SUCCESS', blockHeight: heightAt(nowSecs()) });
     },
     async snapshot(): Promise<LedgerSnapshot> {
       await guard();
