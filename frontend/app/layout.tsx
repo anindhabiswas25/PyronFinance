@@ -14,13 +14,13 @@ import "./landing.css";
  * the only route, so the group is gone with it.
  */
 export const metadata: Metadata = {
-  title: "Pyron Finance — Fixed income for Flare's FAssets",
+  title: "Pyron Finance — Private OTC trading on Midnight",
   description:
-    "Pyron splits yield-bearing FAsset positions into a fixed-value Principal Token and a leveraged Yield Token — Flare's first real fixed-income market.",
+    "Pyron is a private OTC venue on Midnight: bonded dealers commit sealed quotes on-chain before revealing a price, anyone can slash a dealer whose reveal doesn't match, and trades settle atomically through Zswap.",
   openGraph: {
-    title: "Pyron Finance — Fixed income for Flare's FAssets",
+    title: "Pyron Finance — Private OTC trading on Midnight",
     description:
-      "Lock in a fixed rate on FXRP, or trade the yield itself. Flare's first fixed-income market.",
+      "Sealed bids from bonded dealers, settled privately on Midnight. No last look, no allowlist, no identity required.",
     type: "website",
   },
   icons: {icon: {url: "/assets/logo-badge.svg", type: "image/svg+xml"}},

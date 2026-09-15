@@ -1,7 +1,7 @@
 # Pyron Finance — Landing Page
 
-The marketing landing page for **Pyron Finance**, a fixed-income and yield-trading
-protocol for Flare's FAssets ecosystem.
+The marketing landing page for **Pyron Finance**, a private OTC trading protocol on
+Midnight: bonded dealers, sealed commit-reveal quotes, and Zswap settlement.
 
 This repository contains the landing page only. The protocol contracts, indexer,
 keeper, and trading app that used to live alongside it have been removed; the

@@ -30,19 +30,22 @@ const CHECK = (
  *  stacked cards below 991px. Same source so they can never drift apart. */
 const SOLUTIONS = [
   {
-    title: "Pyron Split",
+    title: "Pyron RFQ",
     icon: <path d="M10 5v10M5 10h10" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />,
     lottie: "/assets/slide-split.json",
     points: [
-      ["One transaction:", "deposit an FXRP-derived position and receive PT and YT instantly."],
       [
-        "Reversible:",
-        "recombine PT and YT at any time before maturity, or redeem PT one-for-one after it.",
+        "One intent:",
+        "state the pair and size once; your request gossips across open relays with no price and no identity attached.",
+      ],
+      [
+        "Sealed bids:",
+        "every responding dealer commits on-chain first, locking in a price nobody can see yet.",
       ],
     ],
   },
   {
-    title: "Pyron Market",
+    title: "Pyron Reveal",
     icon: (
       <path
         d="M5 13l3.4-3.6L11 12l4-6"
@@ -55,13 +58,13 @@ const SOLUTIONS = [
     lottie: "/assets/slide-market.json",
     points: [
       [
-        "A real term structure:",
-        "trade PT and YT against SY in a pool built for time-decaying assets, with live implied rates at every maturity.",
+        "Compare what matters:",
+        "revealed prices sit beside each dealer's bond, settled trades and slash record, every one verified against the chain in your own client.",
       ],
     ],
   },
   {
-    title: "Pyron Fixed",
+    title: "Pyron Settle",
     icon: (
       <path
         d="M10 5.5v5l3 2"
@@ -74,12 +77,12 @@ const SOLUTIONS = [
     lottie: "/assets/slide-fixed.json",
     points: [
       [
-        "Lock the rate:",
-        "buy PT at a discount and hold to maturity for a yield that is known the moment you buy.",
+        "Atomic settlement:",
+        "settle straight from the dealer's pre-proved Zswap offer, with no custodian and no waiting on the dealer.",
       ],
       [
-        "Automated accrual:",
-        "keeper-driven settlement pays YT holders continuously, with nothing to claim by hand.",
+        "Programmable disclosure:",
+        "attach an encrypted note tied to one trade, readable only by the party you choose.",
       ],
     ],
   },
@@ -164,7 +167,7 @@ export default function LandingPage() {
                         view-text="true"
                         view-text-delay="60"
                       >
-                        Fixed Income Comes to Flare
+                        Private OTC on Midnight
                       </h1>
                     </div>
                   </div>
@@ -190,7 +193,7 @@ export default function LandingPage() {
 
                 <div className="headline-wrapper values-s">
                   <h2 className="headline-h2" create-spans="" view-text="true" view-text-delay="60">
-                    Next-gen Fixed Yield
+                    No More Last Look
                   </h2>
                 </div>
 
@@ -202,7 +205,7 @@ export default function LandingPage() {
                     view-text-class="line-span-body"
                     view-text-delay="120"
                   >
-                    Built to give every FAsset holder a rate they can actually count on
+                    Built so every price a dealer quotes you is sealed on-chain and backed by a bond
                   </p>
                 </div>
               </div>
@@ -214,13 +217,13 @@ export default function LandingPage() {
                       <div className="values-lottie s1" data-lottie="/assets/card-split.json" />
                       <div className="text-elements values-card-s">
                         <div className="headline-wrapper values-s s1">
-                          <h3 className="subheadline-s1">Splitting Yield From Principal</h3>
+                          <h3 className="subheadline-s1">Sealed Commit-Reveal Quotes</h3>
                         </div>
                         <div className="description-wrapper values-card-s s1">
                           <p className="body-b2">
-                            We take any yield-bearing FAsset position and split it in two: a
-                            Principal Token worth exactly one unit of the underlying at maturity,
-                            and a Yield Token that captures every basis point earned until then.
+                            Dealers post a commitment to their quote on Midnight before any price
+                            is revealed, then reveal it encrypted to you alone. Competing dealers
+                            and relay operators never see it.
                           </p>
                         </div>
                       </div>
@@ -233,8 +236,8 @@ export default function LandingPage() {
                       <div className="text-elements values-card-s">
                         <div className="description-wrapper values-card-s s2">
                           <p className="body-b1 dark">
-                            On-chain rails built for Flare, FTSO-priced and FAssets-native, carrying
-                            value from wallet to protocol.
+                            Settled atomically through Zswap, Midnight&apos;s native swap primitive,
+                            with no custody in between.
                           </p>
                         </div>
                       </div>
@@ -249,8 +252,8 @@ export default function LandingPage() {
                       <div className="text-elements values-card-s">
                         <div className="description-wrapper values-card-s s3">
                           <p className="body-b1 dark">
-                            Our mission is to give XRPFi the fixed-income layer every mature market
-                            eventually needs.
+                            Our mission is an OTC venue where integrity comes from cryptography and
+                            stake, not gatekeeping.
                           </p>
                         </div>
                       </div>
@@ -271,12 +274,13 @@ export default function LandingPage() {
                       <div className="values-lottie s4" data-lottie="/assets/card-rates.json" />
                       <div className="text-elements values-card-s">
                         <div className="headline-wrapper values-s s1">
-                          <h3 className="subheadline-s1">Disrupting Variable Rates</h3>
+                          <h3 className="subheadline-s1">Permissionless Bonded Dealers</h3>
                         </div>
                         <div className="description-wrapper values-card-s s4">
                           <p className="body-b2">
-                            We replace guess-work APYs with instruments that let you lock a rate,
-                            hedge a rate, or take a view on the rate itself.
+                            Post a bond and start quoting, with no allowlist and no approval. If a
+                            signed reveal doesn&apos;t match its commitment, anyone can slash the
+                            bond.
                           </p>
                         </div>
                       </div>
@@ -312,8 +316,8 @@ export default function LandingPage() {
                       view-text="true"
                       view-text-delay="50"
                     >
-                      Pyron Turns Variable FAsset Yield Into Fixed-Rate Instruments Anyone Can
-                      Trade.
+                      Pyron Binds OTC Dealers to Their Quotes With Cryptography and Stake, Not
+                      Trust.
                     </h2>
                   </div>
 
@@ -326,8 +330,8 @@ export default function LandingPage() {
                         view-text-class="line-span-body"
                         view-text-delay="120"
                       >
-                        Pyron gives FXRP holders no-code access to fixed income — mint, trade, and
-                        redeem without ever leaving Flare.
+                        Request a quote once, compare sealed bids from bonded dealers, and settle
+                        privately — without ever revealing who you are.
                       </p>
                     </div>
                     <div className="description-wrapper solutions-s right">
@@ -338,8 +342,8 @@ export default function LandingPage() {
                         view-text-class="line-span-body"
                         view-text-delay="120"
                       >
-                        Every product settles against real Kinetic, Firelight and FTSO contracts. No
-                        wrappers, no simulated yield.
+                        Requests travel over an open relay network anyone can run. Prices never
+                        do.
                       </p>
                     </div>
                     <div className="description-pair-element" data-levitation="1">
@@ -436,7 +440,7 @@ export default function LandingPage() {
                       view-text="true"
                       view-text-delay="60"
                     >
-                      Unlock Fixed Income on Flare
+                      Trade OTC Privately on Midnight
                     </h2>
                   </div>
                   <div className="description-wrapper footer-s">
@@ -447,7 +451,8 @@ export default function LandingPage() {
                       view-text-class="line-span-body"
                       view-text-delay="120"
                     >
-                      Join the waitlist to trade Flare&apos;s first yield market with Pyron.
+                      Join the waitlist for early access to Pyron&apos;s bonded OTC venue on
+                      Midnight.
                     </p>
                   </div>
                 </div>
