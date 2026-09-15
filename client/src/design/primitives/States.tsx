@@ -51,7 +51,7 @@ export function StatTile({ label, value, sub, className }: StatTileProps) {
   return (
     <div className={cx('flex flex-col gap-1 min-w-0', className)}>
       <span className="label">{label}</span>
-      <span className="font-display font-semibold text-19 tabular-nums truncate">{value}</span>
+      <span className="font-display font-semibold text-19 tabular-nums break-words">{value}</span>
       {sub && <span className="text-12.5 text-mu">{sub}</span>}
     </div>
   );

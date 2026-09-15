@@ -14,14 +14,14 @@ function renderAt(path: string) {
 
 describe('app shell', () => {
   it.each([
-    ['/', 'Venue'],
+    ['/', 'Quotes a dealer can’t take back.'],
     ['/activity', 'Activity'],
     ['/dealers', 'Dealers'],
-    ['/dealers/abcd', 'Dealer profile'],
+    ['/dealers/abcd', 'Dealer'],
     ['/trade', 'Trade'],
     ['/trade/abcd', 'Trade receipt'],
     ['/me', 'My trades'],
-    ['/deal', 'Become a dealer'],
+    ['/deal', 'Quote with a bond, not a sign-up.'],
     ['/desk', 'Desk'],
     ['/verify', 'Verify'],
   ])('renders %s', async (path, title) => {

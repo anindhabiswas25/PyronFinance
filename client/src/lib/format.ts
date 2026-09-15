@@ -93,3 +93,14 @@ export function formatRatioPercent(numerator: bigint, denominator: bigint): stri
 export function formatCount(n: bigint | number): string {
   return groupThousands(n.toString());
 }
+
+/** Whole-unit compact form for axis ticks and dense tiles: 1_920_000 tNIGHT → "1.92M", 41_200 → "41.2k".
+ *  Truncates toward zero (an axis never overstates). */
+export function formatCompactUnits(value: bigint, decimals: number): string {
+  const whole = value / 10n ** BigInt(decimals);
+  const negative = whole < 0n;
+  const abs = negative ? -whole : whole;
+  const [div, suffix] = abs >= 1_000_000_000n ? [1_000_000_000n, 'B'] : abs >= 1_000_000n ? [1_000_000n, 'M'] : abs >= 10_000n ? [1_000n, 'k'] : [1n, ''];
+  const text = div === 1n ? groupThousands(abs.toString()) : `${formatUnits((abs * 100n) / div, 2, { group: false })}${suffix}`;
+  return negative ? `\u2212${text}` : text;
+}
