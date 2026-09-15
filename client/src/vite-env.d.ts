@@ -8,8 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_CONTRACT_ADDRESS?: string;
   readonly VITE_INDEXER_HTTP?: string;
   readonly VITE_INDEXER_WS?: string;
-  /** "true" runs contract circuits from the browser (unverified; docs/ROADMAP.md). */
-  readonly VITE_ENABLE_CIRCUITS?: string;
 }
 
 interface ImportMeta {

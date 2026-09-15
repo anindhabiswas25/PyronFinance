@@ -7,11 +7,13 @@ import { createFixtureRelays, type FixtureRelays } from './relays';
 import { createFixtureWallet, type FixtureWallet } from './wallet';
 import { scenarioClock, type ScenarioName } from './scenario';
 import { startFixtureTrade } from './trade';
+import { createFixtureCircuits, type FixtureCircuits } from './circuits';
 
 export interface FixturePorts extends DataPorts {
   chain: FixtureChain;
   relays: FixtureRelays;
   wallet: FixtureWallet;
+  circuits: FixtureCircuits;
   scenario: ScenarioName;
   speed: number;
 }
@@ -31,6 +33,7 @@ export function createFixturePorts(network: NetworkConfig, scenario: ScenarioNam
     chain,
     relays: createFixtureRelays({ scenario, session: storage.session, speed }),
     wallet: createFixtureWallet({ network, scenario, speed }),
+    circuits: createFixtureCircuits({ speed }),
     storage,
     capabilities: { settleInBrowser: 'unverified', circuitsInBrowser: true, inputSpentLookup: true },
     pollMs: speed >= 5 ? 500 : 2000,

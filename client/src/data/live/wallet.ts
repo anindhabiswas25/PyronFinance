@@ -13,6 +13,7 @@ import { WalletError, messageOf } from '../../lib/errors';
 export const WALLET_METHODS = [
   'getConfiguration',
   'getUnshieldedAddress',
+  'getShieldedAddresses',
   'getUnshieldedBalances',
   'getDustBalance',
   'balanceSealedTransaction',
@@ -148,6 +149,13 @@ export function createLiveWallet(win: WindowLike = globalThis as WindowLike): Wa
       } catch {
         return { connected: false };
       }
+    },
+    async shieldedKeys() {
+      const a = await need().getShieldedAddresses();
+      if (typeof a?.shieldedCoinPublicKey !== 'string' || typeof a?.shieldedEncryptionPublicKey !== 'string') {
+        throw new WalletError(`The wallet returned ${shapeOf(a)} for its shielded keys.`, 'shape');
+      }
+      return { coinPublicKey: a.shieldedCoinPublicKey, encryptionPublicKey: a.shieldedEncryptionPublicKey };
     },
     async provingProvider(keys) {
       return need().getProvingProvider(keys);

@@ -27,6 +27,13 @@ const devRoutes: RouteObject[] = import.meta.env.DEV
           return { Component: SettleProbe };
         },
       },
+      {
+        path: 'dev/circuits',
+        lazy: async () => {
+          const { CircuitProbe } = await import('../dev/CircuitProbe');
+          return { Component: CircuitProbe };
+        },
+      },
     ]
   : [];
 

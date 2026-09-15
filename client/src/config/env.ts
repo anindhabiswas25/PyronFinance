@@ -9,7 +9,6 @@ export interface ClientEnv {
   contractAddress?: string;
   indexerHttp?: string;
   indexerWs?: string;
-  enableCircuits: boolean;
   dev: boolean;
 }
 
@@ -25,7 +24,6 @@ export function readEnv(): ClientEnv {
     contractAddress: e.VITE_CONTRACT_ADDRESS || undefined,
     indexerHttp: e.VITE_INDEXER_HTTP || undefined,
     indexerWs: e.VITE_INDEXER_WS || undefined,
-    enableCircuits: e.VITE_ENABLE_CIRCUITS === 'true',
     dev: Boolean(e.DEV),
   };
 }

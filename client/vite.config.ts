@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
@@ -37,8 +37,49 @@ function resolveFromSdk(name: string): string {
   }
 }
 
+// Contract circuits run from the browser (src/data/live/circuits.ts) fetch their ZK assets from
+// /zk/otc-protocol/{keys,zkir}. Served straight from the compiler output in dev, copied into dist/
+// at build. Prover keys are git-ignored and exist only after `pnpm run compact`.
+const zkRoot = path.resolve(import.meta.dirname, '../contracts/managed/otc-protocol');
+const ZK_URL = '/zk/otc-protocol';
+const ZK_FILE = /^\/(keys\/[A-Za-z0-9_]+\.(?:prover|verifier)|zkir\/[A-Za-z0-9_]+\.bzkir)$/;
+
+function zkAssets(): Plugin {
+  return {
+    name: 'otc-zk-assets',
+    configureServer(server) {
+      server.middlewares.use(ZK_URL, (req, res, next) => {
+        const rel = decodeURIComponent((req.url ?? '').split('?')[0]);
+        if (!ZK_FILE.test(rel)) return next();
+        const file = path.join(zkRoot, rel);
+        if (!fs.existsSync(file)) {
+          res.statusCode = 404;
+          res.end(`missing ${rel}: run pnpm run compact`);
+          return;
+        }
+        res.setHeader('content-type', 'application/octet-stream');
+        res.setHeader('cache-control', 'no-cache');
+        fs.createReadStream(file).pipe(res);
+      });
+    },
+    generateBundle() {
+      let provers = 0;
+      for (const dir of ['keys', 'zkir']) {
+        const abs = path.join(zkRoot, dir);
+        if (!fs.existsSync(abs)) continue;
+        for (const name of fs.readdirSync(abs)) {
+          if (!ZK_FILE.test(`/${dir}/${name}`)) continue;
+          if (name.endsWith('.prover')) provers++;
+          this.emitFile({ type: 'asset', fileName: `${ZK_URL.slice(1)}/${dir}/${name}`, source: fs.readFileSync(path.join(abs, name)) });
+        }
+      }
+      if (provers === 0) this.warn('no prover keys in contracts/managed/otc-protocol/keys: contract actions will fail. Run pnpm run compact.');
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait()],
+  plugins: [react(), wasm(), topLevelAwait(), zkAssets()],
   resolve: {
     alias: pinned.map((name) => ({ find: new RegExp(`^${name}$`), replacement: resolveFromSdk(name) })),
   },

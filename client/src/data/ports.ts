@@ -15,7 +15,9 @@ import type {
   RfqBody,
   checkTimeToDismiss,
 } from '@otc/sdk/browser';
+import type { OTCCircuits, OtcCircuitArgs } from '@otc/sdk/browser';
 import type { KeyMaterialProvider, ProvingProvider } from '@midnight-ntwrk/dapp-connector-api';
+import type { StageStatus } from '../state/tray';
 import type { Clock } from '../design/clock';
 import type { DataSource } from '../config/env';
 import type { NetworkConfig } from '../config/networks';
@@ -228,7 +230,41 @@ export interface WalletPort {
   submit(txHex: string): Promise<void>;
   history(page: number, size: number): Promise<WalletHistoryEntry[]>;
   status(): Promise<{ connected: boolean; networkId?: string }>;
+  /** The shielded coin and encryption public keys (bech32m) a contract call is built with. */
+  shieldedKeys(): Promise<{ coinPublicKey: string; encryptionPublicKey: string }>;
   provingProvider(keys: KeyMaterialProvider): Promise<ProvingProvider>;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Contract circuits
+// ---------------------------------------------------------------------------------------------
+
+export type CircuitName = OTCCircuits;
+
+/** prepare: the circuit runs on this device against the latest state · prove: the wallet proves ·
+ *  balance: the wallet adds inputs and the DUST fee · submit · confirm: the indexer shows it landed. */
+export type CircuitStageId = 'prepare' | 'prove' | 'balance' | 'submit' | 'confirm';
+
+export interface CircuitCall<K extends CircuitName = CircuitName> {
+  circuit: K;
+  args: OtcCircuitArgs<K>;
+  /** Witness for dealer circuits. Held in memory for this call only. */
+  dealerSecretKey?: Uint8Array;
+  /** Witness for the fraud-proof bounty: the prover's 32-byte unshielded address. */
+  takerAddress?: Uint8Array;
+}
+
+export interface CircuitResult {
+  txHash: Hex;
+  blockHeight: number;
+  identifier: string;
+}
+
+export type CircuitProgress = (stage: CircuitStageId, status: Extract<StageStatus, 'active' | 'done' | 'failed'>, detail?: string) => void;
+
+export interface CircuitPort {
+  /** Throws CircuitError naming the stage that failed. */
+  run<K extends CircuitName>(call: CircuitCall<K>, onStage: CircuitProgress): Promise<CircuitResult>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -273,6 +309,7 @@ export interface DataPorts {
   chain: ChainPort;
   relays: RelayPort;
   wallet: WalletPort;
+  circuits: CircuitPort;
   storage: StoragePort;
   capabilities: Capabilities;
   clock: Clock;

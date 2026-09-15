@@ -22,6 +22,18 @@ export class WalletError extends Error {
   }
 }
 
+export class CircuitError extends Error {
+  constructor(
+    message: string,
+    readonly stage: 'prepare' | 'prove' | 'balance' | 'submit' | 'confirm',
+    /** The node's rejection code, when the node rejected the transaction. */
+    readonly code?: number,
+  ) {
+    super(message);
+    this.name = 'CircuitError';
+  }
+}
+
 export function messageOf(err: unknown): string {
   if (err instanceof Error) return err.message || err.name;
   if (typeof err === 'string') return err;

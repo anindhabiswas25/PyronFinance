@@ -8,7 +8,7 @@
 //                                  The browser talks to a wallet through the DApp Connector API
 //                                  instead (docs/prompts/FRONTEND-IMPLEMENTATION-PROMPT.md §4).
 //   - contract.ts               — resolves ZK assets from the filesystem via node:path. The
-//                                  browser needs a fetch-based zk-config provider instead (task 0.3).
+//                                  browser uses browser-contract.ts (fetched ZK assets, wallet proving).
 //   - relay-client-node.ts      — the Node `ws`-backed socket factory. client/ passes the
 //                                  browser's native `WebSocket` global as `socketFactory` instead.
 //   - wallet-state.ts           — Node wallet snapshot persistence (fs).
@@ -44,6 +44,19 @@ export * from './aead.js';
 export * from './ledger-view.js';
 export * from './sample-offer.js';
 export * from './types.js';
+export * from './bech32m.js';
+export {
+  FetchZkConfigProvider,
+  queryCallPublicState,
+  prepareOtcCall,
+  proveOtcCall,
+  txToHex,
+  finalizedTxFromHex,
+  txIdentifiers,
+  type OtcCircuitArgs,
+  type CallPublicState,
+  type PrepareOtcCallOptions,
+} from './browser-contract.js';
 export {
   offerMatchesTerms,
   checkTimeToDismiss,

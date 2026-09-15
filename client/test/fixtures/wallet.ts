@@ -82,6 +82,10 @@ export function createFixtureWallet(o: { network: NetworkConfig; scenario: Scena
     async status() {
       return connected ? { connected: true, networkId: o.network.walletNetworkId } : { connected: false };
     },
+    async shieldedKeys() {
+      need();
+      return { coinPublicKey: '5a'.repeat(32), encryptionPublicKey: 'e5'.repeat(32) };
+    },
     async provingProvider() {
       throw new WalletError('The sample wallet cannot prove circuits; sample actions are simulated instead.', 'unavailable');
     },
