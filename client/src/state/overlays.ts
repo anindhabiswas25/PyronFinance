@@ -9,9 +9,22 @@ export interface ReadinessParams {
   size?: bigint;
 }
 
+/** A dealer-signed reveal that does not open its seal, as held by the trade in this tab or loaded
+ *  from saved evidence on /verify. */
+export interface FraudReveal {
+  dealerCmt: string;
+  terms: { pair: string; side: 'buy' | 'sell'; price: string; size: string };
+  /** Hex. */
+  nonce: string;
+  /** The reveal message's `sig`: the encoded Schnorr signature over the terms. */
+  signature: string;
+}
+
 /** What the fraud-proof and disclosure overlays act on. */
 export interface OverlayTarget {
   quoteId: string;
+  /** Fraud proofs only; without it the overlay reads the quote from the trade in this tab. */
+  reveal?: FraudReveal;
 }
 
 interface OverlayState {

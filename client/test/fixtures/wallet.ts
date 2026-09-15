@@ -44,7 +44,10 @@ export function createFixtureWallet(o: { network: NetworkConfig; scenario: Scena
     },
     async address() {
       need();
-      return `mn_addr_${o.network.walletNetworkId}1sampledata0notarealaddress0e7wg`;
+      // Valid bech32m (fraud proofs decode it to a payout address); its data spells "sampledata".
+      return o.network.walletNetworkId === 'preprod'
+        ? 'mn_addr_preprod1sampledataqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqthc8hx'
+        : `mn_addr_${o.network.walletNetworkId}1sampledata0notarealaddress0e7wg`;
     },
     async balances() {
       need();

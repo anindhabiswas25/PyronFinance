@@ -5,6 +5,8 @@ import { ConnectWalletDialog } from './ConnectWallet';
 import { WalletReadinessDialog } from './WalletReadiness';
 import { TransactionTrayDrawer } from './TransactionTray';
 import { RelaysDialog } from './Relays';
+import { SubmitFraudProofDialog } from './SubmitFraudProof';
+import { AttachDisclosureNoteDialog } from './AttachDisclosureNote';
 
 export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -14,7 +16,7 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 
 /** Every global overlay, mounted once in the shell. None changes the URL. */
 export function Overlays() {
-  const { open, readiness, show, close } = useOverlays();
+  const { open, readiness, target, show, close } = useOverlays();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,6 +37,8 @@ export function Overlays() {
       <WalletReadinessDialog open={open === 'readiness'} onClose={close} params={readiness} />
       <TransactionTrayDrawer open={open === 'tray'} onClose={close} />
       <RelaysDialog open={open === 'relays'} onClose={close} />
+      <SubmitFraudProofDialog open={open === 'fraud-proof'} onClose={close} quoteId={target?.quoteId} reveal={target?.reveal} />
+      <AttachDisclosureNoteDialog open={open === 'disclosure'} onClose={close} quoteId={target?.quoteId} />
     </>
   );
 }
