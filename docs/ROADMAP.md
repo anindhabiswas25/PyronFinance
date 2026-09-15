@@ -1050,8 +1050,15 @@ messages. The browser dealer identity matches `dealer-node/src/identity.ts` exac
 
 **Genuinely unverified — do not claim otherwise:**
 - A settlement from a browser wallet (`/trade` → Settle).
-- Any contract circuit proved, balanced and submitted by a browser wallet. **First check:**
-  `/dev/circuits` releases one of 11 releasable Preprod quotes (the smallest circuit, no funds moved).
+- ~~Any contract circuit proved, balanced and submitted by a browser wallet.~~ **Done 2026-09-15**
+  (`scripts/browser-e2e`, `circuit` phase): `/dev/circuits` released quote `88d5b6d8…` through the
+  client's browser path with an injected DApp Connector backed by the taker wallet. The circuit ran in the
+  page against indexer state; proof server check 21 ms, prove 1.5 s; `balanceUnsealedTransaction` 2.4 s;
+  submit 16.9 s; block 2563236; quote resolved on read-back. A real extension (1AM, Lace) has still not
+  run it: this proves the client's code, not an extension's.
+- The `trade`, `note`, `fraud` and `desk` phases (settlement, disclosure attach, fraud proof, manual
+  quote from the browser). Not run yet: another session was running its own Dealer Node on the main
+  wallet, and the harness refuses to share it.
 - Whether 1AM or Lace `makeIntent` returns a sealed, settleable Offer File (`/desk` manual quote).
 
 
