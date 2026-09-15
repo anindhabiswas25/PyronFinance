@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildDataset } from '../../src/data/fixtures/dataset';
-import { applyEvent, cloneLedger, emptyLedger } from '../../src/data/fixtures/ledger';
+import { buildDataset } from '../fixtures/dataset';
+import { applyEvent, cloneLedger, emptyLedger } from '../fixtures/ledger';
 import { deriveEvents, tallyEvents } from '../../src/data/derive-events';
-import { resolveScenario, scenarioClock } from '../../src/data/fixtures/scenario';
+import { resolveScenario, scenarioClock } from '../fixtures/scenario';
 
 const NOW = 1_789_450_000;
 

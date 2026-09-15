@@ -9,7 +9,6 @@ import { RequestScreen } from './RequestScreen';
 import { SealedScreen } from './SealedScreen';
 import { CompareScreen } from './CompareScreen';
 import { SettleScreen } from './SettleScreen';
-import type { FixturePorts } from '../../data/fixtures';
 
 const STEPS = ['Request', 'Sealed', 'Compare', 'Settle'] as const;
 const STEP_OF: Record<TradeView, number> = { request: 0, sealed: 1, compare: 2, settle: 3 };
@@ -30,7 +29,7 @@ export default function TradeApp() {
 
   const engine = useMemo(() => new TradeEngine(ports, () => urlsRef.current), [ports]);
 
-  // After a reload mid-trade: reconnect relays and restart the sample scenario's pending work.
+  // After a reload mid-trade: reconnect relays and restart any scripted counterparties (tests).
   useEffect(() => {
     if (!ready) return;
     const s = useRfq.getState().state;
@@ -43,9 +42,8 @@ export default function TradeApp() {
 
   useEffect(() => {
     if (!ready) return;
-    const speed = ports.source === 'fixture' ? (ports as FixturePorts).speed : 1;
     void engine.tick();
-    const id = setInterval(() => void engine.tick(), speed >= 5 ? 500 : 2000);
+    const id = setInterval(() => void engine.tick(), ports.pollMs ?? 2000);
     return () => clearInterval(id);
   }, [engine, ready, ports]);
 

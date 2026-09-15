@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { Outlet, ScrollRestoration } from 'react-router-dom';
 import { Toaster } from '../design/primitives';
 import { TopBar } from './TopBar';
-import { FixtureBanner } from './FixtureBanner';
 import { AppErrorBoundary } from './ErrorBoundary';
 import { PageSkeleton } from './PageSkeleton';
 import { DataProvider } from '../data/DataProvider';
@@ -21,7 +20,6 @@ export function AppShell() {
         Skip to content
       </a>
       <TopBar right={<TopBarActions />} />
-      <FixtureBanner />
       <main id="main" tabIndex={-1} className="flex-1 w-full max-w-content mx-auto px-4 md:px-gutter py-6 md:py-8 outline-none">
         <AppErrorBoundary>
           <Suspense fallback={<PageSkeleton />}>

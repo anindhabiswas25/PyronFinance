@@ -1,7 +1,7 @@
 // Folding protocol events into a ledger — the inverse of derive-events.ts, used to build fixture
 // state so every counter and total follows from the events by construction.
 
-import type { BondView, LedgerView, NoteView, ProtocolEvent, QuoteView } from '../ports';
+import type { BondView, LedgerView, NoteView, ProtocolEvent, QuoteView } from '../../src/data/ports';
 
 export interface MutableLedger extends LedgerView {
   bonds: Map<string, BondView>;

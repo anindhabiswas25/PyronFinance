@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { routes } from '../../src/app/router';
 import { RelaysPill } from '../../src/app/TopBarActions';
 import { useTray } from '../../src/state/tray';
 import { useRelayList } from '../../src/state/relays';
-
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return render(<RouterProvider router={router} />);
-}
+import { renderApp as renderAt } from '../render';
 
 describe('relays pill', () => {
   it.each([
@@ -29,7 +23,7 @@ describe('relays pill', () => {
 describe('connect wallet (sample data)', () => {
   it('lists the sample wallet, connects, and shows the address pill', async () => {
     const user = userEvent.setup();
-    renderAt('/activity?data=fixture');
+    renderAt('/activity');
     await user.click(await screen.findByRole('button', { name: /Connect wallet/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Connect a wallet' });
     expect(within(dialog).getByText(/Part of the sample data, not a browser extension/)).toBeTruthy();
@@ -40,7 +34,7 @@ describe('connect wallet (sample data)', () => {
 
   it('readiness lists truthful checks only: no coin count claim', async () => {
     const user = userEvent.setup();
-    renderAt('/activity?data=fixture');
+    renderAt('/activity');
     await user.click(await screen.findByRole('button', { name: /Connect wallet/ }));
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Sample wallet/ }));
     await user.click(await screen.findByRole('button', { name: /^Wallet mn_addr/ }, { timeout: 3000 }));
@@ -66,7 +60,7 @@ describe('transaction tray', () => {
         ],
       });
     });
-    const first = renderAt('/dealers?data=fixture');
+    const first = renderAt('/dealers');
     await screen.findByRole('heading', { level: 1, name: 'Dealers' });
     await user.keyboard('t');
     const drawer = await screen.findByRole('dialog', { name: 'In progress' });
@@ -77,7 +71,7 @@ describe('transaction tray', () => {
     // Reload: state comes back from sessionStorage.
     act(() => useTray.setState({ entries: [] }));
     act(() => useTray.getState().hydrate());
-    renderAt('/verify?data=fixture');
+    renderAt('/verify');
     await user.click(await screen.findByRole('button', { name: /1 in progress/ }));
     const again = await screen.findByRole('dialog', { name: 'In progress' });
     expect(within(again).getByText(/page reloaded while this was running/)).toBeTruthy();
@@ -85,7 +79,7 @@ describe('transaction tray', () => {
 
   it('does not open while typing', async () => {
     const user = userEvent.setup();
-    renderAt('/dealers?data=fixture');
+    renderAt('/dealers');
     const search = await screen.findByPlaceholderText('Search by dealer key');
     await user.click(search);
     await user.keyboard('t');
@@ -97,7 +91,7 @@ describe('relays overlay', () => {
   it('removes a relay, warns below two, and validates additions', async () => {
     const user = userEvent.setup();
     act(() => useRelayList.setState({ lists: {} }));
-    renderAt('/dealers?data=fixture');
+    renderAt('/dealers');
     await user.click(await screen.findByRole('button', { name: /Manage relays/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Relays' });
     await within(dialog).findAllByText(/^Reachable/);

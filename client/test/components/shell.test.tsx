@@ -1,16 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { routes } from '../../src/app/router';
 import { Dialog } from '../../src/design/primitives';
-import { useState } from 'react';
-
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
-  return router;
-}
+import { PortsFactoryContext } from '../../src/data/DataProvider';
+import { createLivePorts } from '../../src/data/live';
+import { useContext, useState } from 'react';
+import { renderApp as renderAt } from '../render';
 
 describe('app shell', () => {
   it.each([
@@ -34,13 +29,18 @@ describe('app shell', () => {
     expect(await screen.findByRole('heading', { name: 'No page at this address' })).toBeTruthy();
   });
 
-  it('shows the sample-data banner in fixture mode', async () => {
-    renderAt('/activity?data=fixture');
-    expect(await screen.findByRole('note', { name: 'Sample data' })).toBeTruthy();
+  it('builds live adapters unless a test swaps them', () => {
+    let factory: unknown;
+    function Probe() {
+      factory = useContext(PortsFactoryContext);
+      return null;
+    }
+    render(<Probe />);
+    expect(factory).toBe(createLivePorts);
   });
 
-  it('hides the banner in live mode', async () => {
-    renderAt('/activity?data=live');
+  it('has no data-source switch in the address', async () => {
+    renderAt('/activity?data=fixture');
     await screen.findByRole('heading', { level: 1, name: 'Activity' });
     expect(screen.queryByRole('note', { name: 'Sample data' })).toBeNull();
   });

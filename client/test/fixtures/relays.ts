@@ -2,9 +2,9 @@
 // leaves only one connected. The trade scenario plugs in quote collection and mailboxes.
 
 import type { AggregationResult, RevealMessage, RfqBody } from '@otc/sdk/browser';
-import type { IncomingRfq, RelayHealth, RelayPort, RelayState, SyncStore } from '../ports';
-import { RelayCountError } from '../../lib/errors';
-import { MIN_RELAYS, persistReveals } from '../relay-util';
+import type { IncomingRfq, RelayHealth, RelayPort, RelayState, SyncStore } from '../../src/data/ports';
+import { RelayCountError } from '../../src/lib/errors';
+import { MIN_RELAYS, persistReveals } from '../../src/data/relay-util';
 import type { ScenarioName } from './scenario';
 
 export interface FixtureRelays extends RelayPort {

@@ -19,9 +19,9 @@
 
 import * as sdk from '@otc/sdk/browser';
 import type { AggregationResult, Envelope, QuoteRefBody, RevealMessage, RfqBody } from '@otc/sdk/browser';
-import { tokenTypeOf } from '../../config/networks';
-import { httpBaseOf } from '../relay-util';
-import { oppositeSide } from '../../lib/side';
+import { tokenTypeOf } from '../../src/config/networks';
+import { httpBaseOf } from '../../src/data/relay-util';
+import { oppositeSide } from '../../src/lib/side';
 import type { FixturePorts } from './index';
 import { SCENARIO_TIMELINE, type ScenarioName } from './scenario';
 import type { ScenarioRole } from './dataset';

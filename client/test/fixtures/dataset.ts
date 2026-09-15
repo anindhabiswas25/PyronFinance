@@ -5,9 +5,9 @@
 //
 // Sample data. Nothing here is from any chain; the UI labels it as such on every page.
 
-import type { ProtocolEvent, ProtocolEventBody } from '../ports';
-import { splitSlash } from '../../lib/slash';
-import { BOND_WITHDRAW_DELAY_SECS, NOTIONAL_CAP_K, PROOF_GRACE_PERIOD_SECS } from '../../lib/bond';
+import type { ProtocolEvent, ProtocolEventBody } from '../../src/data/ports';
+import { splitSlash } from '../../src/lib/slash';
+import { BOND_WITHDRAW_DELAY_SECS, NOTIONAL_CAP_K, PROOF_GRACE_PERIOD_SECS } from '../../src/lib/bond';
 import { applyEvent, emptyLedger, ENTRY_POINT_OF, type MutableLedger } from './ledger';
 import { createRng } from './rng';
 

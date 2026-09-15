@@ -1,23 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { routes } from '../../src/app/router';
-import { buildDataset } from '../../src/data/fixtures/dataset';
+import { buildDataset } from '../fixtures/dataset';
 import { protocolTotals } from '../../src/data/selectors';
 import { formatCount } from '../../src/lib/format';
-
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
-  return router;
-}
+import { renderApp as renderAt } from '../render';
 
 const ds = buildDataset(1_789_450_000);
 
 describe('Venue', () => {
   it('shows the fixture totals from the ledger, and no price', async () => {
-    renderAt('/?data=fixture');
+    renderAt('/');
     const totals = protocolTotals(ds.ledger);
     const tile = await screen.findByText('Resolved quotes');
     expect(await within(tile.parentElement!).findByText(formatCount(totals.resolvedQuotes))).toBeTruthy();
@@ -28,7 +21,7 @@ describe('Venue', () => {
 
 describe('Dealers', () => {
   it('lists slashed dealers under All and counts each tab', async () => {
-    renderAt('/dealers?data=fixture');
+    renderAt('/dealers');
     const table = await screen.findByRole('table', { name: /Dealers, all/ });
     expect(within(table).getAllByText('Slashed').length).toBeGreaterThanOrEqual(3);
     expect(screen.getByRole('tab', { name: /All\s*23/ })).toBeTruthy();
@@ -40,7 +33,7 @@ describe('Dealers', () => {
   });
 
   it('shows Failures as unknown, never 0', async () => {
-    renderAt('/dealers?data=fixture');
+    renderAt('/dealers');
     await screen.findByRole('table', { name: /Dealers/ });
     expect(screen.getAllByText('(unknown: no public source of failure evidence yet)', { exact: false }).length).toBe(23);
   });
@@ -48,13 +41,13 @@ describe('Dealers', () => {
 
 describe('Dealer profile', () => {
   it('says so when a key has never bonded', async () => {
-    renderAt(`/dealers/${'ab'.repeat(32)}?data=fixture`);
+    renderAt(`/dealers/${'ab'.repeat(32)}`);
     expect(await screen.findByRole('heading', { name: 'No dealer with this key has bonded' })).toBeTruthy();
   });
 
   it('shows a known dealer with a chart whose label lists every bond change', async () => {
     const a = ds.dealers.find((d) => d.role === 'a')!;
-    renderAt(`/dealers/${a.dealerCmt}?data=fixture`);
+    renderAt(`/dealers/${a.dealerCmt}`);
     const chart = await screen.findByRole('img', { name: /Bond over time/ });
     expect(chart.getAttribute('aria-label')).toMatch(/bond posted .* topped up/);
   });
@@ -62,7 +55,7 @@ describe('Dealer profile', () => {
 
 describe('Activity', () => {
   it('shows an error with retry when the indexer is down, never an empty list', async () => {
-    renderAt('/activity?data=fixture&scenario=indexer-down');
+    renderAt('/activity', { scenario: 'indexer-down' });
     expect(await screen.findByRole('heading', { name: /Can’t reach the chain/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(screen.queryByText('No protocol events yet')).toBeNull();
@@ -71,7 +64,7 @@ describe('Activity', () => {
 
 describe('Become a dealer', () => {
   it('sizes the bond with bigint math and prints the CLI amount in base units', async () => {
-    renderAt('/deal?data=fixture');
+    renderAt('/deal');
     const input = await screen.findByLabelText(/Largest quote you want to give/);
     const user = userEvent.setup();
     await user.clear(input);

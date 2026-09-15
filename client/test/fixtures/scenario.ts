@@ -1,7 +1,7 @@
 // The /trade fixture scenario: which outcome to play, and how fast. Chosen with ?scenario= and
 // ?speed=, remembered for the tab so navigating away and back keeps the same story.
 
-import type { Clock } from '../../design/clock';
+import type { Clock } from '../../src/design/clock';
 
 export const SCENARIOS = ['happy', 'inputs-spent', 'wallet-shape', 'rejected', 'no-quotes', 'indexer-down', 'one-relay'] as const;
 export type ScenarioName = (typeof SCENARIOS)[number];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDataset } from '../../src/data/fixtures/dataset';
+import { buildDataset } from '../fixtures/dataset';
 import { activityMatches, bondHistory, dealerQuotes, dealerRows, inTab, matchesKey, protocolTotals, sortDealers } from '../../src/data/selectors';
 import { niceCeiling } from '../../src/features/dealers/BondChart';
 import { formatCompactUnits } from '../../src/lib/format';

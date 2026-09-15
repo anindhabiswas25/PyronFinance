@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import { ArrowUpDown, ChevronRight, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Banner, Button, Card, Kbd, Segmented, Skeleton } from '../../design/primitives';
-import { cx } from '../../design/cx';
 import { useData } from '../../data/DataProvider';
 import { useReadiness } from '../../data/useReadiness';
 import { useSnapshot } from '../../data/hooks';
@@ -17,8 +16,6 @@ import { NOTIONAL_CAP_K } from '../../lib/bond';
 import { isTypingTarget } from '../../overlays/Overlays';
 import { anyModalOpen } from '../../design/primitives';
 import { ReadinessRows } from '../../overlays/WalletReadiness';
-import { SCENARIOS, SCENARIO_LABEL } from '../../data/fixtures/scenario';
-import type { FixturePorts } from '../../data/fixtures';
 import type { TradeEngine } from './engine';
 
 const WINDOWS = [
@@ -296,25 +293,6 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
           ))}
           <p className="text-12.5 text-mu">Measured on Preprod. No dealer answering is normal early on — <Link to="/deal" className="underline underline-offset-2 hover:text-tx">become one</Link>.</p>
         </Card>
-        {ports.source === 'fixture' && (
-          <Card dashed className="flex flex-col gap-2">
-            <h2 className="font-display font-semibold text-15">Sample scenario</h2>
-            <p className="text-12.5 text-mu">Pick the outcome the sample trade plays. Add &speed=10 to the address to run it faster.</p>
-            <ul className="flex flex-wrap gap-2">
-              {SCENARIOS.map((sc) => (
-                <li key={sc}>
-                  <Link
-                    to={`?scenario=${sc}`}
-                    className={cx('inline-flex h-control-sm items-center rounded-btn-sm border px-3 text-13.5', (ports as FixturePorts).scenario === sc ? 'border-tx text-tx' : 'border-line text-mu hover:text-tx')}
-                    aria-current={(ports as FixturePorts).scenario === sc ? 'true' : undefined}
-                  >
-                    {SCENARIO_LABEL[sc]}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
       </div>
     </div>
   );

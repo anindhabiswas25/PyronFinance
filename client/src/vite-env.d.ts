@@ -3,8 +3,6 @@
 interface ImportMetaEnv {
   /** preprod | preview. Mainnet is not selectable. */
   readonly VITE_NETWORK?: string;
-  /** fixture | live. `?data=` in the URL overrides it for the tab. */
-  readonly VITE_DATA_SOURCE?: string;
   /** Comma-separated relay gossip URLs, replacing the network's defaults. */
   readonly VITE_RELAYS?: string;
   readonly VITE_CONTRACT_ADDRESS?: string;

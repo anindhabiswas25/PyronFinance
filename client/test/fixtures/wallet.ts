@@ -1,10 +1,10 @@
 // The fixture wallet. It exposes the same WalletPort and says plainly that it is part of the sample
 // data: its name, its address and every balance are made up, and it never claims to be an extension.
 
-import type { NetworkConfig } from '../../config/networks';
-import { NATIVE_TOKEN_RAW, tokenTypeOf } from '../../config/networks';
-import type { WalletPort } from '../ports';
-import { WalletError } from '../../lib/errors';
+import type { NetworkConfig } from '../../src/config/networks';
+import { NATIVE_TOKEN_RAW, tokenTypeOf } from '../../src/config/networks';
+import type { WalletPort } from '../../src/data/ports';
+import { WalletError } from '../../src/lib/errors';
 import type { ScenarioName } from './scenario';
 
 export const FIXTURE_WALLET_RDNS = 'data.sample.pyron';

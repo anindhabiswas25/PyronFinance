@@ -1,5 +1,5 @@
-// The only data interfaces pages use. Pages never import live or fixture code directly; they get
-// these from DataProvider, which picks live or fixture adapters.
+// The only data interfaces pages use. Pages never import adapters directly; they get these from
+// DataProvider, which builds the live adapters (tests inject fixture adapters instead).
 //
 // Every import from @otc/sdk/browser here is type-only and erased at build time, so this module
 // never pulls the SDK (or its WASM) into a public page.
@@ -276,4 +276,11 @@ export interface DataPorts {
   storage: StoragePort;
   capabilities: Capabilities;
   clock: Clock;
+  /** Poll interval of the trade loop and settlement confirmation. Default 2000 ms. */
+  pollMs?: number;
+  /** Test harness only: scripted dealers that answer a published RFQ. Returns a stop function. The
+   *  live adapters never set it. */
+  startCounterparties?(rfq: RfqBody, options: { resume: boolean }): () => void;
+  /** Releases timers the ports hold beyond relay connections. */
+  dispose?(): void;
 }

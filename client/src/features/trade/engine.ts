@@ -13,7 +13,6 @@
 import * as sdk from '@otc/sdk/browser';
 import type { RevealMessage, RfqBody } from '@otc/sdk/browser';
 import type { DataPorts, LedgerParameters } from '../../data/ports';
-import type { FixturePorts } from '../../data/fixtures';
 import { tokenTypeOf } from '../../config/networks';
 import { useRfq, type RequestForm, type SettleStageId } from '../../state/rfq';
 import { useTray } from '../../state/tray';
@@ -121,10 +120,7 @@ export class TradeEngine {
         ...(form.minBond ? { minBond: form.minBond } : {}),
       };
 
-      if (this.ports.source === 'fixture') {
-        const { startFixtureTrade } = await import('../../data/fixtures/trade');
-        this.stopScenario = startFixtureTrade(this.ports as FixturePorts, rfq);
-      }
+      this.stopScenario = this.ports.startCounterparties?.(rfq, { resume: false });
       this.ports.relays.publishRfq(rfq); // refuses below two connected relays
       this.dispatch({ type: 'published', rfq, takerEncSk: sdk.bytesToHex(keys.sk), at: this.now(), relays: connected });
     } catch (err) {
@@ -134,14 +130,12 @@ export class TradeEngine {
     }
   }
 
-  /** After a reload in fixture mode the scenario's timers are gone; restart what is still pending. */
+  /** After a reload, scripted counterparties (tests) lost their timers; restart what is still pending. */
   resumeScenario(): void {
     const s = this.state;
-    if (this.ports.source !== 'fixture' || !s.rfq || this.stopScenario) return;
+    if (!this.ports.startCounterparties || !s.rfq || this.stopScenario) return;
     if (s.phase !== 'sealed' && s.phase !== 'revealed') return;
-    void import('../../data/fixtures/trade').then(({ startFixtureTrade }) => {
-      if (!this.stopScenario) this.stopScenario = startFixtureTrade(this.ports as FixturePorts, s.rfq!, { resume: true });
-    });
+    this.stopScenario = this.ports.startCounterparties(s.rfq, { resume: true });
   }
 
   cancel(): void {
@@ -429,7 +423,7 @@ export class TradeEngine {
         } catch {
           // Indexer hiccup: keep waiting until the deadline.
         }
-        await sleep(this.ports.source === 'fixture' ? 800 : 2000);
+        await sleep(this.ports.pollMs ?? 2000);
       }
       stage('confirm', 'failed', 'Not seen after 10 minutes');
       failWith('rejected', 'The indexer has not shown this transaction after 10 minutes. It may still land; check the transaction tray before trying again.');

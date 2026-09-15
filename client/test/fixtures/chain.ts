@@ -3,10 +3,10 @@
 // something to show. New events are folded into the same ledger, so pages stay consistent.
 
 import type { ChainReader } from '@otc/sdk/browser';
-import type { Clock } from '../../design/clock';
-import type { BondView, ChainPort, DealerView, EventUpdate, IndexedTransaction, LedgerSnapshot, ProtocolEvent, ProtocolEventBody } from '../ports';
-import { hexToBytes, bytesToHex } from '../../lib/hex';
-import { IndexerError } from '../live/indexer-http';
+import type { Clock } from '../../src/design/clock';
+import type { BondView, ChainPort, DealerView, EventUpdate, IndexedTransaction, LedgerSnapshot, ProtocolEvent, ProtocolEventBody } from '../../src/data/ports';
+import { hexToBytes, bytesToHex } from '../../src/lib/hex';
+import { IndexerError } from '../../src/data/live/indexer-http';
 import { applyEvent, ENTRY_POINT_OF } from './ledger';
 import { FIXTURE_BLOCK_SECS, type FixtureDataset } from './dataset';
 import { createRng } from './rng';

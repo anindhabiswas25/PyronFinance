@@ -4,9 +4,9 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { NETWORKS } from '../../src/config/networks';
-import { createFixturePorts, type FixturePorts } from '../../src/data/fixtures';
-import { FIXTURE_WALLET_RDNS } from '../../src/data/fixtures/wallet';
-import type { ScenarioName } from '../../src/data/fixtures/scenario';
+import { createFixturePorts, type FixturePorts } from '../fixtures';
+import { FIXTURE_WALLET_RDNS } from '../fixtures/wallet';
+import type { ScenarioName } from '../fixtures/scenario';
 import { TradeEngine, receiptKey, type LocalReceipt } from '../../src/features/trade/engine';
 import { useRfq, type QuoteRecord } from '../../src/state/rfq';
 
