@@ -63,7 +63,7 @@ is why `packages/sdk/src/wallet-state.ts` exists.
 |---|---|---|
 | **Pass 1** | Planning artifacts: `docs/`, `CLAUDE.md`, `.claude/skills/` | ✅ **Complete** |
 | **M1** | Core protocol contract on Preprod | ✅ **Complete** — deployed to Preprod, fraud proof slashes a bond on-chain (`pnpm run e2e-fraud`) |
-| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **frontend 2.5/2.7 not started (out of this session's scope), so M2 stays open on them** |
+| **M2** | Relay node + minimal RFQ flow on Preprod | 🟡 2.1–2.4 built and tested; **2.6 two-asset settlement executed on-chain** (S5 resolved); **2.9 bond sizing live on Preprod**; 2.8 shielded latency measured **and a shielded offer settled on-chain (A5)**; **Preview redeployed + e2e-fraud passing (A1)**; bond lifecycle on-chain in progress (A6: `topUpBond` ✅, release/withdraw timelocked); **two-wallet settlement on-chain with exact deltas verified (A2)**; **two competing dealers over two live relays, verified against the live indexer, better quote settled on-chain (A3) — M2 definition of done met except the UI**; real USDM (A4) **blocked on a human bridging tUSDM to Preview** — the Preview wallet holds none (2026-09-14); **web client built (2026-09-15, branch `client-all-pages`, `client/`): 2.5 and 2.7 UI done; no browser settlement, browser circuit or `makeIntent` quote has run live yet, so M2 stays open on them** (see "Web client" below) |
 | **M3** | Dealer Node + disclosure | ✅ **Complete 2026-09-14 — awaiting owner confirmation before M4.** Open decisions below are surfaced, not decided. ~~🟡 In progress (owner-approved start 2026-09-14).~~ 3.1–3.4, 3.6, 3.7, 3.9 built and tested offline (config/identity, crash-consistent journal, warm pool + reserve, commit→reveal state machine, disclosure); live adapters + `start` written; **3.5 removed with Class B**; 3.10 README written, 30-min validation pending; **first live settlement + disclosure round-trip done (run #3, 09:00Z)**; **unattended multi-expiry run done (run #3, 08:20–10:24Z, 9/9 RFQs with a warm offer answered, two renewals)** — M3 DoD met; **3.10 timed end to end on a fresh wallet (4 operator-facing defects fixed)** |
 | **M4** | Mainnet readiness | ⬜ Not started |
 
@@ -203,9 +203,9 @@ quietly absorbed. **Do this first; do not build around it.**
 | 2.2 | `schema.ts` shared between relay-node and SDK | ✅ `packages/relay-node/src/schema.ts`; relay-node depends on `@otc/sdk`'s `schnorr.ts` for signing/encoding, not the reverse |
 | 2.3 | Point-to-point encrypted reveal channel (+ optional mailbox) | ✅ Built and tested in simulation — see below |
 | 2.4 | Multi-relay aggregation in SDK, with chain verification of every reference | ✅ `packages/sdk/src/relay-client.ts` (`RelayAggregator`, `verifyQuoteRef`, `indexerChainReader`). 20 tests over real relay sockets, with the compiled contract simulator as the chain; 15 of them are negative cases (each a lie a relay or dealer can tell). **Not yet run against a live indexer or remote relays** — see below |
-| 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | ⬜ Not started — blocked on a wallet |
+| 2.5 | Frontend: Screen 1 (RFQ), Screen 2 (sealed bids), Screen 3 (comparison) | 🟡 **UI built 2026-09-15** — `/trade`: swap-card request → sealed → compare → settle → receipt, every check from `taker-pinger.ts` in the browser, tested against fixture adapters. **No settlement from a browser wallet has landed yet** |
 | 2.6 | Zswap settlement path from the taker's selection | ✅ **Two-asset settlement on-chain** on Preprod through the full protocol path (bond → commit → encrypted reveal verified against on-chain notional → unilateral taker settlement → `recordSettlement`, settled counter 1). S5 resolved. Still one wallet in both roles |
-| 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | ⬜ |
+| 2.7 | Frontend: Screen 5 (manual dealer commit/reveal) | 🟡 **UI built 2026-09-15** — `/desk?tab=rfq`: wallet `makeIntent` offer checked (sealed, matches terms, time-to-dismiss) → journaled before `commitQuote` → reveal only after indexer visibility. **Not run live; whether a wallet's `makeIntent` returns a sealed, settleable half is unverified** |
 | 2.8 | **Measure real proof-generation + commit latency on Preprod** | ✅ **Shielded offer proving measured** (`pnpm run probe-shielded-latency`): cold 6.4 s, steady-state median 3.1 s per offer, and **no speedup from concurrency**. Table below. Ladder sizing against these numbers is M3 |
 | 2.9 | Decide `MIN_BOND` design: flat floor vs. per-quote notional cap (`CONTRACTS.md` §7) | ✅ Decided 2026-09-12, **implemented 2026-09-13**: `commitQuote(…, notional)` enforces `notional <= bond * 20`; `openSettlementChallenge` enforces `max(floor, 2%)`. `PLACEHOLDER_*` removed. Redeployed to Preprod; `e2e-settle` and `e2e-fraud` rerun against it. Challenge-bond **floor amount still open** (M4 4.1) |
 
@@ -1015,6 +1015,34 @@ commitments — runs end to end on Preprod and is demoable.
 Task 2.8 gates every performance claim in `GRANT.md`. No latency figure goes in any external
 material beyond the measured table above.
 
+### Web client (`client/`, branch `client-all-pages`) — built 2026-09-15, NOT yet run live
+
+**Owner decisions (2026-09-15):** build the whole client without waiting on the Phase 0 browser gate;
+"backend" means relays + indexer + wallet (no hosted server); live data only in the UI (fixtures stay in
+the test suite); real contract circuits from the browser; dealer keys encrypted in the browser with a
+forced backup; `/me` history encrypted under a passphrase. `FRONTEND.md` describes what was built.
+
+All 10 pages and 6 overlays exist. Offline evidence: 152 client tests (unit, component, fixture trade
+scenarios), 30 files / 406 repo tests, typecheck clean, one runtime WASM bundled. Added in the SDK:
+`browser-contract.ts` (`prepareOtcCall`: the real compiled contract through midnight-js
+`createUnprovenCallTx`, fetched ZK assets, in-memory witnesses) and `bech32m.ts` (wallet keys to hex
+without `Buffer`, checked against `wallet-sdk-address-format`). `postBond` builds an unproven
+transaction through that path offline; contract refusals and witness failures surface with their own
+messages. The browser dealer identity matches `dealer-node/src/identity.ts` exactly.
+
+**Genuinely unverified — do not claim otherwise:**
+- A settlement from a browser wallet (`/trade` → Settle).
+- Any contract circuit proved, balanced and submitted by a browser wallet. **First check:**
+  `/dev/circuits` releases one of 11 releasable Preprod quotes (the smallest circuit, no funds moved).
+- Whether 1AM or Lace `makeIntent` returns a sealed, settleable Offer File (`/desk` manual quote).
+
+
+Browser checks that did run (2026-09-15, `pnpm --filter @otc/client test:e2e`): every route renders its
+heading with no page errors and no horizontal overflow, and passes axe WCAG 2.1 AA, on desktop and a 390 px
+phone (30/30). It found two real defects, both fixed: the 404 page had no `<h1>`, and `/deal`'s command
+blocks scrolled sideways without being keyboard-focusable. These runs used the live indexer with no
+wallet or relays, so they check rendering and accessibility, not trading.
+
 ---
 
 ## M3 — Dealer Node + disclosure
@@ -1028,7 +1056,7 @@ material beyond the measured table above.
 | ~~3.5~~ | ~~Challenge-response loop (`DEALER-NODE.md` §6)~~ | **Removed** with Class B (owner decision 2026-09-14) |
 | 3.6 | Bond monitoring, `halt_on_slash`, risk caps | ✅ offline — in `quoting.ts`/`pool.ts`: bond active/amount watched, halt on slash, `max_size`, cumulative `max_total_notional`, bond × 20 cap, `minimum_balance`, inventory floor. `auto_topup` parsed but not acted on yet |
 | 3.7 | Disclosure: named-recipient shape (`0x0001`) attach + decrypt in SDK | ✅ `packages/sdk/src/disclosure.ts`; encodings fixed in `DISCLOSURE.md`. On-chain attach runs in `taker-pinger` (pending) |
-| 3.8 | Frontend: Screen 4 (settled trades feed) + disclosure note affordance | ⬜ |
+| 3.8 | Frontend: Screen 4 (settled trades feed) + disclosure note affordance | 🟡 **UI built 2026-09-15** — `/activity` from the indexer (slashes first-class, no price column), Attach disclosure note from the receipt, Open a note on `/verify`. **Browser attach not run live** |
 | 3.9 | Disclosure test suite — **including the negative cases** (`DISCLOSURE.md` test plan 4, 5, 7) | ✅ items 1–7 against the compiled contract in the simulator |
 | 3.10 | Operator quickstart README; validate the 30-minute target with a fresh operator | ✅ **Timed end to end on a brand-new Preprod wallet, 2026-09-14 (see below).** Operator work is minutes; the first wallet sync is ~28.5 min. Three operator-facing bugs found and fixed on the way. Not measured: the CAPTCHA faucet wait and a cold pnpm store. ~~`packages/dealer-node/README.md` written. **Clean-checkout run, 2026-09-14 (partial):** clone → install → config → `gen-key` worked from nothing in 4 s (warm pnpm store — not representative of a fresh machine). It exposed a real gap: a clean clone has **no prover keys** (`*.prover` is git-ignored), so nothing could be proved; the README now installs Compact 0.30.0 and runs `pnpm run compact` (**20 s**). Compilation is **deterministic**: recompiled keys were byte-identical to the committed verifier keys (the deployed contract's) and to the developer's prover keys. Still to time: faucet/DUST wait, consolidation, bond, start~~ |
 
@@ -1071,6 +1099,9 @@ DUST-generation/registration process.
 | **`MIN_CHALLENGE_BOND`** | `max(floor, 2% of notional)`. Corrects `FRONTEND.md`'s 25%-of-notional example | `CONTRACTS.md` §7a |
 | **Taker CAN settle unilaterally from a pre-proved Offer File** | **Yes — demonstrated on-chain.** See the finding below; it changes what Class B is *for* | `ROADMAP.md` (this file), `offers.ts` |
 | **Class B** | **Removed (owner, 2026-09-14)** after the research below. Contract is 9 circuits; `recordSettlement(quoteId)`; no challenge bonds; task 3.5 and `DEALER-NODE.md` §6 dropped. Residual risk (dealer spends the offer's inputs first) is handled by immediate settlement, an input pre-check and publicly verifiable failure evidence, and disclosed in `GRANT.md` risk 3 | `OTCProtocol.compact`, `ARCHITECTURE.md`, `GRANT.md` |
+| **Web client scope** (owner, 2026-09-15) | Build all pages now, not gated on Phase 0; no hosted backend; live data only in the UI; contract circuits run from the browser wallet | `FRONTEND.md`, `client/` |
+| **Dealer key custody in the browser** (owner, 2026-09-15) | Encrypted in IndexedDB under a passphrase (PBKDF2-SHA256 600k, AES-GCM) with the quote journal; every action blocked until a backup is confirmed | `client/src/features/desk` |
+| **`/me` history key source** (owner, 2026-09-15) | Passphrase (same vault), not a wallet signature | `client/src/lib/crypto-store.ts` |
 
 ## Decisions still open
 
@@ -1089,6 +1120,11 @@ DUST-generation/registration process.
 | **Slash arithmetic overflow (D7)** | M4 (4.1) | `b.amount * 6000` can overflow `Uint<128>` for absurd bond sizes. Unreachable at realistic values; settle alongside `MIN_BOND` |
 | **Fraud proofs have no upper time bound** | M2 | `submitFraudProofMismatch` can be submitted arbitrarily late while a quote stays unresolved. `releaseExpiredQuote` lets a dealer close their own window after `PROOF_GRACE_PERIOD`, which bounds it in practice, but nothing forces it |
 | `TIME_SLACK` (300s) for caller-supplied `now` in `requestBondWithdrawal`/`openSettlementChallenge` | M1 (surfaced) | Not pre-approved — needed because Compact can't read block time as a value, only compare against it. A caller-supplied, chain-bounded `now` was the only viable design found; 300s is a placeholder guess, not tuned |
+| **Where published failure evidence lives** | M2 | The taker can save evidence (signed reveal + Offer File) and anyone can check it on `/verify`, but nothing publishes it, so every dealer's "failures" renders unknown. Needs a destination that doesn't make a relay or server a trusted source |
+| **Dealer Node status endpoint** | M3 | `/desk` shows only chain facts; warm offers, coins ready and answered RFQs need a local read-only endpoint on the node. Not built |
+| **Mailbox read is destructive** | M2 | `Mailbox.take()` deletes on read; the client persists reveals first. A reload between fetch and persist loses them. Changing it is a wire change |
+| **Browser quoting via `makeIntent`** | M2 (2.7) | The DApp Connector's only swap-building call. If a wallet returns an unproven or unbound intent, browser quoting can't produce an Offer File a taker can settle, and 2.7 falls back to the Dealer Node |
+| **Dealer keys are stored per network** | M4 | The vault lives in the network's storage namespace, so a key used on Preprod and Preview is set up twice. Harmless on testnets; decide before Mainnet |
 
 ---
 

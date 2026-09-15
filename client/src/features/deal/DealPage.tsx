@@ -10,7 +10,8 @@ import { fmtBase } from '../shared/protocol';
 
 function Code({ children, label }: { children: string; label: string }) {
   return (
-    <pre aria-label={label} className="overflow-x-auto rounded-input border border-line2 bg-bg px-4 py-3.5 font-mono text-12.5 leading-[1.75] text-tx">
+    // Focusable so a keyboard user can scroll a long command sideways on a narrow screen.
+    <pre aria-label={label} tabIndex={0} className="overflow-x-auto rounded-input border border-line2 bg-bg px-4 py-3.5 font-mono text-12.5 leading-[1.75] text-tx">
       <code>{children}</code>
     </pre>
   );

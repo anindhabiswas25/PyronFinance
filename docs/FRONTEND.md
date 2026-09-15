@@ -1,306 +1,229 @@
 # Frontend Specification
 
-**Stack:** React 18 + Vite + TypeScript + Tailwind CSS, Zustand for state, Lace via the Midnight
-DApp Connector API. All chain and relay interaction goes through `packages/sdk`.
+**Stack:** React 18 + Vite 5 + TypeScript (strict) + Tailwind CSS + Zustand + React Router 6, in
+`client/` (`@otc/client`). Wallets through the Midnight DApp Connector API (4.x: 1AM, Lace). All chain
+and relay work goes through `@otc/sdk/browser`, the only SDK entry the client may import.
+
+**No backend.** The client talks to four things only: the user's wallet extension, a Midnight indexer,
+the relays the user configures, and the static ZK assets it serves itself. There is no server of ours,
+no database, no analytics.
+
+**Live data only.** The app always reads the real chain, relays and wallet (owner decision 2026-09-15).
+Deterministic fixture adapters exist for the test suite only (`client/test/fixtures`), injected through
+`PortsFactoryContext`; nothing sample-sourced can reach a user.
 
 ---
 
 ## UX models, and the one we reject
 
-**Paradigm's request → quote → take** is the closest analogue to what we are building: a taker states
-an intent, dealers respond, the taker picks one. Discrete, bilateral, no continuous book.
+**Paradigm's request → quote → take** is the closest analogue: a taker states an intent, dealers
+respond, the taker picks one. Discrete, bilateral, no continuous book.
 
-**CoW Swap / 1inch single-intent simplicity** is the interaction standard to hold ourselves to: state
-what you want once, then wait while the protocol works. The user is never asked to manage an order.
+**CoW Swap / 1inch single-intent simplicity** is the interaction standard: state what you want once in a
+swap card, then wait while the protocol works. The user is never asked to manage an order.
 
 ### Explicitly ruled out: the order-book depth view
 
 **Do not build a live depth chart, a bid/ask ladder, or a streaming order book.** Not as a
 "nice-to-have," not behind a flag.
 
-This is not a stylistic preference — it is a correctness constraint. **There is no book to render.**
-Midnight has no shared private state, so hidden orders cannot be aggregated or matched
-(`ARCHITECTURE.md`). During the sealed phase, prices genuinely do not exist anywhere except in each
-dealer's local memory. A depth view would have to be fabricated from either fake data or leaked
-pre-reveal prices — the first is a lie and the second breaks the protocol's core guarantee.
+This is a correctness constraint, not a style choice. **There is no book to render.** Midnight has no
+shared private state, so hidden orders cannot be aggregated or matched (`ARCHITECTURE.md`). During the
+sealed phase, prices exist only in each dealer's memory. A depth view would have to be fabricated from
+fake data or leaked pre-reveal prices: the first is a lie and the second breaks the protocol.
 
-The UI must make sealed-ness *legible* rather than hiding it behind a familiar trading-screen
-metaphor. A user who thinks they are looking at a book will misread everything else on the screen.
+The UI makes sealed-ness *legible* rather than hiding it behind a trading-screen metaphor.
 
 ---
 
-## Screen 1 — RFQ request
+## Non-negotiables (violating one is a bug)
 
-Single-intent. One decision per screen, no order-management surface.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Request a quote                                         │
-│                                                          │
-│   You sell   [ 1000.00 ]  [ tNIGHT ▾ ]                   │
-│                    ⇅                                     │
-│   You buy    [   ~ ~ ~  ]  [ USDM  ▾ ]                   │
-│              Price is revealed after dealers commit      │
-│                                                          │
-│   ▸ Advanced                                             │
-│       Quote window     [ 5 min ▾ ]                       │
-│       Minimum dealer bond  [ 5,000 ▾ ]                   │
-│       Disclosure note      [ None ▾ ]                    │
-│                                                          │
-│   Relays  ●●●  3 connected                               │
-│                                                          │
-│            [   Request quotes   ]                        │
-└──────────────────────────────────────────────────────────┘
-```
-
-- **The buy field shows no estimate.** Not a spinner, not a "≈" placeholder from some reference
-  price. There is no price yet, and inventing one trains users to expect a number that the protocol
-  cannot honestly provide.
-- **Relay count is always visible.** A taker connected to one relay has silently accepted a censoring
-  intermediary (`RELAY.md` §6). One connected relay renders amber with a tooltip; zero renders red
-  and blocks submission.
-- **Minimum dealer bond** filters which dealers bother responding. Default surfaces the tradeoff:
-  higher floor → better-collateralized dealers, fewer quotes.
-- **Disclosure note** defaults to `None`. Attaching one is a deliberate act, never a default
-  (`DISCLOSURE.md`).
+- No price before reveal, anywhere. Public pages never show a price: the chain stores none.
+- Price comparison happens only in the taker's browser, on verified reveals. Nothing price-related is
+  sent to a relay, a log, a URL or anywhere else.
+- Relays are untrusted. Every `quote_ref` passes `verifyQuoteRef` before it renders as verified; an RFQ
+  is refused below two connected relays; the relay count is always visible (amber at 1, red at 0).
+- "Couldn't verify" is a different state from "rejected": an indexer outage is an error state, never an
+  empty or rejected list.
+- Every reveal passes `verifyReveal` (with the on-chain notional), the opposite-side check and
+  `offerMatchesTerms` before it can be selected.
+- A seal mismatch is escalated as a fraud-proof action with its payout, never hidden.
+- Slashed dealers are never filtered out. No badges, scores, stars or "verified dealer" labels.
+- No Class B: no challenge bond, no "dealer has not settled" screen (removed 2026-09-14).
+- A fresh X25519 key and `rfqId` per RFQ. Disclosure notes are opt-in.
+- Amounts are `bigint` or decimal strings end to end, never `Number`.
+- Every state is text plus form, never colour or motion alone.
 
 ---
 
-## Screen 2 — Sealed bids incoming
+## Information architecture — 10 pages, 6 overlays
 
-The screen that carries the protocol's central idea. Its job is to convey: *dealers are locking
-themselves to prices they cannot take back, and nobody — including us — can see those prices yet.*
+| Route | Page | Needs | Code |
+|---|---|---|---|
+| `/` | Venue: what the protocol is, live chain totals, recent events | nothing | `features/venue` |
+| `/activity` | Protocol events from the indexer: bonds, seals, settlements, releases, **slashes first-class**, notes. No price column | nothing | `features/activity` |
+| `/dealers` | Every dealer key: status, bond, largest quote (×20), settled, slashed, failures (unknown) | nothing | `features/dealers` |
+| `/dealers/:dealerCmt` | One dealer: stats, bond-over-time chart, recent quotes, evidence note | nothing | `features/dealers` |
+| `/trade` | Taker flow: request → sealed → compare → settle | wallet to settle | `features/trade` |
+| `/trade/:quoteId` | Receipt: public block from the chain, private block from this device | nothing | `features/receipt` |
+| `/me` | My trades, encrypted under a passphrase | this device | `features/portfolio` |
+| `/deal` | Become a dealer: Dealer Node path, bond calculator, slash split, timings | nothing | `features/deal` |
+| `/desk` (`?tab=overview\|quotes\|bond\|rfq\|keys`) | Dealer desk | dealer key to act | `features/desk` |
+| `/verify` (`?tab=check\|note`) | Check a signed reveal or evidence; open a disclosure note | nothing (wallet to submit a proof) | `features/verify` |
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  Sealed bids incoming                                    │
-│                                                          │
-│         ┌────────────────────────┐                       │
-│         │   Revealing in  0:23   │                       │
-│         └────────────────────────┘                       │
-│                                                          │
-│   4 dealers have committed                               │
-│                                                          │
-│   🔒  dealer 0xab…3f    bond 12,400   ✓ on-chain          │
-│   🔒  dealer 0x71…c2    bond  8,000   ✓ on-chain          │
-│   🔒  dealer 0x0d…91    bond 45,000   ✓ on-chain          │
-│   🔒  dealer 0xe4…07    bond  5,200   ✓ on-chain          │
-│                                                          │
-│   Each dealer is bound to their committed price.         │
-│   Prices are sealed until the timer ends — not even      │
-│   this app can see them yet.                             │
-│                                                          │
-│                          [ Cancel request ]              │
-└──────────────────────────────────────────────────────────┘
-```
+Overlays (no route change; Esc closes; focus trapped and returned): Connect wallet · Wallet readiness ·
+Transaction tray (`T`, survives reloads) · Relays · Submit fraud proof · Attach disclosure note.
 
-- **Locks, bonds, and verification status only.** No price column, not even blurred or masked — a
-  masked price implies a value is present and withheld, when in fact none exists client-side.
-- **`✓ on-chain` is a real verification, not decoration.** It appears only after the client has
-  recomputed `quoteId` and read the commitment from the chain (`RELAY.md` §3.2). Relay-sourced rows
-  awaiting confirmation show `⋯ verifying`; rows that fail verification are dropped with a logged
-  reason.
-- **Bond is the trust signal at this stage** — it is the only meaningful information available before
-  reveal, and putting it here teaches users to read it.
-- Late commitments append with a subtle highlight. The timer does not extend: a fixed window is what
-  prevents a dealer from waiting out competitors.
+Top bar: logo · Trade · Activity · Dealers · Desk · Verify · network · relays pill · tray pill · wallet ·
+theme. Dev only: `/dev/settle-probe`, `/dev/circuits`.
+
+Public pages render without the SDK or its WASM; `/trade`, `/verify` and `/desk` load them lazily.
 
 ---
 
-## Screen 3 — Post-reveal comparison
+## `/trade` — the swap card and what follows
 
-Price and track record on the same row, deliberately. Judging a quote by price alone is exactly the
-mistake this protocol exists to correct.
+One route, one state machine (`state/rfq.ts`), persisted to `sessionStorage` so a reload in Sealed or
+Compare restores the screen with reveals intact. Stepper: Request · Sealed · Compare · Settle.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  4 quotes revealed · valid for 4:52                                    │
-│                                                                        │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ ▸ 0x0d…91          41.44 USDM            BEST PRICE              │  │
-│  │   bond 45,000 · 312 settled · 0 slashed          ✓ verified      │  │
-│  │                                            [ Select ]            │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ ▸ 0xab…3f          41.20 USDM                                    │  │
-│  │   bond 12,400 · 87 settled · 0 slashed           ✓ verified      │  │
-│  │                                            [ Select ]            │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ ▸ 0xe4…07          41.90 USDM      ⚠ 2 slashes                   │  │
-│  │   bond 5,200 · 14 settled · 2 slashed            ✓ verified      │  │
-│  │                                            [ Select ]            │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │ ✗ 0x71…c2       COMMITMENT MISMATCH                              │  │
-│  │   Revealed price does not open their on-chain commitment.        │  │
-│  │   This is provable fraud.        [ Submit fraud proof → earn 10% ]│ │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                                                                        │
-│  Sorted by: [ Price ▾ ]   ⓘ Highest price is not always the best trade │
-└────────────────────────────────────────────────────────────────────────┘
-```
+**Request (swap card).** "You sell / You receive" or "You pay / You buy"; the ⇅ button flips the side
+and puts what the taker gives on top. The counter leg shows only a lock and "Price revealed after
+dealers seal": no estimate, no "≈", no spinner. Advanced: quote window (1/2/5 min), minimum dealer bond,
+disclosure note (off; attached later from the receipt). Readiness lists only what the connector can
+truthfully report: network, balance of the asset given, DUST, relays ≥ 2. Coin fragmentation surfaces at
+Settle, from the merged transaction's time-to-dismiss check. Side panel: dealers bonded, largest quotable
+size, median bond, all from the chain.
 
-- **Every row is independently verified before display:** signature valid under the on-chain
-  `quotePk`, `persistentCommit(terms, nonce)` equals the on-chain commitment, quote still inside
-  `validUntil`.
-- **A mismatched reveal is not hidden — it is escalated.** It becomes an actionable fraud-proof
-  affordance with the 10% prover bounty stated (`CONTRACTS.md` §2). This is the protocol's
-  enforcement mechanism reaching the user interface: a taker who was defrauded is one click from
-  slashing the dealer, and permissionless enforcement stops being an abstraction.
-- **Slash history is a visible warning, not a filter.** We do not hide slashed dealers — that would
-  be the allowlist we explicitly rejected (`ARCHITECTURE.md`). We surface the record and let the
-  taker decide. A dealer with 2 slashes offering the best price is a legitimate choice; it should
-  just be an *informed* one.
-- **⚠ Best price + weak record** shows an inline caution when the top-priced quote also has the
-  thinnest bond or a slash history.
-- **Expiry countdown is prominent.** Past `validUntil` the dealer is no longer bound, `Select`
-  disables, and the row greys out.
+**Sealed.** Fixed countdown (never extended). One row per `quote_ref`: checking → on-chain with bond and
+record, or dropped with its reason. Reveals are fetched from each quote's signed `dealerEndpoint` mailbox
+and **persisted before decrypting**, because the relay deletes on read. "Compare N now" once one verifies.
 
-### Settlement, and what happens when a dealer stalls
+**Compare.** Definitions live in `lib/compare.ts` (bigint only, unit-tested): best by the taker's side,
+vs-best in bps, median of valid quotes, spread, bond as % of trade, offer check (time-to-dismiss on the
+dealer's half alone plus its input count, never balancing every quote against the wallet), validity bar.
+Summary strip · fraud banner per seal mismatch (excluded from every statistic) · strip plot · comparison
+table · pairwise panel with a sentence generated from the numbers · settle card. Rows never reorder under
+the pointer or while one is selected; a "new quote · Re-sort" pill appears instead. The failures column
+renders "—" (unknown), never a fake 0, until published evidence has a source.
 
-> **Superseded 2026-09-14 — Class B (settlement challenges) was removed.** The taker settles
-> unilaterally from the revealed Offer File, so there is no "dealer has not settled" state to
-> challenge. The screen becomes: on `Select`, pre-check that the offer's inputs are unspent, then
-> settle immediately. If settlement fails because the dealer spent the inputs, show **"This dealer's
-> quote could not be settled — their offer's funds were spent elsewhere,"** offer **[ Publish failure
-> evidence ]** (the signed reveal + Offer File, verifiable by anyone against the indexer) and
-> **[ Pick another quote ]**, and surface the dealer's published failures next to settled/slashed in
-> Screen 3. No challenge bond exists. The original design is kept below for the record.
+**Settle.** Real stages: offer coins unspent (skipped where the indexer can't answer) → wallet balances
+the sealed offer → the merged transaction passes the network's validation limit → submit → indexer
+confirmation. Outcomes: settled → receipt; inputs spent → "Save evidence" and take the next quote; wallet
+shape (would be code 168) → nothing submitted; node rejection → code and plain meaning; expired.
 
-~~After `Select`, the client attempts Zswap settlement. If the dealer does not complete it:~~
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Dealer has not settled                                  │
-│                                                          │
-│  0xab…3f committed to this price and has not settled.    │
-│  You can open an on-chain challenge. They have 10        │
-│  minutes to settle or their bond is slashed.             │
-│                                                          │
-│  Challenge bond    20 tNIGHT  (2% of trade)              │
-│    · Returned if they fail to settle (you were right)    │
-│    · Forfeited to the dealer if they do settle           │
-│                                                          │
-│      [ Open challenge ]        [ Walk away ]             │
-└──────────────────────────────────────────────────────────┘
-```
-
-The forfeit condition must be stated plainly, before the click. This is the anti-griefing mechanism
-(`CONTRACTS.md` §5.2), and a user who does not understand they can lose the challenge bond will feel
-cheated by correct protocol behavior.
-
-**The bond scales with notional (`CONTRACTS.md` §7a): `max(floor, 2% of notional)`.** Show the
-percentage next to the amount, as above — a taker needs to see that it is proportional, not a flat
-toll. This example previously showed 250 tNIGHT on a 1,000 tNIGHT trade; at 25% of notional that
-priced small takers out of enforcing their own trades, which would have quietly made Class-B
-protection a large-taker-only feature and handed small takers back the last-look exposure this
-protocol exists to remove.
+**Receipt.** Public block from the chain; "Only on this device" block with price and amounts. The status
+reads **Resolved** from the chain alone and **Settled** only with a settlement transaction on this device,
+because the contract cannot tell a settled quote from a released one.
 
 ---
 
-## Screen 4 — Settled trades feed
+## Contract actions from the browser
 
-Public, no wallet required. This is the protocol's transparency surface and the first thing a
-prospective dealer or taker will look at to judge whether the venue is real.
+`src/data/live/circuits.ts` + `@otc/sdk/browser` (`browser-contract.ts`) run every circuit from the
+connected wallet, with each stage in the transaction tray:
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  Settled trades                          [ All pairs ▾ ]  [ Live ● ]   │
-│                                                                        │
-│  2m ago   1,000 tNIGHT → 41,440 USDM   dealer 0x0d…91   📄 note        │
-│  8m ago     250 tNIGHT → 10,310 USDM   dealer 0xab…3f                  │
-│  14m ago  ⚡ SLASH  dealer 0x71…c2  ·  12,000 tNIGHT slashed            │
-│           commitment mismatch · proof 0x4a…8b                          │
-│  21m ago  5,000 tNIGHT → 206,900 USDM  dealer 0x0d…91   📄 note        │
-│                                                                        │
-│  ─────────────────────────────────────────────────────────────────     │
-│  Protocol totals   1,284 settled · 3 slashed · 41,200 tNIGHT burned    │
-└────────────────────────────────────────────────────────────────────────┘
-```
+1. **prepare** — the circuit runs on this device (midnight-js `createUnprovenCallTx`) against the
+   indexer's latest contract and Zswap state, with witnesses held in memory for the one call;
+2. **prove** — the wallet's `getProvingProvider`, fed ZK assets the app serves at `/zk/otc-protocol`;
+3. **balance** — `balanceUnsealedTransaction`, which adds inputs and pays DUST;
+4. **submit** — `submitTransaction` (resolves void; identifiers come from the balanced transaction);
+5. **confirm** — the indexer shows the transaction.
 
-- **Slash events are first-class feed items**, not hidden in a sub-tab. A visible slash is the
-  protocol working, and it is the single most persuasive artifact the venue can show. Each links to
-  the fraud proof transaction.
-- **`📄 note`** indicates an attached disclosure note. Anyone can see one exists; only the intended
-  recipient can decrypt it (`DISCLOSURE.md`).
-- **Burned total** is displayed because it is the visible cost of collusion resistance
-  (`CONTRACTS.md` §2) and is otherwise invisible.
-- Everything here is read from the chain via the indexer. **No relay is trusted for this view** — a
-  transparency surface sourced from an untrusted intermediary would be worthless.
+After a submit or confirm failure the app reads the chain before reporting: live releases have been
+reported by the wallet as node code 104 while landing. Wallet keys reach midnight-js as hex (its bech32m
+path needs Node's `Buffer`).
+
+| Action | Where | Circuit |
+|---|---|---|
+| Submit fraud proof | Compare banner, `/verify` | `submitFraudProofMismatch` |
+| Attach disclosure note | Receipt | `attachDisclosureNote` |
+| Post / top up / request withdrawal / withdraw | `/desk?tab=bond` | `postBond`, `topUpBond`, `requestBondWithdrawal`, `withdrawBond` |
+| Commit quote, record settlement, release | `/desk?tab=rfq`, `?tab=quotes` | `commitQuote`, `recordSettlement`, `releaseExpiredQuote` |
+
+**Submit fraud proof.** Checked against the chain first, as the circuit will check it (signed by the
+on-chain quote key, does not open the seal, quote unresolved), so a refused proof is never sent. Shows the
+split in the dealer's bond: 60 % to the wronged taker, 10 % to the prover, 30 % burned; the connected
+wallet is both, so it receives 70 %.
+
+**Attach disclosure note.** Sealed to one recipient's X25519 key. The sealed note is saved as a file
+before the transaction is sent; only its hash, the policy tag and a recipient hint go on-chain.
 
 ---
 
-## Screen 5 — Dealer commit/reveal response
+## `/verify`
 
-For dealers quoting manually. Most volume should come from `packages/dealer-node`; this screen exists
-so a human can quote without running infrastructure, and so the flow is inspectable during
-development.
+**Check a quote.** Paste or load a signed reveal or saved failure evidence. Each check is its own line:
+quote on-chain, same dealer, signed by the on-chain quote key, opens the seal, size matches the sealed
+notional, unresolved, validity window, and (for evidence) whether the offer's coins were spent. A signed
+price that doesn't open its seal leads to the fraud-proof overlay.
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  Incoming RFQ                              expires 3:41  │
-│                                                          │
-│  Taker wants to sell   1,000 tNIGHT for USDM             │
-│                                                          │
-│  Your price   [ 41.44 ]  USDM per 1,000                  │
-│  Valid for    [ 10 min ▾ ]   (max 15 min)                │
-│                                                          │
-│  Your bond 45,000 · 312 settled · 0 slashed              │
-│                                                          │
-│  ⚠ Committing binds you. If you do not settle within     │
-│    the validity window, your entire 45,000 bond can be   │
-│    slashed by anyone.                                    │
-│                                                          │
-│            [ Commit sealed quote ]                       │
-└──────────────────────────────────────────────────────────┘
-```
+**Open a note.** Decrypts with the recipient's key (kept in the tab only) and lists DISCLOSURE.md's
+checks separately. A wrong key reads "This note isn't addressed to this key." A note that decrypts but
+isn't backed by the chain is shown as a claim, not evidence.
 
-Then, strictly after on-chain confirmation:
+---
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  ✓ Commitment confirmed on-chain     tx 0x8c…12          │
-│                                                          │
-│  Step 2 — reveal your price to the taker                 │
-│  Sent point-to-point and encrypted. No other dealer      │
-│  or relay can see it.                                    │
-│                                                          │
-│            [ Reveal to taker ]                           │
-└──────────────────────────────────────────────────────────┘
-```
+## `/desk` — dealer desk
 
-- **The reveal button does not exist until the commit transaction confirms.** Revealing before
-  confirmation hands the taker a signed price with no commitment behind it — a durable artifact the
-  dealer cannot retract (`DEALER-NODE.md` §3.1). Enforce this in the UI, not just in the node.
-- **The binding warning states the full downside in the dealer's own numbers** before the commit
-  click. A dealer who did not understand that "sealed quote" means "slashable obligation" must not be
-  able to discover it by being slashed.
-- **The nonce is persisted to local storage before the commit tx is submitted**, so a browser refresh
-  between commit and reveal does not leave the dealer bound to a quote they can no longer open.
-- `Valid for` is capped at `MAX_QUOTE_VALIDITY` (15 min) by the contract; the UI enforces it early
-  rather than surfacing a failed transaction.
+Any dealer key can be opened read-only. Acting needs the dealer's own key.
+
+- **Keys.** Generate or import (the Dealer Node's 64-hex key file works as is). Derived exactly as the
+  node derives it: `dealerCmt`, quote key, reveal key. Stored in IndexedDB with the quote journal,
+  encrypted under a passphrase (PBKDF2-SHA256, 600,000 iterations; AES-GCM). **Every action stays blocked
+  until a backup is downloaded and confirmed** (owner decision 2026-09-15).
+- **Overview.** Status, bond and headroom (×20), live quotes, settled and slashed, and alerts derived from
+  the chain (withdrawal pending, quotes releasable, quotes in grace, bond slashed). Node metrics render
+  "Connect your node": the Dealer Node has no status endpoint.
+- **Quotes.** Every quote by outcome with countdowns; release expired quotes one at a time or in bulk
+  (permissionless, one hour after expiry); record settlement behind a confirmation.
+- **Bond.** Post → Top up → Request withdrawal → Withdraw as one timeline. Each blocked action says why and,
+  where time decides it, when (`features/desk/rules.ts`, mirroring the contract's assertions).
+- **Manual quote.** Incoming RFQs; price → taker amount; validity 5/10/15 min; bond cap and the binding
+  warning in the dealer's own numbers. Step 1: the wallet builds the Offer File (`makeIntent`), which is
+  checked (sealed, pays exactly the terms, passes time-to-dismiss); the nonce, terms and offer are written
+  to the encrypted journal **before** `commitQuote` is submitted. Step 2, **offered only once the indexer
+  shows the seal:** gossip the signed `quote_ref` and post the encrypted reveal to the mailbox.
+
+---
+
+## `/me`
+
+Trades taken from this browser, per network: settled, failed, expired. Encrypted under a passphrase
+(owner decision 2026-09-15). A trade that finishes while the history is locked waits in the tab and is
+merged on unlock. A wrong passphrase reads "That passphrase doesn't unlock this history" and changes
+nothing. Export JSON (unencrypted, and says so). Delete all behind a typed confirmation.
 
 ---
 
 ## Cross-cutting
 
-**State (Zustand slices):** `wallet` · `rfq` (lifecycle: `idle → requesting → sealed → revealed →
-settling → settled|failed|challenged`) · `quotes` (with per-quote verification status) · `dealer` ·
-`feed`.
+**Data ports** (`src/data/ports.ts`): `ChainPort`, `RelayPort`, `WalletPort`, `CircuitPort`,
+`StoragePort`. Pages never import an adapter. Identifiers are lowercase hex at this boundary; amounts
+are bigint.
 
-**Verification is a UI-layer responsibility.** Every quote reaches the screen with an explicit
-verification state, and unverified quotes never render as if verified. `packages/sdk` returns
-verification results rather than booleans, so failures can be shown with a reason.
+**Storage.** `sessionStorage`: trade state (including the per-RFQ secret, wiped at a terminal state),
+reveals, receipts, the tray. `localStorage`: preferences and the relay list only. IndexedDB: encrypted
+dealer vault, encrypted trade history, and public event caches. Never a price or key in plaintext
+localStorage.
 
-**Latency honesty.** Commit-then-reveal involves proof generation and chain confirmation, and the
-real Preprod timing is not yet known (`DEALER-NODE.md` §5). Progress states must reflect actual
-stages — `proving`, `submitting`, `confirming`, `revealing` — rather than a generic spinner, and no
-countdown should promise a duration we have not measured.
+**Latency honesty.** Progress shows real stages. Copy uses only measured Preprod ranges: commit 19–25 s
+(53 s degraded), settlement 17–24 s, RFQ → settled about 80 s.
 
-**Empty states carry the cold-start message.** No dealers responding is the expected early condition,
-not an error. That state should link to the Dealer Node quickstart: the person staring at an empty
-RFQ screen is precisely the person best positioned to become the first dealer.
+**Empty states carry the cold-start message.** No dealer answering is the expected early condition; it
+links to `/deal`.
 
-**Accessibility:** the sealed → revealed transition must not rely on color or motion alone; timer
-states need text equivalents; slash warnings need semantic markup, not just an emoji.
+**Accessibility.** Keyboard-complete (`/` pair, `Enter`, `1`–`9`, `Shift`+click, `T`, `Esc`); visible
+focus; countdown announcements throttled to 10 s; charts have `role="img"` with every value in the label
+and a table alternative; tables become stacked rows below 768 px.
+
+---
+
+## Not yet run live (2026-09-15)
+
+- A settlement from a browser wallet (`/trade` Settle).
+- Any contract circuit from a browser wallet. First check: `/dev/circuits` releases an expired Preprod
+  quote.
+- Offer Files from the wallet's `makeIntent` (`/desk` manual quote): whether a wallet returns a sealed,
+  settleable half is unverified.
+
+See `docs/ROADMAP.md` for the open decisions this UI depends on.
