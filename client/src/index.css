@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--tx);
+  }
+  body {
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    /* Tabular numerals everywhere: amounts, countdowns and hashes must never shift width. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--tx);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--sealbg);
+  }
+}
+
+@layer components {
+  .label {
+    font-family: 'Archivo Variable', Archivo, 'Helvetica Neue', Arial, sans-serif;
+    font-stretch: 112.5%;
+    font-weight: 600;
+    font-size: 10.5px;
+    line-height: 1.2;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .skeleton {
+    background: linear-gradient(90deg, var(--s2) 0%, var(--line) 50%, var(--s2) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  .enter {
+    animation: enter 220ms ease-out both;
+  }
+  .enter-fresh {
+    animation: enter-fresh 1200ms ease-out both;
+  }
+  /* Tables become stacked label/value rows below md (390 px layouts). */
+  @media (max-width: 767.98px) {
+    .stacked td[data-label]::before {
+      content: attr(data-label);
+      font-family: 'Archivo Variable', Archivo, Arial, sans-serif;
+      font-stretch: 112.5%;
+      font-weight: 600;
+      font-size: 10.5px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--mu);
+      padding-top: 2px;
+    }
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-stretch: 112.5%;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+@keyframes enter {
+  from {
+    opacity: 0.4;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes enter-fresh {
+  from {
+    background-color: var(--sealbg);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Reduced motion: everything becomes a fade. No slides, no shimmer sweep, no pulsing. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+  .enter {
+    animation: fade 220ms ease-out both;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+  .motion-transform {
+    transform: none !important;
+    transition-property: opacity, color, background-color, border-color !important;
+  }
+}
