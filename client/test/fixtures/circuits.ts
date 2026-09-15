@@ -6,14 +6,14 @@ import { CircuitError } from '../../src/lib/errors';
 export interface FixtureCircuits extends CircuitPort {
   /** The next run fails at `stage` (with the node's `code`), then the failure clears. */
   failNext(failure: { stage: CircuitStageId; code?: number; message?: string }): void;
-  readonly calls: Array<{ circuit: string; args: unknown[] }>;
+  readonly calls: Array<{ circuit: string; args: unknown[]; dealerSecretKey?: Uint8Array; takerAddress?: Uint8Array }>;
 }
 
 const STAGES: CircuitStageId[] = ['prepare', 'prove', 'balance', 'submit', 'confirm'];
 
 export function createFixtureCircuits(o: { speed?: number } = {}): FixtureCircuits {
   let failure: { stage: CircuitStageId; code?: number; message?: string } | undefined;
-  const calls: Array<{ circuit: string; args: unknown[] }> = [];
+  const calls: Array<{ circuit: string; args: unknown[]; dealerSecretKey?: Uint8Array; takerAddress?: Uint8Array }> = [];
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms / Math.max(1, o.speed ?? 1)));
   return {
     calls,
@@ -21,7 +21,7 @@ export function createFixtureCircuits(o: { speed?: number } = {}): FixtureCircui
       failure = f;
     },
     async run(call, onStage) {
-      calls.push({ circuit: call.circuit, args: [...call.args] });
+      calls.push({ circuit: call.circuit, args: [...call.args], ...(call.dealerSecretKey ? { dealerSecretKey: call.dealerSecretKey } : {}), ...(call.takerAddress ? { takerAddress: call.takerAddress } : {}) });
       const f = failure;
       failure = undefined;
       for (const stage of STAGES) {

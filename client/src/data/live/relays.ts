@@ -7,6 +7,9 @@ import type { ChainPort, IncomingRfq, RelayHealth, RelayPort, RelayState, SyncSt
 import { RelayCountError } from '../../lib/errors';
 import { MIN_RELAYS, fetchRelayHealth, isRevealMessage, mailboxUrl, persistReveals } from '../relay-util';
 
+/** The browser WebSocket's OPEN readyState (not a global in tests). */
+const OPEN = 1;
+
 function looksLikeRfq(body: unknown): body is RfqBody {
   const b = body as RfqBody;
   return (
@@ -29,6 +32,7 @@ export function createLiveRelays(o: { chain: ChainPort; session: SyncStore; sock
   const health = new Map<string, RelayHealth>();
   const listeners = new Set<(s: RelayState[]) => void>();
   const rfqs = new Map<string, IncomingRfq>();
+  const sockets = new Map<string, WebSocket>();
 
   const status = (): RelayState[] => urls.map((url) => ({ url, connected: connected.has(url), health: health.get(url) }));
   const emit = () => {
@@ -53,6 +57,7 @@ export function createLiveRelays(o: { chain: ChainPort; session: SyncStore; sock
 
   const socketFactory = (url: string): WebSocketLike => {
     const ws = openSocket(url);
+    sockets.set(url, ws);
     ws.addEventListener('open', () => {
       connected.add(url);
       emit();
@@ -79,6 +84,7 @@ export function createLiveRelays(o: { chain: ChainPort; session: SyncStore; sock
       await aggregator?.close();
       aggregator = undefined;
       connected.clear();
+      sockets.clear();
       urls = [...next];
       emit();
       const sdk = await import('@otc/sdk/browser');
@@ -109,6 +115,23 @@ export function createLiveRelays(o: { chain: ChainPort; session: SyncStore; sock
       const messages = Array.isArray(body) ? body.filter(isRevealMessage) : [];
       persistReveals(o.session, takerEncPk, base, messages);
       return messages;
+    },
+    publishQuoteRef(envelope) {
+      const raw = JSON.stringify(envelope);
+      let sent = 0;
+      for (const url of connected) {
+        const ws = sockets.get(url);
+        if (ws && ws.readyState === OPEN) {
+          ws.send(raw);
+          sent++;
+        }
+      }
+      if (sent === 0) throw new Error('No relay is connected, so the quote reference was not sent.');
+      return sent;
+    },
+    async postReveal(base, takerEncPk, message) {
+      const res = await fetch(mailboxUrl(base, takerEncPk), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(message) });
+      if (res.status !== 202) throw new Error(`The mailbox relay refused the reveal: HTTP ${res.status} ${await res.text().catch(() => '')}`.trim());
     },
     incomingRfqs() {
       const now = Date.now() / 1000;

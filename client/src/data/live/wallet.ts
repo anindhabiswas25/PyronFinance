@@ -18,6 +18,7 @@ export const WALLET_METHODS = [
   'getDustBalance',
   'balanceSealedTransaction',
   'balanceUnsealedTransaction',
+  'makeIntent',
   'submitTransaction',
   'getTxHistory',
   'getConnectionStatus',
@@ -149,6 +150,9 @@ export function createLiveWallet(win: WindowLike = globalThis as WindowLike): Wa
       } catch {
         return { connected: false };
       }
+    },
+    async makeIntent(give, receive) {
+      return txOf(await need().makeIntent(give, receive, { intentId: 'random', payFees: false }), 'makeIntent');
     },
     async shieldedKeys() {
       const a = await need().getShieldedAddresses();

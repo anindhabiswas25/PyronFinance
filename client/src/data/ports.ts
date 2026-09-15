@@ -11,6 +11,8 @@ import type {
   AggregationResult,
   ChainBond,
   ChainReader,
+  Envelope,
+  QuoteRefBody,
   RevealMessage,
   RfqBody,
   checkTimeToDismiss,
@@ -185,6 +187,10 @@ export interface RelayPort {
   fetchMailbox(base: string, takerEncPk: Hex): Promise<RevealMessage[]>;
   /** RFQs heard on the connected relays (dealer desk). */
   incomingRfqs(): IncomingRfq[];
+  /** Gossips a signed quote_ref to every connected relay; returns how many. Throws when none is. */
+  publishQuoteRef(envelope: Envelope<QuoteRefBody>): number;
+  /** POST {base}/mailbox/{takerEncPk}: a reveal for one taker, never gossiped (RELAY.md §4). */
+  postReveal(base: string, takerEncPk: Hex, message: RevealMessage): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -206,6 +212,13 @@ export interface WalletConfig {
   indexerWsUri: string;
   substrateNodeUri: string;
   networkId: string;
+}
+
+export interface IntentLeg {
+  kind: 'unshielded';
+  /** 64-hex raw token type. */
+  type: string;
+  value: bigint;
 }
 
 export interface WalletHistoryEntry {
@@ -230,6 +243,9 @@ export interface WalletPort {
   submit(txHex: string): Promise<void>;
   history(page: number, size: number): Promise<WalletHistoryEntry[]>;
   status(): Promise<{ connected: boolean; networkId?: string }>;
+  /** An unbalanced swap half: `give` is spent, `receive` is created for the recipients. Returns the
+   *  transaction hex exactly as the wallet produced it; whether it is sealed is checked by the caller. */
+  makeIntent(give: IntentLeg[], receive: Array<IntentLeg & { recipient: string }>): Promise<string>;
   /** The shielded coin and encryption public keys (bech32m) a contract call is built with. */
   shieldedKeys(): Promise<{ coinPublicKey: string; encryptionPublicKey: string }>;
   provingProvider(keys: KeyMaterialProvider): Promise<ProvingProvider>;

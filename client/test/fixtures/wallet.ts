@@ -85,6 +85,10 @@ export function createFixtureWallet(o: { network: NetworkConfig; scenario: Scena
     async status() {
       return connected ? { connected: true, networkId: o.network.walletNetworkId } : { connected: false };
     },
+    async makeIntent() {
+      need();
+      throw new WalletError('The sample wallet can’t build offers.', 'unavailable');
+    },
     async shieldedKeys() {
       need();
       return { coinPublicKey: '5a'.repeat(32), encryptionPublicKey: 'e5'.repeat(32) };

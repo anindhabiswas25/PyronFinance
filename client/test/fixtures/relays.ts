@@ -1,7 +1,7 @@
 // Fixture relays: the same RelayPort with simulated connections and health. Scenario "one-relay"
 // leaves only one connected. The trade scenario plugs in quote collection and mailboxes.
 
-import type { AggregationResult, RevealMessage, RfqBody } from '@otc/sdk/browser';
+import type { AggregationResult, Envelope, QuoteRefBody, RevealMessage, RfqBody } from '@otc/sdk/browser';
 import type { IncomingRfq, RelayHealth, RelayPort, RelayState, SyncStore } from '../../src/data/ports';
 import { RelayCountError } from '../../src/lib/errors';
 import { MIN_RELAYS, persistReveals } from '../../src/data/relay-util';
@@ -12,6 +12,8 @@ export interface FixtureRelays extends RelayPort {
   setCollector(fn: ((rfq: RfqBody) => Promise<AggregationResult>) | undefined): void;
   setMailbox(fn: ((base: string, takerEncPk: string) => RevealMessage[]) | undefined): void;
   setIncoming(fn: (() => IncomingRfq[]) | undefined): void;
+  readonly quoteRefs: Envelope<QuoteRefBody>[];
+  readonly reveals: Array<{ base: string; takerEncPk: string; message: RevealMessage }>;
 }
 
 const LATENCIES = [42, 118, 3, 64];
@@ -25,6 +27,8 @@ export function createFixtureRelays(o: { scenario: ScenarioName; session: SyncSt
   let collector: ((rfq: RfqBody) => Promise<AggregationResult>) | undefined;
   let mailbox: ((base: string, pk: string) => RevealMessage[]) | undefined;
   let incoming: (() => IncomingRfq[]) | undefined;
+  const quoteRefs: Envelope<QuoteRefBody>[] = [];
+  const reveals: Array<{ base: string; takerEncPk: string; message: RevealMessage }> = [];
   const reachable = (url: string) => o.scenario !== 'one-relay' || urls.indexOf(url) === 0;
 
   const status = (): RelayState[] => urls.map((url) => ({ url, connected: connected.has(url), health: health.get(url) }));
@@ -77,6 +81,17 @@ export function createFixtureRelays(o: { scenario: ScenarioName; session: SyncSt
       return messages;
     },
     incomingRfqs: () => (incoming ? incoming() : []),
+    quoteRefs,
+    reveals,
+    publishQuoteRef(envelope) {
+      if (connected.size === 0) throw new Error('No relay is connected, so the quote reference was not sent.');
+      quoteRefs.push(envelope);
+      return connected.size;
+    },
+    async postReveal(base, takerEncPk, message) {
+      await wait(100);
+      reveals.push({ base, takerEncPk, message });
+    },
     async close() {
       connected.clear();
       emit();
