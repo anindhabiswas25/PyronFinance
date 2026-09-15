@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
 import { x25519 } from '@noble/curves/ed25519';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
@@ -112,17 +112,49 @@ async function syncedWallet(label: string, seed: string | undefined): Promise<He
 }
 
 let relayServers: RelayServer[] = [];
+let relaysReady = false;
 async function startRelays() {
-  if (relayServers.length) return;
+  if (relaysReady) return;
+  // Relays are untrusted by design, so healthy ones already on these ports (another run's) are used as
+  // they are. Starting a second server on a taken port crashes the process.
+  const health = await Promise.all(
+    [18787, 18788].map((p) => fetch(`http://127.0.0.1:${p}/health`).then((r) => r.ok, () => false)),
+  );
+  if (health.every(Boolean)) {
+    relaysReady = true;
+    log('[relays] reusing the relays already answering on :18787 and :18788');
+    return;
+  }
+  if (health.some(Boolean)) throw new Error('only one of :18787 and :18788 answers /health; stop it or free both ports');
   const a = startRelayServer({ port: 18787, enableMailbox: true, reconnectDelayMs: 500 });
   const b = startRelayServer({ port: 18788, peers: [RELAYS[0]], enableMailbox: true, reconnectDelayMs: 500 });
   relayServers = [a, b];
+  relaysReady = true;
   await until('relays peered', async () => ((await (await fetch('http://127.0.0.1:18787/health')).json()) as { peers: number }).peers > 0, 30_000, 500);
   log('[relays] :18787 and :18788 up and peered, mailboxes on');
 }
 
 let dealerNode: ChildProcess | undefined;
+
+/** Another process (another session's run) already running a Dealer Node on the main wallet. A second
+ *  node, or the main wallet opened here, would spend the same coins and overwrite the same snapshot and
+ *  journal. */
+function foreignDealerNode(): string | undefined {
+  const out = spawnSync('pgrep', ['-fl', 'src/bin.ts start --config'], { encoding: 'utf-8' }).stdout.trim();
+  const mine = dealerNode?.pid;
+  const others = out.split('\n').filter((l) => l && !(mine && l.startsWith(`${mine} `)));
+  return others.length ? others.join('; ') : undefined;
+}
+
+function refuseSharedMainWallet(what: string) {
+  const other = foreignDealerNode();
+  if (other && process.env.E2E_ALLOW_SHARED_MAIN_WALLET !== '1') {
+    throw new Error(`${what} needs the main wallet, but a Dealer Node is already running on it (${other}). Stop it first, or set E2E_ALLOW_SHARED_MAIN_WALLET=1 if that is intended.`);
+  }
+}
+
 async function startDealerNode(): Promise<void> {
+  refuseSharedMainWallet('the trade phase');
   const out = fs.openSync(path.join(OUT, 'dealer-node.log'), 'a');
   dealerNode = spawn('pnpm', ['start', '--config', 'dealer.toml'], { cwd: path.join(ROOT, 'packages/dealer-node'), env: process.env, stdio: ['ignore', out, out], detached: true });
   log(`[dealer-node] started (pid ${dealerNode.pid}); waiting for a warm offer`);
@@ -292,6 +324,7 @@ try {
   await phase(
     'fraud',
     async () => {
+      refuseSharedMainWallet('the fraud phase');
       main ??= await syncedWallet('main', process.env.MN_WALLET_SEED);
       const dealerSk = crypto.getRandomValues(new Uint8Array(32));
       const quoteSk = BigInt('0x' + hex(crypto.getRandomValues(new Uint8Array(32)))) % 6554484396890773809930967563523245729705921265872317281365359162392183254199n;
@@ -338,6 +371,7 @@ try {
   await phase(
     'desk',
     async () => {
+      refuseSharedMainWallet('the desk phase');
       main ??= await syncedWallet('main', process.env.MN_WALLET_SEED);
       await startRelays();
       await page.goto(`${BASE}/desk?tab=keys`);
