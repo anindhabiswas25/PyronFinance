@@ -28,7 +28,9 @@ export function nativeTokenRaw(): string {
   return nativeToken().raw;
 }
 
-export type { RfqBody, QuoteRefBody } from '../../relay-node/src/schema.js';
+export type { RfqBody, QuoteRefBody, Envelope } from '../../relay-node/src/schema.js';
+// Wire helpers a browser dealer (and the client's sample data) needs to sign and address gossip.
+export { computeId, canonicalJSON, signBody, verifyBodySignature, encodeSignature, decodeSignature, WIRE_VERSION } from '../../relay-node/src/schema.js';
 export * from './domain.js';
 export * from './terms.js';
 export * from './schnorr.js';

@@ -5,15 +5,22 @@ import { blake2b } from '@noble/hashes/blake2b';
 
 const HEX_RE = /^[0-9a-f]*$/i;
 
+// No `Buffer`: the SDK's browser entry reaches these through schema.ts (content-addressed ids), and a
+// browser has no `Buffer` global. Found 2026-09-15 by calling them in Chromium, where they threw.
+
 export function toHex(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString('hex');
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
 }
 
 export function fromHex(hex: string): Uint8Array {
   if (hex.length % 2 !== 0 || !HEX_RE.test(hex)) {
     throw new Error(`not a valid hex string: ${hex}`);
   }
-  return new Uint8Array(Buffer.from(hex, 'hex'));
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
 }
 
 export function isHexOfLength(value: unknown, byteLength: number): value is string {

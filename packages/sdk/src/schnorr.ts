@@ -113,14 +113,18 @@ export function encodeSchnorrSignature(sig: SchnorrSignature): string {
   const x = bigIntToBytesBE(jubjubPointX(sig.announcement), 32);
   const y = bigIntToBytesBE(jubjubPointY(sig.announcement), 32);
   const r = bigIntToBytesBE(sig.response, 32);
-  return Buffer.from(Buffer.concat([x, y, r])).toString('hex');
+  // No `Buffer`: this runs in the browser (quote_ref and reveal signatures), where it does not exist.
+  let out = '';
+  for (const part of [x, y, r]) for (const b of part) out += b.toString(16).padStart(2, '0');
+  return out;
 }
 
 export function decodeSchnorrSignature(hex: string): SchnorrSignature {
   if (hex.length !== 192 || !/^[0-9a-f]+$/i.test(hex)) {
     throw new Error('signature must be 96 bytes (192 hex chars)');
   }
-  const bytes = Buffer.from(hex, 'hex');
+  const bytes = new Uint8Array(96);
+  for (let i = 0; i < 96; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   const x = bytesToBigIntBE(bytes.subarray(0, 32));
   const y = bytesToBigIntBE(bytes.subarray(32, 64));
   const response = bytesToBigIntBE(bytes.subarray(64, 96));
