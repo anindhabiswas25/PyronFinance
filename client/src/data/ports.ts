@@ -140,7 +140,9 @@ export interface ChainPort {
   events(options?: { fromHeight?: number; signal?: AbortSignal }): AsyncIterable<EventUpdate>;
   transaction(by: { hash: Hex } | { identifier: string }): Promise<IndexedTransaction | undefined>;
   ledgerParameters(): Promise<{ height: number; params: LedgerParameters }>;
-  inputSpent?(intentHash: Hex, outputNo: number): Promise<InputSpent>;
+  /** Whether an unshielded coin has been spent. `owner` is its 64-hex address (offerInputsOf); without
+   *  it the live indexer cannot look the coin up and answers 'unsupported'. Throws when the indexer fails. */
+  inputSpent?(intentHash: Hex, outputNo: number, owner?: Hex): Promise<InputSpent>;
   /** Switch to another indexer (the connected wallet's), clearing caches. Live only. */
   useIndexer?(http: string, ws: string): void;
   /** For verifyQuoteRef / RelayAggregator. May load the SDK lazily on first use. */

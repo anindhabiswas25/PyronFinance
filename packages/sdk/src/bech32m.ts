@@ -53,6 +53,32 @@ function fromWords(words: number[]): Uint8Array {
   return Uint8Array.from(out);
 }
 
+function toWords(bytes: Uint8Array): number[] {
+  let acc = 0;
+  let bits = 0;
+  const out: number[] = [];
+  for (const b of bytes) {
+    acc = (acc << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      out.push((acc >> bits) & 31);
+    }
+    acc &= (1 << bits) - 1;
+  }
+  if (bits > 0) out.push((acc << (5 - bits)) & 31);
+  return out;
+}
+
+/** `mn_<type>_<network>1…` (mainnet: `mn_<type>1…`), e.g. an unshielded address from its 32 bytes. */
+export function encodeMidnightBech32m(type: string, network: string, bytes: Uint8Array): string {
+  const hrp = network === 'mainnet' ? `mn_${type}` : `mn_${type}_${network}`;
+  const words = toWords(bytes);
+  const mod = (polymod([...hrpExpand(hrp), ...words, 0, 0, 0, 0, 0, 0]) ^ BECH32M_CONST) >>> 0;
+  const checksum = [0, 1, 2, 3, 4, 5].map((i) => (mod >>> (5 * (5 - i))) & 31);
+  return `${hrp}1${[...words, ...checksum].map((v) => CHARSET[v]).join('')}`;
+}
+
 export interface MidnightBech32m {
   /** e.g. "addr", "shield-cpk". */
   type: string;

@@ -30,7 +30,7 @@ export function createLivePorts(network: NetworkConfig): DataPorts {
     capabilities: {
       settleInBrowser: 'unverified',
       circuitsInBrowser: true,
-      inputSpentLookup: false,
+      inputSpentLookup: true,
     },
   };
 }

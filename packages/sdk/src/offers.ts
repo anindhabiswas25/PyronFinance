@@ -128,6 +128,38 @@ export function inputsOf(tx: ledger.Transaction<ledger.Signaturish, ledger.Proof
   return out;
 }
 
+export interface OfferInput {
+  /** "intentHash:outputNo", as `inputsOf` returns it. */
+  ref: string;
+  intentHash: string;
+  outputNo: number;
+  /** The owning address as 64 hex (a UserAddress), derived from the input's signing key. */
+  owner: string;
+  type: string;
+  value: bigint;
+}
+
+/** `inputsOf`, with each input's owner address: what an indexer lookup of the coin needs, since the
+ *  v4 API finds unshielded activity only by owner address. */
+export function offerInputsOf(tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>): OfferInput[] {
+  const out: OfferInput[] = [];
+  for (const [, intent] of tx.intents ?? []) {
+    for (const offer of [intent.guaranteedUnshieldedOffer, intent.fallibleUnshieldedOffer]) {
+      for (const input of offer?.inputs ?? []) {
+        out.push({
+          ref: `${input.intentHash}:${input.outputNo}`,
+          intentHash: String(input.intentHash),
+          outputNo: input.outputNo,
+          owner: String(ledger.addressFromKey(input.owner)),
+          type: String(input.type),
+          value: input.value,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export type TermsCheck = { ok: true } | { ok: false; reason: string };
 
 /** THE TAKER'S LAST CHECK BEFORE SETTLING (found 2026-09-14, docs/ROADMAP.md open decisions).

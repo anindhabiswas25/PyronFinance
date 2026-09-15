@@ -8,7 +8,7 @@ import {
   ShieldedEncryptionPublicKey,
   UnshieldedAddress,
 } from '@midnight-ntwrk/wallet-sdk-address-format';
-import { Bech32mError, decodeMidnightBech32m, midnightKeyToHex } from '../src/bech32m.js';
+import { Bech32mError, decodeMidnightBech32m, encodeMidnightBech32m, midnightKeyToHex } from '../src/bech32m.js';
 
 const cases = [
   ['addr', (b: Buffer) => UnshieldedAddress.codec.encode, (b: Buffer) => new UnshieldedAddress(b)],
@@ -47,6 +47,19 @@ describe('Midnight bech32m decoding', () => {
       });
     }
   }
+
+  it('encodes exactly as wallet-sdk-address-format does, and round-trips', () => {
+    for (const network of ['preprod', 'preview', 'mainnet']) {
+      for (const [type] of cases) {
+        for (let i = 0; i < 10; i++) {
+          const bytes = randomBytes(32);
+          const ours = encodeMidnightBech32m(type, network, new Uint8Array(bytes));
+          expect(ours).toBe(encode(type, network, bytes));
+          expect(midnightKeyToHex(ours, type)).toBe(bytes.toString('hex'));
+        }
+      }
+    }
+  });
 
   it('passes hex through and refuses the wrong type, a bad checksum and mixed case', () => {
     const bytes = randomBytes(32);

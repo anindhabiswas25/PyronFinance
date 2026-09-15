@@ -62,6 +62,8 @@ export {
   checkTimeToDismiss,
   dismissReport,
   inputsOf,
+  offerInputsOf,
+  type OfferInput,
   nodeErrorCode,
   balanceVectorNetsToZero,
   balanceVectorOf,

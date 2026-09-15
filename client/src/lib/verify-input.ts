@@ -10,6 +10,8 @@ export interface RevealInput {
   reveal: FraudReveal;
   /** `intentHash:outputIndex` of each coin the Offer File spends (failure evidence only). */
   offerInputs: string[];
+  /** Base64 Offer File (failure evidence): lets the checks find each coin's owner and look it up. */
+  offerFile?: string;
   failure?: { reason: string; detail: string; spentBy?: string };
 }
 
@@ -78,6 +80,7 @@ export function parseRevealInput(text: string): Parsed<RevealInput> {
         terms: { pair: t!.pair as string, side: side as 'buy' | 'sell', price: t!.price as string, size: t!.size as string },
       },
       offerInputs: Array.isArray(o.offerInputs) ? o.offerInputs.filter((x): x is string => typeof x === 'string') : [],
+      offerFile: str(o.offerFile),
       failure: f && typeof f.reason === 'string' ? { reason: f.reason, detail: str(f.detail) ?? '', spentBy: str(f.spentBy) } : undefined,
     },
   };

@@ -112,23 +112,44 @@ export async function checkReveal(chain: Pick<ChainPort, 'quote' | 'dealer' | 'i
       : `Expired ${formatUtc(validUntil)}. The dealer can release it after ${formatUtc(validUntil + PROOF_GRACE_PERIOD_SECS)}; until then a proof is still accepted.`,
   });
 
-  if (input.offerInputs.length) {
-    const results = await Promise.all(
-      input.offerInputs.map(async (ref) => {
-        const [intentHash, out] = ref.split(':');
-        return chain.inputSpent ? chain.inputSpent(intentHash, Number(out)) : ('unsupported' as const);
-      }),
-    );
-    if (results.some((r) => r === 'unsupported')) {
+  // With the Offer File, each coin's owner is known and the indexer can look it up; with only coin
+  // references (older evidence), it can't.
+  let coins: Array<{ ref: string; intentHash: string; outputNo: number; owner?: string }> = input.offerInputs.map((ref) => {
+    const [intentHash, out] = ref.split(':');
+    return { ref, intentHash, outputNo: Number(out) };
+  });
+  if (input.offerFile) {
+    try {
+      coins = sdk.offerInputsOf(sdk.deserializeOffer(input.offerFile));
+    } catch {
+      // Keep the references; the row below says the coins couldn't be looked up.
+    }
+  }
+  if (coins.length) {
+    const label = 'The offer’s coins were spent elsewhere';
+    const refs = coins.map((c) => c.ref).join(', ');
+    let results: Array<Awaited<ReturnType<NonNullable<ChainPort['inputSpent']>>>> | undefined;
+    let lookupError: string | undefined;
+    try {
+      results = await Promise.all(coins.map((c) => (chain.inputSpent ? chain.inputSpent(c.intentHash, c.outputNo, c.owner) : Promise.resolve('unsupported' as const))));
+    } catch (err) {
+      lookupError = messageOf(err);
+    }
+    if (!results || results.some((r) => r === 'unsupported')) {
       rows.push({
         id: 'inputs',
-        label: 'The offer’s coins were spent elsewhere',
+        label,
         state: 'unknown',
-        detail: `This indexer has no lookup by coin. Check these on an explorer: ${input.offerInputs.join(', ')}${input.failure?.spentBy ? `; the taker reported tx ${input.failure.spentBy}` : ''}.`,
+        detail: `${lookupError ? `Couldn’t look the coins up: ${lookupError}` : 'The file has no Offer File, so the coins’ owner isn’t known and the indexer can’t find them'}. Check these on an explorer: ${refs}${input.failure?.spentBy ? `; the taker reported tx ${input.failure.spentBy}` : ''}.`,
       });
     } else {
-      const spent = results.filter((r) => r !== 'unsupported' && r.spent);
-      rows.push({ id: 'inputs', label: 'The offer’s coins were spent elsewhere', state: spent.length ? 'pass' : 'fail', detail: spent.length ? undefined : 'Every coin behind the offer is still unspent.' });
+      const spent = results.filter((r): r is { spent: boolean; byTx?: string } => r !== 'unsupported' && r.spent);
+      rows.push({
+        id: 'inputs',
+        label,
+        state: spent.length ? 'pass' : 'fail',
+        detail: spent.length ? `Spent in ${spent.map((s) => s.byTx ?? 'an unknown transaction').join(', ')}.` : 'Every coin behind the offer is still unspent.',
+      });
     }
   }
 

@@ -73,7 +73,12 @@ function zkAssets(): Plugin {
           this.emitFile({ type: 'asset', fileName: `${ZK_URL.slice(1)}/${dir}/${name}`, source: fs.readFileSync(path.join(abs, name)) });
         }
       }
-      if (provers === 0) this.warn('no prover keys in contracts/managed/otc-protocol/keys: contract actions will fail. Run pnpm run compact.');
+      if (provers === 0) {
+        const msg = 'no prover keys in contracts/managed/otc-protocol/keys, so every contract action would fail in the browser. Run `pnpm run compact` (prover keys are git-ignored).';
+        // A build that can't prove is not shippable; allow it only on purpose (e.g. a UI-only preview).
+        if (process.env.OTC_ALLOW_MISSING_PROVERS === '1') this.warn(msg);
+        else this.error(`${msg} Set OTC_ALLOW_MISSING_PROVERS=1 to build anyway.`);
+      }
     },
   };
 }

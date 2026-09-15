@@ -7,6 +7,7 @@ import type { AsyncStore, ChainPort, DealerView, LedgerSnapshot } from '../ports
 import { loadDecoder } from './decode';
 import { IndexerError, queryContractStateHex, queryTransaction } from './indexer-http';
 import { followContractEvents } from './events';
+import { coinRef, spentByOwner } from './spent';
 
 export interface LiveChainOptions {
   networkId: string;
@@ -24,6 +25,8 @@ export function createLiveChain(options: LiveChainOptions): ChainPort {
   const knownDealers = new Set<string>();
   let cached: { at: number; value: Promise<LedgerSnapshot> } | undefined;
   let reader: Promise<ChainReader> | undefined;
+  // One replay per owner serves every coin checked together (an offer's inputs share an owner).
+  const spends = new Map<string, { at: number; value: Promise<Map<string, string>> }>();
 
   function snapshot(): Promise<LedgerSnapshot> {
     if (cached && Date.now() - cached.at < ttl) return cached.value;
@@ -73,10 +76,24 @@ export function createLiveChain(options: LiveChainOptions): ChainPort {
       const sdk = await import('@otc/sdk/browser');
       return sdk.queryLedgerParameters(o.indexerHttp);
     },
-    // The indexer API (v4) has no lookup of an unshielded output by intentHash:outputIndex, so a
-    // taker cannot pre-check an offer's inputs. Settle classifies a failure after the fact instead.
-    async inputSpent() {
-      return 'unsupported';
+    // The indexer API (v4) has no lookup of an unshielded output by intentHash:outputIndex, so the coin
+    // is found among its owner's spends (spent.ts).
+    async inputSpent(intentHash, outputNo, owner) {
+      if (!owner) return 'unsupported';
+      const sdk = await import('@otc/sdk/browser');
+      const address = sdk.encodeMidnightBech32m('addr', o.networkId, sdk.hexToBytes(owner.replace(/^0x/, '')));
+      let entry = spends.get(address);
+      if (!entry || Date.now() - entry.at > 5000) {
+        const value = spentByOwner(o.indexerWs, address);
+        const fresh = { at: Date.now(), value };
+        entry = fresh;
+        spends.set(address, fresh);
+        value.catch(() => {
+          if (spends.get(address) === fresh) spends.delete(address);
+        });
+      }
+      const byTx = (await entry.value).get(coinRef(intentHash, outputNo));
+      return byTx ? { spent: true, byTx } : { spent: false };
     },
     useIndexer(http, ws) {
       if (http === o.indexerHttp && ws === o.indexerWs) return;
@@ -84,6 +101,7 @@ export function createLiveChain(options: LiveChainOptions): ChainPort {
       o.indexerWs = ws;
       cached = undefined;
       reader = undefined;
+      spends.clear();
     },
     chainReader(): ChainReader {
       const get = () => {

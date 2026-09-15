@@ -340,7 +340,7 @@ export class TradeEngine {
 
     try {
       const dealerTx = sdk.deserializeOffer(q.offerFile);
-      const inputs = sdk.inputsOf(dealerTx);
+      const inputs = sdk.offerInputsOf(dealerTx);
 
       // 1. Inputs still unspent (where the indexer can tell us).
       stage('inputs', 'active');
@@ -350,7 +350,7 @@ export class TradeEngine {
       }
       const spent = await this.spentInput(inputs);
       if (spent === 'unsupported') {
-        stage('inputs', 'skipped', 'The indexer has no lookup for this; a spent coin shows up as a rejection');
+        stage('inputs', 'skipped', 'Couldn’t check the offer’s coins; a spent coin shows up as a rejection');
       } else if (spent) {
         stage('inputs', 'failed', `Spent in ${truncateHash(spent.byTx ?? '')}`);
         return failWith('inputs-spent', 'The coins behind this offer were already spent, before the quote expired.', { spentBy: spent.byTx });
@@ -438,16 +438,21 @@ export class TradeEngine {
     }
   }
 
-  private async spentInput(inputs: string[]): Promise<{ spent: true; byTx?: string } | false | 'unsupported'> {
+  /** 'unsupported' also when the indexer can't answer: a pre-check that couldn't run never blocks a
+   *  settlement, and never reads as "unspent" either. */
+  private async spentInput(inputs: Array<{ intentHash: string; outputNo: number; owner: string }>): Promise<{ spent: true; byTx?: string } | false | 'unsupported'> {
     const lookup = this.ports.chain.inputSpent;
     if (!lookup || !this.ports.capabilities.inputSpentLookup) return 'unsupported';
-    for (const input of inputs) {
-      const [intentHash, outputNo] = input.split(':');
-      const r = await lookup.call(this.ports.chain, intentHash, Number(outputNo));
-      if (r === 'unsupported') return 'unsupported';
-      if (r.spent) return { spent: true, byTx: r.byTx };
+    try {
+      for (const input of inputs) {
+        const r = await lookup.call(this.ports.chain, input.intentHash, input.outputNo, input.owner);
+        if (r === 'unsupported') return 'unsupported';
+        if (r.spent) return { spent: true, byTx: r.byTx };
+      }
+      return false;
+    } catch {
+      return 'unsupported';
     }
-    return false;
   }
 
   private historyEntry(quoteId: string, outcome: TradeHistoryEntry['outcome'], extra: Partial<TradeHistoryEntry>): TradeHistoryEntry {
