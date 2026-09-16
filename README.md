@@ -1,4 +1,5 @@
 <div align="center">
+<img width="1455" height="830" alt="Screenshot 2026-09-16 at 12 39 33 PM" src="https://github.com/user-attachments/assets/ed73af2f-dd78-4fbe-bf71-69f2da1a264f" />
 
 # Pyron Finance
 
@@ -14,28 +15,6 @@
 [Deployments](#-deployments) · [Architecture](#-architecture) · [Quickstart](#-quickstart) · [Run a Dealer](#-run-a-dealer-node) · [Run a Relay](#-run-a-relay-node) · [Docs](#-documentation)
 
 </div>
-
----
-
-## Contents
-
-- [Why Pyron](#-why-pyron)
-- [How it works](#-how-it-works)
-- [Deployments](#-deployments)
-- [Architecture](#-architecture)
-- [Smart contract](#-smart-contract-otcprotocolcompact)
-- [Cryptography](#-cryptography)
-- [Repository layout](#-repository-layout)
-- [Tech stack](#-tech-stack)
-- [Quickstart](#-quickstart)
-- [Run a Dealer Node](#-run-a-dealer-node)
-- [Run a Relay Node](#-run-a-relay-node)
-- [Web client](#-web-client)
-- [Scripts reference](#-scripts-reference)
-- [Testing](#-testing)
-- [Project status](#-project-status)
-- [Security model and known limits](#-security-model-and-known-limits)
-- [Documentation](#-documentation)
 
 ---
 
