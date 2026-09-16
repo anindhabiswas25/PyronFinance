@@ -5,7 +5,7 @@ description: Deploy and init script patterns for OTCProtocol — Preprod indexer
 
 # Deployment & Environment
 
-Covers deploying `OTCProtocol.compact` and configuring the three runnable components: `apps/web`,
+Covers deploying `OTCProtocol.compact` and configuring the three runnable components: `client/`,
 `packages/relay-node`, `packages/dealer-node`.
 
 > **MidSwap is not present on this machine.** Deploy-script and witness-provider patterns here are

@@ -1,0 +1,51 @@
+/* Design tokens — docs/prompts/CLIENT-ALL-PAGES-PROMPT.md §5. Dark is the default on :root; light
+ * overrides the same names. Tailwind maps its theme onto these variables (tailwind.config.ts), so a
+ * component never names a hex value. Soft fills are the same hue at 12–13 % alpha. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0d1220;
+  --s1: #131a2a;
+  --s2: #1a2338;
+  --line: #27314a;
+  --line2: #1e2740;
+  --tx: #e7eaf3;
+  --mu: #8c95ad;
+  --dim: #626b85;
+  --seal: #e39b62;
+  --ok: #4fc7a4;
+  --bad: #ef6f6c;
+  --warn: #e3be5c;
+
+  --sealbg: rgb(227 155 98 / 0.13);
+  --okbg: rgb(79 199 164 / 0.12);
+  --badbg: rgb(239 111 108 / 0.12);
+  --warnbg: rgb(227 190 92 / 0.12);
+
+  --btn: var(--tx);
+  --btntx: var(--bg);
+  --scrim: rgb(5 8 15 / 0.62);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3f4f7;
+  --s1: #ffffff;
+  --s2: #eceef3;
+  --line: #d4d8e2;
+  --line2: #e2e5ec;
+  --tx: #141a29;
+  --mu: #566078;
+  --dim: #7b849a;
+  --seal: #b0602c;
+  --ok: #1e876a;
+  --bad: #c4423f;
+  --warn: #95700f;
+
+  --sealbg: rgb(176 96 44 / 0.12);
+  --okbg: rgb(30 135 106 / 0.12);
+  --badbg: rgb(196 66 63 / 0.12);
+  --warnbg: rgb(149 112 15 / 0.13);
+
+  --scrim: rgb(20 26 41 / 0.45);
+}

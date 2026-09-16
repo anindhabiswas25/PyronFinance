@@ -13,6 +13,12 @@ import type { DeployedOTCContract } from './types.js';
 
 const FieldVector4 = new CompactTypeVector(4, CompactTypeField);
 
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export interface SealedQuote {
   terms: QuoteTerms;
   encodedTerms: bigint[];
@@ -89,7 +95,7 @@ export function verifyReveal(
     return { valid: false, reason: 'signature invalid under dealer quote key' };
   }
   const recomputed = persistentCommit(FieldVector4, reveal.encodedTerms, reveal.nonce);
-  if (Buffer.compare(Buffer.from(recomputed), Buffer.from(onChainCommitment)) !== 0) {
+  if (!bytesEqual(recomputed, onChainCommitment)) {
     return { valid: false, reason: 'reveal does not open the on-chain commitment' };
   }
   if (onChainNotional !== undefined && reveal.encodedTerms[3] !== onChainNotional) {

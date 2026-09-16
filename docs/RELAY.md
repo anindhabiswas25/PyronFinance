@@ -3,7 +3,7 @@
 ## What the relay is, and what it is not
 
 The relay is a **protocol-level message format that anyone can run a node for.** It is not this
-project's hosted backend, and `apps/web` must never depend on a relay that only we operate.
+project's hosted backend, and the web client (`client/`) must never depend on a relay that only we operate.
 
 This mirrors Midnight's own design intent for Offer Files: proved locally, serialized, and postable
 anywhere — a Discord channel, a Telegram group, a shared namespace. The relay is the well-specified
@@ -68,6 +68,14 @@ GET  http://<host>:<port>/rfqs?pair=&since=   -> recent RFQs (for clients that p
 POST http://<host>:<port>/mailbox/:takerEncPk -> store one opaque reveal blob (§4); 202 on accept
 GET  http://<host>:<port>/mailbox/:takerEncPk -> fetch and clear pending blobs for a recipient (§4)
 ```
+
+**HTTP endpoints MUST allow cross-origin reads so browser takers can use them.** A taker's page is
+served from an origin the relay does not know, and a browser refuses to hand it a response without
+these headers. Every HTTP response (errors included) MUST carry
+`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST, OPTIONS` and
+`Access-Control-Allow-Headers: content-type`, and an `OPTIONS` request to `/health`, `/rfqs` or
+`/mailbox/:takerEncPk` MUST be answered `204` with the same headers. The wildcard is safe: a relay
+holds only public gossip and ciphertext it cannot read, and uses no cookies or credentials.
 
 The mailbox routes only exist when a node runs with `RELAY_ENABLE_MAILBOX=true` (§7) — a node with
 it disabled 404s them. They are deliberately HTTP, not WebSocket gossip: reveal messages must never

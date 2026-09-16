@@ -14,7 +14,13 @@
 // re-derived from the chain — every unspent coin comes back AVAILABLE — while shielded and DUST state
 // still restore quickly. No coin is invented: a coin that was really spent stays spent.
 //
-// Env: MN_WALLET_SEED (whose snapshot), RESET_CONFIRM=1 (required).
+// RESET_PART=dust does the same for the DUST sub-wallet. Needed when a restored DUST state no longer
+// lines up with the chain and every sync update fails with "values inserted non-linearly into dust
+// commitment tree; expected to insert index N, but received M" — seen 2026-09-14 on the main Preprod
+// wallet, where the sync retried silently for 48 minutes. DUST then re-syncs from genesis (slow).
+//
+// Env: MN_WALLET_SEED (whose snapshot), RESET_CONFIRM=1 (required), RESET_PART (unshielded | dust |
+// shielded; default unshielded).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,7 +31,9 @@ import { walletStateDir } from '../packages/sdk/src/wallet-state.js';
 
 const chain = loadChainConfig();
 initNetworkId(chain.network);
-if (process.env.RESET_CONFIRM !== '1') throw new Error('set RESET_CONFIRM=1 — this discards the unshielded part of the wallet snapshot');
+const part = (process.env.RESET_PART ?? 'unshielded') as 'unshielded' | 'dust' | 'shielded';
+if (!['unshielded', 'dust', 'shielded'].includes(part)) throw new Error(`RESET_PART must be unshielded, dust or shielded, not "${part}"`);
+if (process.env.RESET_CONFIRM !== '1') throw new Error(`set RESET_CONFIRM=1 — this discards the ${part} part of the wallet snapshot`);
 
 // Only to learn the address the snapshot is keyed by; sync is not started beyond construction.
 const probe = await createHeadlessWallet(requireWalletSeed(), chain, { persistState: false });
@@ -35,21 +43,22 @@ if (!fs.existsSync(file)) {
   console.log(`no snapshot at ${file}; nothing to reset`);
   process.exit(0);
 }
-const backup = `${file}.before-unshielded-reset-${Date.now()}`;
+const backup = `${file}.before-${part}-reset-${Date.now()}`;
 fs.copyFileSync(file, backup);
 fs.chmodSync(backup, 0o600);
-const snap = JSON.parse(fs.readFileSync(file, 'utf-8')) as { unshielded: string };
+const snap = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<'unshielded' | 'dust' | 'shielded', string>;
 const pending = (() => {
+  if (part !== 'unshielded') return 'n/a';
   try {
     return (JSON.parse(snap.unshielded) as { state: { pendingUtxos: unknown[] } }).state.pendingUtxos.length;
   } catch {
     return 'unknown';
   }
 })();
-snap.unshielded = 'reset: unshielded state discarded to release coins stuck pending (scripts/reset-unshielded-state.ts)';
+snap[part] = `reset: ${part} state discarded (scripts/reset-unshielded-state.ts)`;
 const tmp = `${file}.tmp`;
 fs.writeFileSync(tmp, JSON.stringify(snap), { mode: 0o600 });
 fs.renameSync(tmp, file);
 console.log(`backed up ${file} -> ${backup}`);
-console.log(`discarded unshielded state (${pending} pending coin(s)); the next start re-syncs unshielded coins from the chain`);
+console.log(`discarded ${part} state (pending coins: ${pending}); the next start re-syncs ${part} from the chain`);
 process.exit(0);

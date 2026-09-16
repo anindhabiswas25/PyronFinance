@@ -20,8 +20,8 @@
 // Envelopes are kept by their content-addressed id, not by quoteId, so a tampered variant of a
 // genuine quote_ref can never shadow the genuine one by arriving first.
 
-import { WebSocket } from 'ws';
 import type { JubjubPoint } from '@midnight-ntwrk/compact-runtime';
+import { hexToBytes as aeadHexToBytes, bytesToHex as aeadBytesToHex } from './aead.js';
 import { deriveQuoteId } from './domain.js';
 import { notionalOf } from './terms.js';
 import { NOTIONAL_CAP_K } from './bonding.js';
@@ -126,12 +126,8 @@ export interface VerifiedQuote {
 
 export type QuoteRefVerdict = { ok: true; quote: VerifiedQuote } | { ok: false; reason: string };
 
-function hexToBytes(hex: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(hex, 'hex'));
-}
-function bytesToHex(b: Uint8Array): string {
-  return Buffer.from(b).toString('hex');
-}
+const hexToBytes = aeadHexToBytes;
+const bytesToHex = aeadBytesToHex;
 
 /** Verifies one `quote_ref` against the chain for the RFQ the taker actually sent. RELAY.md §3.2.
  *  Never throws on a bad reference — a bad reference is ordinary input from an untrusted relay —
@@ -213,6 +209,22 @@ export async function verifyQuoteRef(
 // Aggregating across relays
 // ---------------------------------------------------------------------------------------------
 
+/** The minimal WebSocket surface `RelayAggregator` needs — satisfied by both a browser's native
+ *  `WebSocket` and the `ws` package's client (both implement the same W3C event-listener API),
+ *  so this file never imports either directly. `browser.ts` re-exports this type so `client/`
+ *  can pass `(url) => new WebSocket(url)`; Node scripts pass `nodeSocketFactory` from
+ *  `relay-client-node.ts` instead. */
+export interface WebSocketLike {
+  addEventListener(type: 'open', listener: () => void): void;
+  addEventListener(type: 'message', listener: (ev: { data: unknown }) => void): void;
+  addEventListener(type: 'close', listener: () => void): void;
+  addEventListener(type: 'error', listener: (ev?: unknown) => void): void;
+  send(data: string): void;
+  close(): void;
+}
+
+export type SocketFactory = (url: string) => WebSocketLike;
+
 /** RELAY.md §6: a taker MUST connect to at least two relays. */
 export const MIN_RELAYS = 2;
 
@@ -253,12 +265,16 @@ export interface AggregationResult {
 export interface RelayAggregatorOptions {
   relays: string[];
   chain: ChainReader;
+  /** Constructs one relay connection. Required — this file never assumes a WebSocket
+   *  implementation. `client/` passes the browser global; Node code passes
+   *  `nodeSocketFactory` from `relay-client-node.ts`. */
+  socketFactory: SocketFactory;
   minRelays?: number;
   connectTimeoutMs?: number;
 }
 
 export class RelayAggregator {
-  private readonly sockets = new Map<string, WebSocket>();
+  private readonly sockets = new Map<string, WebSocketLike>();
   private readonly connected = new Set<string>();
   /** envelope id -> the envelope and every relay it came through. */
   private readonly refs = new Map<string, { envelope: Envelope<QuoteRefBody>; relays: Set<string> }>();
@@ -277,20 +293,20 @@ export class RelayAggregator {
       this.options.relays.map(
         (url) =>
           new Promise<void>((resolve) => {
-            const ws = new WebSocket(url);
+            const ws = this.options.socketFactory(url);
             this.sockets.set(url, ws);
             const timer = setTimeout(() => {
-              ws.terminate();
+              ws.close();
               resolve();
             }, timeoutMs);
-            ws.on('open', () => {
+            ws.addEventListener('open', () => {
               clearTimeout(timer);
               this.connected.add(url);
               resolve();
             });
-            ws.on('message', (data) => this.handleFrame(url, data.toString()));
-            ws.on('close', () => this.connected.delete(url));
-            ws.on('error', () => {
+            ws.addEventListener('message', (ev) => this.handleFrame(url, String(ev.data)));
+            ws.addEventListener('close', () => this.connected.delete(url));
+            ws.addEventListener('error', () => {
               clearTimeout(timer);
               this.connected.delete(url);
               resolve();
@@ -375,7 +391,7 @@ export class RelayAggregator {
   }
 
   async close(): Promise<void> {
-    for (const ws of this.sockets.values()) ws.terminate();
+    for (const ws of this.sockets.values()) ws.close();
     this.sockets.clear();
     this.connected.clear();
   }

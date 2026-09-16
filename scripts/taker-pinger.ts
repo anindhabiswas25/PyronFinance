@@ -28,6 +28,7 @@ import { initNetworkId, createHeadlessWallet } from '../packages/sdk/src/wallet.
 import { buildOTCProviders, OTC_PRIVATE_STATE_ID } from '../packages/sdk/src/providers.js';
 import { compiledOTCContract } from '../packages/sdk/src/contract.js';
 import { RelayAggregator, indexerChainReader } from '../packages/sdk/src/relay-client.js';
+import { nodeSocketFactory } from '../packages/sdk/src/relay-client-node.js';
 import { decryptReveal, generateEncKeypair, plaintextToTerms, type RevealMessage } from '../packages/sdk/src/reveal-channel.js';
 import { verifyReveal } from '../packages/sdk/src/quotes.js';
 import { counterAmountFor, encodeTerms } from '../packages/sdk/src/terms.js';
@@ -72,7 +73,11 @@ const contract = await findDeployedContract(providers, {
   initialPrivateState: { dealerSecretKey: null, takerAddress: new Uint8Array(Buffer.from(wallet.unshieldedAddressHex, 'hex')) },
 });
 const reader = indexerChainReader(chain.indexerHttp, contractAddress, 0);
-const aggregator = new RelayAggregator({ relays: RELAYS, chain: indexerChainReader(chain.indexerHttp, contractAddress) });
+const aggregator = new RelayAggregator({
+  relays: RELAYS,
+  chain: indexerChainReader(chain.indexerHttp, contractAddress),
+  socketFactory: nodeSocketFactory,
+});
 const status = await aggregator.connect();
 log(`taker ${wallet.unshieldedAddress}; relays ${status.map((s) => `${s.url}=${s.connected}`).join(' ')}; pair ${PAIR}`);
 

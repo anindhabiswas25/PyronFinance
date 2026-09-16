@@ -49,7 +49,7 @@ These are not omissions or future work. They are design exclusions. Building any
 | Actor | Runs | Holds | Identified on-chain by |
 |---|---|---|---|
 | **Dealer** | `packages/dealer-node` (or a manual client) | A posted bond; a dealer signing key | A dealer commitment derived from their secret key. Never a real-world identity. |
-| **Taker** | The web frontend (`apps/web`) | Funds to trade; optionally a challenge bond | Nothing persistent. Takers are ephemeral by default. |
+| **Taker** | The web client (`client/`) | Funds to trade; optionally a challenge bond | Nothing persistent. Takers are ephemeral by default. |
 | **Relay Node Operator** | `packages/relay-node` | Nothing at stake | Not on-chain at all. Relays hold no funds and have no privileged role. |
 | **Fraud Prover / Watchdog** | Any client with the SDK | Nothing at stake | Not on-chain. Anyone can be one. Paid out of the slashed bond. |
 

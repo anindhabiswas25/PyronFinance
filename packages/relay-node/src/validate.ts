@@ -55,7 +55,8 @@ function isStringArray(v: unknown): v is string[] {
  *  from the transport layer since only the transport knows the wire byte length before JSON.parse
  *  — see server.ts). */
 export function parseAndValidate(raw: string, nowSecs: number = Math.floor(Date.now() / 1000)): ValidationResult {
-  if (Buffer.byteLength(raw, 'utf8') > MAX_MSG_BYTES) {
+  // TextEncoder, not Buffer.byteLength: browser takers run this on every incoming frame.
+  if (new TextEncoder().encode(raw).length > MAX_MSG_BYTES) {
     return { ok: false, reason: 'frame exceeds MAX_MSG_BYTES', penalize: true };
   }
 

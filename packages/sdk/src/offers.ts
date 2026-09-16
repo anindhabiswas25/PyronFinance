@@ -48,10 +48,9 @@
 //     `Transaction.imbalances` is not). Shielded and unshielded balances of the SAME token are
 //     therefore distinct entries. `balanceKey()` below flattens them to stable strings.
 
-import { inspect } from 'node:util';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import type { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
+import { bytesToBase64, base64ToBytes } from './aead.js';
 
 /** Offer Files expire in roughly one hour — zswap-offer-files SKILL.md §4. This is the single most
  *  operationally significant constraint on the protocol, and it is why packages/dealer-node exists
@@ -124,6 +123,38 @@ export function inputsOf(tx: ledger.Transaction<ledger.Signaturish, ledger.Proof
   for (const [, intent] of tx.intents ?? []) {
     for (const offer of [intent.guaranteedUnshieldedOffer, intent.fallibleUnshieldedOffer]) {
       for (const input of offer?.inputs ?? []) out.push(`${input.intentHash}:${input.outputNo}`);
+    }
+  }
+  return out;
+}
+
+export interface OfferInput {
+  /** "intentHash:outputNo", as `inputsOf` returns it. */
+  ref: string;
+  intentHash: string;
+  outputNo: number;
+  /** The owning address as 64 hex (a UserAddress), derived from the input's signing key. */
+  owner: string;
+  type: string;
+  value: bigint;
+}
+
+/** `inputsOf`, with each input's owner address: what an indexer lookup of the coin needs, since the
+ *  v4 API finds unshielded activity only by owner address. */
+export function offerInputsOf(tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>): OfferInput[] {
+  const out: OfferInput[] = [];
+  for (const [, intent] of tx.intents ?? []) {
+    for (const offer of [intent.guaranteedUnshieldedOffer, intent.fallibleUnshieldedOffer]) {
+      for (const input of offer?.inputs ?? []) {
+        out.push({
+          ref: `${input.intentHash}:${input.outputNo}`,
+          intentHash: String(input.intentHash),
+          outputNo: input.outputNo,
+          owner: String(ledger.addressFromKey(input.owner)),
+          type: String(input.type),
+          value: input.value,
+        });
+      }
     }
   }
   return out;
@@ -363,9 +394,10 @@ export async function buildAndProveOffer(params: BuildOfferParams): Promise<Prov
   }
 }
 
-/** Base64 wire form for `RevealPlaintext.offerFile` (reveal-channel.ts). */
+/** Base64 wire form for `RevealPlaintext.offerFile` (reveal-channel.ts). Browser-safe (Phase 0
+ *  task 0.1/0.2 — client/'s settlement probe deserializes an Offer File in-browser). */
 export function serializeOffer(tx: ledger.FinalizedTransaction): string {
-  return Buffer.from(tx.serialize()).toString('base64');
+  return bytesToBase64(tx.serialize());
 }
 
 /** Inverse of `serializeOffer`.
@@ -375,7 +407,7 @@ export function serializeOffer(tx: ledger.FinalizedTransaction): string {
  *  a WASM `Invalid signature value.` thrown from inside deserialize, which reads like a corrupt
  *  payload rather than a wrong marker. */
 export function deserializeOffer(offerFileBase64: string): ledger.FinalizedTransaction {
-  const raw = Buffer.from(offerFileBase64, 'base64');
+  const raw = base64ToBytes(offerFileBase64);
   if (raw.length === 0) throw new OfferError('offer file is empty');
   try {
     return ledger.Transaction.deserialize(
@@ -462,6 +494,44 @@ export function checkTimeToDismiss(
   } catch (err) {
     return { ok: false, reason: (err as Error).message ?? String(err) };
   }
+}
+
+/** The node's time-to-dismiss verdict plus the numbers behind it, for display ("19.6 of 20.7 ms").
+ *
+ *  `ok`, `fee` and `reason` come from the ledger's own check (`checkTimeToDismiss`) and are
+ *  authoritative. `computePs` is the modelled single-threaded validation time from
+ *  `tx.cost(params, false)`. `allowancePs` uses the limits observed on Preview and Preprod (2 µs per
+ *  byte, 15 ms floor; docs/ROADMAP.md S5) and is informational: if the chain changes its limits, the
+ *  verdict still follows the ledger while this figure goes stale. */
+export interface DismissReport {
+  ok: boolean;
+  fee?: bigint;
+  reason?: string;
+  sizeBytes: number;
+  computePs: bigint;
+  readPs: bigint;
+  allowancePs: bigint;
+}
+
+export function dismissReport(
+  tx: ledger.Transaction<ledger.Signaturish, ledger.Proofish, ledger.Bindingish>,
+  params: ledger.LedgerParameters,
+): DismissReport {
+  const sizeBytes = tx.serialize().length;
+  let computePs = 0n;
+  let readPs = 0n;
+  try {
+    const c = tx.cost(params, false);
+    computePs = c.computeTime;
+    readPs = c.readTime;
+  } catch {
+    // Some transactions cannot be costed without enforcement; the verdict below still stands.
+  }
+  const allowancePs = BigInt(Math.max(sizeBytes * 2_000_000, 15_000_000_000));
+  const check = checkTimeToDismiss(tx, params);
+  return check.ok
+    ? { ok: true, fee: check.fee, sizeBytes, computePs, readPs, allowancePs }
+    : { ok: false, reason: check.reason, sizeBytes, computePs, readPs, allowancePs };
 }
 
 /** Settles a dealer's Offer File: supplies the complementary half from this wallet, asserts the
@@ -587,12 +657,32 @@ export async function settleFromOffer(params: SettleParams): Promise<SettlementR
   return { txId, mergedBalanceVector, fee, dustSurplus, ledgerDefaultFee };
 }
 
+/** Browser-safe stand-in for `node:util`'s `inspect` (Phase 0 task 0.1 — this module must not
+ *  import `node:util`). Walks nested own-properties to a bounded depth so a "Custom error: N" code
+ *  buried in a facade error's non-standard fields is still findable by regex, same as `inspect`
+ *  produced. Not meant to be pretty, only greppable. */
+function deepStringifyForErrorScan(value: unknown, depth = 12, seen = new Set<unknown>()): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== 'object' && typeof value !== 'function') return String(value);
+  if (seen.has(value) || depth <= 0) return '[Circular or max depth]';
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => deepStringifyForErrorScan(v, depth - 1, seen)).join(', ')}]`;
+  }
+  const keys = value instanceof Error ? Object.getOwnPropertyNames(value).filter((k) => k !== 'stack') : Object.keys(value as object);
+  try {
+    return `{${keys.map((k) => `${k}: ${deepStringifyForErrorScan((value as Record<string, unknown>)[k], depth - 1, seen)}`).join(', ')}}`;
+  } catch {
+    return String(value);
+  }
+}
+
 /** The node's `Custom error: N` code, dug out of a submission failure. The facade wraps the node's
  *  reason in an Effect failure whose top-level message is only "Transaction submission error"; the code
  *  sits in nested fields that are neither `.message` nor a plain `.cause` chain (first seen in
  *  probe-fee-calc; a forced A2 submission on 2026-09-14 lost it the same way). */
 export function nodeErrorCode(err: unknown): number | undefined {
-  const m = inspect(err, { depth: 12, maxStringLength: 20_000 }).match(/Custom error:?\s*(\d+)/);
+  const m = deepStringifyForErrorScan(err).match(/Custom error:?\s*(\d+)/);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -648,6 +738,13 @@ function ledgerFeeWithMarginOf(tx: ledger.FinalizedTransaction, margin: number):
 /** The address a swap half's own outputs are paid to. */
 async function receiverAddressFor(wallet: OfferWallet, kind: TokenKind): Promise<unknown> {
   if (kind === 'unshielded') {
+    // UnshieldedAddress's constructor is typed to Buffer specifically (not Uint8Array) — this
+    // path is Node-only (OfferWallet always wraps the Node headless wallet), so Buffer is fine.
+    // Imported lazily through a variable specifier: address-format pulls in @subsquid/scale-codec,
+    // which requires Node's `assert`. A static (or literal dynamic) import lets Vite bundle it into
+    // client/ through browser.ts, where the dev-mode `assert` stub throws on first property access.
+    const addressFormat: string = '@midnight-ntwrk/wallet-sdk-address-format';
+    const { UnshieldedAddress } = (await import(/* @vite-ignore */ addressFormat)) as typeof import('@midnight-ntwrk/wallet-sdk-address-format');
     return new UnshieldedAddress(Buffer.from(wallet.unshieldedAddressHex, 'hex'));
   }
   const state = await wallet.facade.waitForSyncedState();
