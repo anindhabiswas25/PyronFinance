@@ -1,6 +1,9 @@
 node_modules/
 dist/
 contracts/managed/*/keys/*.prover
+# The web client bundles these into dist/ (vite.config.ts), and hosted builds (Vercel) have no
+# Compact compiler to regenerate them, so the protocol contract's prover keys are committed.
+!contracts/managed/otc-protocol/keys/*.prover
 .env
 .env.local
 secrets/
