@@ -22,7 +22,7 @@ export type CircuitOutcome =
 export async function runCircuit<K extends CircuitName>(
   ports: Pick<DataPorts, 'circuits' | 'source'>,
   call: CircuitCall<K>,
-  o: { title: string; kind: TrayKind; href?: string; landed?: () => Promise<boolean> },
+  o: { title: string; kind: TrayKind; href?: string; ref?: string; landed?: () => Promise<boolean> },
 ): Promise<CircuitOutcome> {
   const tray = useTray.getState();
   const trayId = tray.start({
@@ -30,6 +30,7 @@ export async function runCircuit<K extends CircuitName>(
     title: o.title,
     source: ports.source,
     href: o.href,
+    ref: o.ref,
     stages: CIRCUIT_STAGES.map((s) => ({ ...s, status: 'pending' as const })),
   });
   try {

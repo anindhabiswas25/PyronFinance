@@ -8,6 +8,7 @@ import { anyModalOpen } from '../../design/primitives';
 import { useData } from '../../data/DataProvider';
 import { useRfq } from '../../state/rfq';
 import { useOverlays } from '../../state/overlays';
+import { useWalletStore } from '../../state/wallet';
 import {
   bondPercentTenths,
   bondTone,
@@ -53,6 +54,8 @@ export function CompareScreen({ engine }: { engine: TradeEngine }) {
   const state = useRfq((s) => s.state);
   const dispatch = useRfq((s) => s.dispatch);
   const showFor = useOverlays((s) => s.showFor);
+  const show = useOverlays((s) => s.show);
+  const walletReady = useWalletStore((s) => s.status === 'connected');
   const now = useNow(1000);
   const rfq = state.rfq!;
   const pair = network.pairs.find((p) => p.code === rfq.pair) ?? network.pairs[0];
@@ -97,11 +100,17 @@ export function CompareScreen({ engine }: { engine: TradeEngine }) {
     else select(q);
   };
 
+  // Settling needs a wallet: without one, connect first rather than fail inside the wallet stage.
+  const settle = (quoteId: string) => {
+    if (walletReady) void engine.settle(quoteId);
+    else show('connect');
+  };
+
   // Keyboard: 1–9 select the n-th valid row, Enter settles the selection.
   const validIds = valid.map((q) => q.quoteId).join(',');
   const settleRef = useRef<() => void>(() => undefined);
   settleRef.current = () => {
-    if (selected && isValidAt(selected, now)) void engine.settle(selected.quoteId);
+    if (selected && isValidAt(selected, now)) settle(selected.quoteId);
   };
   useEffect(() => {
     const ids = validIds ? validIds.split(',') : [];
@@ -426,8 +435,8 @@ export function CompareScreen({ engine }: { engine: TradeEngine }) {
                 ))}
               </ul>
               {capabilities.settleInBrowser === 'unverified' && <p className="text-12.5 text-warn">Browser settlement is still being verified on Preprod.</p>}
-              <Button variant="primary" wide disabled={!isValidAt(selected, now)} onClick={() => void engine.settle(selected.quoteId)}>
-                Settle · about 20 s <Kbd className="border-btntx/25 text-btntx">↵</Kbd>
+              <Button variant="primary" wide disabled={!isValidAt(selected, now)} onClick={() => settle(selected.quoteId)}>
+                {walletReady ? 'Settle · about 20 s' : 'Connect a wallet to settle'} <Kbd className="border-btntx/25 text-btntx">↵</Kbd>
               </Button>
               {best && best.quoteId !== selected.quoteId && (
                 <Button size="sm" variant="ghost" wide onClick={() => dispatch({ type: 'select', quoteId: best.quoteId })}>

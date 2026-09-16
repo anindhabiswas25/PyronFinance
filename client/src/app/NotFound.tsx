@@ -19,7 +19,7 @@ export function NotFound() {
         <ButtonLink to="/trade" variant="primary">
           Request quotes
         </ButtonLink>
-        <ButtonLink to="/">Go to the venue</ButtonLink>
+        <ButtonLink to="/venue">Go to the venue</ButtonLink>
       </div>
     </section>
   );

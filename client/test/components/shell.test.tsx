@@ -9,7 +9,8 @@ import { renderApp as renderAt } from '../render';
 
 describe('app shell', () => {
   it.each([
-    ['/', 'Quotes a dealer can’t take back.'],
+    ['/', 'Private OTC on Midnight'],
+    ['/venue', 'Quotes a dealer can’t take back.'],
     ['/activity', 'Activity'],
     ['/dealers', 'Dealers'],
     ['/dealers/abcd', 'Dealer'],
@@ -46,7 +47,7 @@ describe('app shell', () => {
   });
 
   it('cycles the theme and stamps data-theme', async () => {
-    renderAt('/');
+    renderAt('/venue');
     const button = await screen.findAllByRole('button', { name: /^Theme:/ });
     await userEvent.click(button[0]);
     expect(document.documentElement.dataset.theme).toBe('light');

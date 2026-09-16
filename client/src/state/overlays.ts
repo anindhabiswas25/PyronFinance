@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type OverlayName = 'connect' | 'readiness' | 'tray' | 'relays' | 'fraud-proof' | 'disclosure';
+export type OverlayName = 'connect' | 'readiness' | 'notifications' | 'relays' | 'fraud-proof' | 'disclosure';
 
 export interface ReadinessParams {
   /** The taker's side of the base asset. */

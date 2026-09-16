@@ -11,7 +11,6 @@ import { counterLabel, takerReceivesCounter } from '../../lib/side';
 import { formatUnits, truncateHash } from '../../lib/format';
 import { formatDuration } from '../../lib/time';
 import { nodeErrorMeaning } from '../../lib/node-errors';
-import { downloadJson, evidenceFileName, type FailureEvidence } from '../../lib/evidence';
 import { toast } from '../../design/primitives';
 import { useCompareQuotes } from './useCompare';
 import type { TradeEngine } from './engine';
@@ -83,36 +82,7 @@ export function SettleScreen({ engine }: { engine: TradeEngine }) {
   );
 
   const saveEvidence = () => {
-    if (!state.failure) return;
-    const evidence: FailureEvidence = {
-      kind: 'pyron-failure-evidence',
-      v: 1,
-      network: network.id,
-      contract: network.contractAddress,
-      quoteId: q.quoteId,
-      dealerCmt: q.dealerCmt,
-      rfqId: rfq.rfqId,
-      revealMessage: q.message,
-      dealerEncPk: q.dealerEncPk,
-      terms: q.terms,
-      nonce: q.nonce,
-      signature: q.signature,
-      offerFile: q.offerFile,
-      offerInputs: [],
-      validUntil: q.validUntil,
-      failure: { reason: state.failure.reason, detail: state.failure.detail, code: state.failure.code, spentBy: state.failure.spentBy, at: state.failure.at },
-      savedAt: now,
-      sampleData: ports.source === 'fixture',
-    };
-    try {
-      void import('@otc/sdk/browser').then((sdk) => {
-        if (q.offerFile) evidence.offerInputs = sdk.inputsOf(sdk.deserializeOffer(q.offerFile));
-        downloadJson(evidenceFileName(evidence), evidence);
-        toast({ tone: 'ok', title: 'Evidence saved', body: 'The file holds the signed reveal and the Offer File. Anyone can check it on Verify.' });
-      });
-    } catch {
-      downloadJson(evidenceFileName(evidence), evidence);
-    }
+    if (engine.saveEvidence()) toast({ tone: 'ok', title: 'Evidence saved', body: 'The file holds the signed reveal and the Offer File. Anyone can check it on Verify.' });
   };
 
   const takeNext = () => {

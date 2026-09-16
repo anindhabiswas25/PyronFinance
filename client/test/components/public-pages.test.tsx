@@ -10,7 +10,7 @@ const ds = buildDataset(1_789_450_000);
 
 describe('Venue', () => {
   it('shows the fixture totals from the ledger, and no price', async () => {
-    renderAt('/');
+    renderAt('/venue');
     const totals = protocolTotals(ds.ledger);
     const tile = await screen.findByText('Resolved quotes');
     expect(await within(tile.parentElement!).findByText(formatCount(totals.resolvedQuotes))).toBeTruthy();

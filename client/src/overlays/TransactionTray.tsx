@@ -1,16 +1,18 @@
 import { Link } from 'react-router-dom';
 import { Check, X } from 'lucide-react';
-import { Button, Chip, Drawer, EmptyState, Hash, Kbd } from '../design/primitives';
+import { Chip, Hash } from '../design/primitives';
 import { cx } from '../design/cx';
-import { useClock, useNow } from '../design/clock';
 import { useTray, type TrayEntry } from '../state/tray';
 import { formatDuration } from '../lib/time';
+
+// One on-chain action with its real stages. Listed in the notification centre, which replaced the
+// separate transaction tray drawer (2026-09-16).
 
 function elapsed(entry: TrayEntry, nowMs: number) {
   return formatDuration(Math.max(0, Math.round(((entry.endedAt ?? nowMs) - entry.startedAt) / 1000)));
 }
 
-function EntryCard({ entry, nowMs, onNavigate }: { entry: TrayEntry; nowMs: number; onNavigate(): void }) {
+export function TrayEntryCard({ entry, nowMs, onNavigate }: { entry: TrayEntry; nowMs: number; onNavigate(): void }) {
   const { dismiss } = useTray();
   const active = entry.stages.find((s) => s.status === 'active' || s.status === 'failed');
   return (
@@ -74,45 +76,5 @@ function EntryCard({ entry, nowMs, onNavigate }: { entry: TrayEntry; nowMs: numb
         )}
       </div>
     </li>
-  );
-}
-
-export function TransactionTrayDrawer({ open, onClose }: { open: boolean; onClose(): void }) {
-  const { entries, clearFinished } = useTray();
-  const clock = useClock();
-  useNow(1000);
-  const nowMs = clock.nowMs();
-  const finished = entries.some((e) => e.status !== 'running');
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="In progress"
-      footer={
-        <div className="flex items-center justify-between gap-3 text-12.5 text-mu">
-          <span>
-            Press <Kbd>T</Kbd> anywhere to open
-          </span>
-          {finished && (
-            <Button size="sm" variant="ghost" onClick={clearFinished}>
-              Clear finished
-            </Button>
-          )}
-        </div>
-      }
-    >
-      {entries.length === 0 ? (
-        <EmptyState compact title="Nothing in progress">
-          Settlements, fraud proofs, notes and bond actions appear here with their real stages, and stay here if you change pages or reload.
-        </EmptyState>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {entries.map((e) => (
-            <EntryCard key={e.id} entry={e} nowMs={e.source === 'live' ? Date.now() : nowMs} onNavigate={onClose} />
-          ))}
-        </ul>
-      )}
-    </Drawer>
   );
 }

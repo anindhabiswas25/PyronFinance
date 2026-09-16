@@ -170,6 +170,22 @@ export function isTerminal(phase: RfqPhase): boolean {
   return TERMINAL.has(phase);
 }
 
+const REACHED: Record<RfqPhase, TradeView[]> = {
+  idle: ['request'],
+  requesting: ['request'],
+  sealed: ['sealed'],
+  revealed: ['sealed', 'compare'],
+  settling: ['sealed', 'compare', 'settle'],
+  settled: ['sealed', 'compare', 'settle'],
+  failed: ['sealed', 'compare', 'settle'],
+  cancelled: ['request'],
+};
+
+/** Screens a phase has reached. Back steps back without losing data; forward only to these. */
+export function reachedViews(phase: RfqPhase): readonly TradeView[] {
+  return REACHED[phase];
+}
+
 const STAGES: SettleStageId[] = ['inputs', 'balance', 'check', 'submit', 'confirm'];
 
 function withLog(s: RfqState, text: string, at: number, tone?: LogLine['tone']): RfqState {
@@ -278,20 +294,8 @@ export function rfqReducer(s: RfqState, a: RfqAction): RfqState {
       if (s.phase !== 'sealed' && s.phase !== 'revealed') return s;
       return { ...s, phase: 'revealed', view: 'compare' };
 
-    case 'view': {
-      // Back steps back without losing data; forward only to screens the phase has reached.
-      const reached: Record<RfqPhase, TradeView[]> = {
-        idle: ['request'],
-        requesting: ['request'],
-        sealed: ['sealed'],
-        revealed: ['sealed', 'compare'],
-        settling: ['sealed', 'compare', 'settle'],
-        settled: ['sealed', 'compare', 'settle'],
-        failed: ['sealed', 'compare', 'settle'],
-        cancelled: ['request'],
-      };
-      return reached[s.phase].includes(a.view) ? { ...s, view: a.view } : s;
-    }
+    case 'view':
+      return reachedViews(s.phase).includes(a.view) ? { ...s, view: a.view } : s;
 
     case 'select':
       if (s.phase !== 'revealed' && s.phase !== 'sealed') return s;

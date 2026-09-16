@@ -1,11 +1,14 @@
 import { lazy } from 'react';
-import { createBrowserRouter, type RouteObject } from 'react-router-dom';
+import { Outlet, ScrollRestoration, createBrowserRouter, type RouteObject } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RouteError } from './ErrorBoundary';
 import { NotFound } from './NotFound';
 
-// Every page is its own chunk. Public routes must never pull in @otc/sdk/browser or WASM; /trade,
-// /verify and /desk load them lazily inside the page.
+// Every page is its own chunk. The landing page and public routes must never pull in
+// @otc/sdk/browser or WASM; /trade, /verify and /desk load them lazily inside the page.
+//
+// The landing page (/) sits outside the app shell: a marketing page with its own scale and no top
+// bar. Its "Launch App" opens the trading terminal at /trade. Every other route is the app.
 
 const VenuePage = lazy(() => import('../features/venue/VenuePage'));
 const ActivityPage = lazy(() => import('../features/activity/ActivityPage'));
@@ -37,24 +40,46 @@ const devRoutes: RouteObject[] = import.meta.env.DEV
     ]
   : [];
 
+function RootLayout() {
+  return (
+    <>
+      <Outlet />
+      <ScrollRestoration />
+    </>
+  );
+}
+
 export const routes: RouteObject[] = [
   {
     path: '/',
-    element: <AppShell />,
+    element: <RootLayout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <VenuePage /> },
-      { path: 'activity', element: <ActivityPage /> },
-      { path: 'dealers', element: <DealersPage /> },
-      { path: 'dealers/:dealerCmt', element: <DealerProfilePage /> },
-      { path: 'trade', element: <TradePage /> },
-      { path: 'trade/:quoteId', element: <ReceiptPage /> },
-      { path: 'me', element: <PortfolioPage /> },
-      { path: 'deal', element: <DealPage /> },
-      { path: 'desk', element: <DeskPage /> },
-      { path: 'verify', element: <VerifyPage /> },
-      ...devRoutes,
-      { path: '*', element: <NotFound /> },
+      {
+        index: true,
+        lazy: async () => {
+          const { default: LandingPage } = await import('../features/landing/LandingPage');
+          return { Component: LandingPage };
+        },
+      },
+      {
+        element: <AppShell />,
+        errorElement: <RouteError />,
+        children: [
+          { path: 'venue', element: <VenuePage /> },
+          { path: 'activity', element: <ActivityPage /> },
+          { path: 'dealers', element: <DealersPage /> },
+          { path: 'dealers/:dealerCmt', element: <DealerProfilePage /> },
+          { path: 'trade', element: <TradePage /> },
+          { path: 'trade/:quoteId', element: <ReceiptPage /> },
+          { path: 'me', element: <PortfolioPage /> },
+          { path: 'deal', element: <DealPage /> },
+          { path: 'desk', element: <DeskPage /> },
+          { path: 'verify', element: <VerifyPage /> },
+          ...devRoutes,
+          { path: '*', element: <NotFound /> },
+        ],
+      },
     ],
   },
 ];

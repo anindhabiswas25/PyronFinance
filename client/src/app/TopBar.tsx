@@ -16,12 +16,15 @@ export const NAV = [
   { to: '/verify', label: 'Verify' },
 ] as const;
 
-export function Logo({ size = 22 }: { size?: number }) {
+/** The Pyron "p" mark, traced from the brand artwork (landing-page branch, logo-mark.svg). The stem and
+ *  ring take the theme's text colour so the mark reads on both themes; the accent dot is always pink. */
+export function Logo({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
-      <circle cx="12" cy="12" r="10" style={{ fill: 'var(--seal)' }} />
-      <path d="M2 12h7.2M14.8 12H22" style={{ stroke: 'var(--bg)' }} strokeWidth="2" />
-      <circle cx="12" cy="12" r="2.6" fill="none" style={{ stroke: 'var(--bg)' }} strokeWidth="2" />
+    <svg width={Math.round((size * 570) / 772)} height={size} viewBox="352 205 570 772" fill="none" aria-hidden="true" className="shrink-0">
+      {/* The stem starts at the ring's centre line, where its outer edge is exactly x=357: starting higher leaves a notch. */}
+      <rect x="357" y="494" width="99" height="477" style={{ fill: 'var(--tx)' }} />
+      <path d="M845 380 A 234 234 0 1 0 844 610" style={{ stroke: 'var(--tx)' }} strokeWidth="99" strokeLinecap="round" />
+      <circle cx="861" cy="502" r="55" fill="#ea1c5d" />
     </svg>
   );
 }
@@ -116,9 +119,9 @@ export function TopBar({ right }: { right?: ReactNode }) {
   return (
     <header className="sticky top-0 z-40 bg-bg border-b border-line2">
       <div className="h-[60px] flex items-center gap-4 lg:gap-7 px-4 md:px-8">
-        <Link to="/" className="flex items-center gap-2.5 font-display font-bold text-[17px] tracking-[-0.01em] text-tx" aria-label="Pyron, home">
+        <Link to="/" className="flex items-center gap-1.5 font-display font-bold text-[17px] tracking-[-0.01em] text-tx" aria-label="Pyron Finance, home">
           <Logo />
-          <span>Pyron</span>
+          <span>Finance</span>
         </Link>
         <nav aria-label="Primary" className="hidden lg:flex gap-0.5">
           <NavItems />

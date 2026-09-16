@@ -3,6 +3,8 @@ import { cleanup } from '@testing-library/react';
 import { useOverlays } from '../src/state/overlays';
 import { useWalletStore } from '../src/state/wallet';
 import { useTray } from '../src/state/tray';
+import { useNotifications } from '../src/state/notifications';
+import { useTradeRuntime } from '../src/state/trade-runtime';
 
 afterEach(() => {
   cleanup();
@@ -10,6 +12,8 @@ afterEach(() => {
   useOverlays.setState({ open: undefined, readiness: {} });
   useWalletStore.getState().reset();
   useTray.setState({ entries: [] });
+  useNotifications.setState({ entries: [], dismissed: [] });
+  useTradeRuntime.setState({ engine: undefined, ports: undefined });
   try {
     localStorage.clear();
     sessionStorage.clear();

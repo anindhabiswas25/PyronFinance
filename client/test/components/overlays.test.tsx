@@ -63,7 +63,7 @@ describe('transaction tray', () => {
     const first = renderAt('/dealers');
     await screen.findByRole('heading', { level: 1, name: 'Dealers' });
     await user.keyboard('t');
-    const drawer = await screen.findByRole('dialog', { name: 'In progress' });
+    const drawer = await screen.findByRole('dialog', { name: 'Notifications' });
     expect(within(drawer).getByText('Settle with 0f7a…91')).toBeTruthy();
     await user.keyboard('{Escape}');
     first.unmount();
@@ -73,7 +73,7 @@ describe('transaction tray', () => {
     act(() => useTray.getState().hydrate());
     renderAt('/verify');
     await user.click(await screen.findByRole('button', { name: /1 in progress/ }));
-    const again = await screen.findByRole('dialog', { name: 'In progress' });
+    const again = await screen.findByRole('dialog', { name: 'Notifications' });
     expect(within(again).getByText(/page reloaded while this was running/)).toBeTruthy();
   });
 
@@ -83,7 +83,7 @@ describe('transaction tray', () => {
     const search = await screen.findByPlaceholderText('Search by dealer key');
     await user.click(search);
     await user.keyboard('t');
-    expect(screen.queryByRole('dialog', { name: 'In progress' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
   });
 });
 

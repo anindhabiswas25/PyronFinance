@@ -30,6 +30,8 @@ export interface TrayEntry {
   txHash?: string;
   /** In-app link for the result (a receipt, a dealer). */
   href?: string;
+  /** What the action is about (a quote id), for pages that follow it. */
+  ref?: string;
   error?: string;
   /** The page reloaded while this was running; nothing is driving it any more. */
   interrupted?: boolean;

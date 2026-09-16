@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { ArrowUpDown, ChevronRight, Lock } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { Banner, Button, Card, Kbd, Segmented, Skeleton } from '../../design/primitives';
 import { useData } from '../../data/DataProvider';
 import { useReadiness } from '../../data/useReadiness';
 import { useSnapshot } from '../../data/hooks';
 import { useRelays } from '../../data/useRelays';
-import { useOverlays } from '../../state/overlays';
 import { useRfq, type RequestForm } from '../../state/rfq';
 import { useWalletStore } from '../../state/wallet';
 import { isAmountInput, parseUnits, formatUnits, formatCount } from '../../lib/format';
@@ -15,8 +13,8 @@ import { counterLabel } from '../../lib/side';
 import { NOTIONAL_CAP_K } from '../../lib/bond';
 import { isTypingTarget } from '../../overlays/Overlays';
 import { anyModalOpen } from '../../design/primitives';
-import { ReadinessRows } from '../../overlays/WalletReadiness';
 import type { TradeEngine } from './engine';
+import { PriceChart } from './chart/PriceChart';
 
 const WINDOWS = [
   { value: '60', label: '1 min' },
@@ -33,7 +31,6 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
   const pair = network.pairs.find((p) => p.code === form.pair) ?? network.pairs[0];
   const walletStatus = useWalletStore((s) => s.status);
   const relays = useRelays();
-  const show = useOverlays((s) => s.show);
   const pairRef = useRef<HTMLSelectElement>(null);
   const snap = useSnapshot();
 
@@ -89,7 +86,7 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
   if (!pair) return <Banner tone="bad" title="No pair on this network">{network.label} has no configured pair.</Banner>;
 
   const sizeBox = (
-    <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5 focus-within:border-mu">
+    <div className="flex flex-col gap-1.5 rounded-input border border-line bg-bg px-4 py-2.5 focus-within:border-mu">
       <div className="flex items-center justify-between gap-3">
         <label htmlFor="rfq-size" className="label">
           {form.side === 'sell' ? 'You sell' : 'You buy'}
@@ -118,7 +115,7 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
           onChange={(e) => {
             if (isAmountInput(e.target.value, pair.base.decimals)) set({ size: e.target.value });
           }}
-          className="w-full min-w-0 bg-transparent outline-none font-display font-semibold text-30 tabular-nums placeholder:text-mu"
+          className="w-full min-w-0 bg-transparent outline-none font-display font-semibold text-26 tabular-nums placeholder:text-mu"
           aria-describedby="size-help"
         />
         <label className="sr-only" htmlFor="rfq-pair">
@@ -147,7 +144,7 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
 
   // The counter leg never shows an amount: no price exists until dealers reveal.
   const counterBox = (
-    <div className="flex flex-col gap-2 rounded-input border border-line bg-bg px-4 py-3.5">
+    <div className="flex flex-col gap-1.5 rounded-input border border-line bg-bg px-4 py-2.5">
       <div className="flex items-center justify-between gap-3">
         <span className="label">{counterLabel(form.side)}</span>
         {counterBalance !== undefined && <span className="text-12.5 text-mu tabular-nums">Balance {formatUnits(counterBalance, pair.counter.decimals, { maxFraction: 2 })}</span>}
@@ -163,7 +160,7 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
   );
 
   const flip = (
-    <div className="flex justify-center -my-2">
+    <div className="flex justify-center -my-2.5">
       <button
         type="button"
         onClick={() => set({ side: form.side === 'sell' ? 'buy' : 'sell' })}
@@ -177,14 +174,19 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] items-start">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] items-start lg:items-stretch">
+      {/* On desktop the chart stretches to the right column's height; the widget has no height of its own. */}
+      <PriceChart className="order-last h-[460px] lg:order-none lg:h-auto" />
+
+      <div className="flex flex-col gap-4 min-w-0">
       <Card
         as="section"
         aria-labelledby="request-title"
-        className="flex flex-col gap-3.5"
+        padded={false}
+        className="flex flex-col gap-3 p-4 sm:px-5 sm:py-[30px]"
       >
         <form
-          className="flex flex-col gap-3.5"
+          className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             submit();
@@ -210,7 +212,6 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
               {sizeBox}
             </>
           )}
-          {pair.note && <p className="text-12.5 text-mu">{pair.note}</p>}
 
           <details className="group">
             <summary className="flex items-center gap-1.5 text-13.5 text-mu cursor-pointer select-none hover:text-tx w-fit">
@@ -243,32 +244,12 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
             </div>
           </details>
 
-          <div className="rounded-btn border border-line2 px-4 py-3 flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-13.5 font-medium">Before you request</span>
-              <button type="button" className="text-12.5 text-mu hover:text-tx underline underline-offset-2" onClick={() => show(walletStatus === 'connected' ? 'readiness' : 'connect', { side: form.side, size: sizeUnits })}>
-                {walletStatus === 'connected' ? 'Wallet readiness' : 'Connect a wallet'}
-              </button>
-            </div>
-            <ReadinessRows checks={readiness.checks} compact />
-            {walletStatus !== 'connected' && <p className="text-12.5 text-mu">You can request and compare without a wallet; settling needs one.</p>}
-          </div>
-
           {state.error && (
             <Banner tone="bad" title="Request not sent" urgent>
               {state.error}
             </Banner>
           )}
-          {tooFewRelays && (
-            <p className="text-13.5 text-bad" role="status">
-              {relays.count === 0 ? 'No relay is reachable.' : 'Only one relay is reachable.'} Requests need at least 2.{' '}
-              <button type="button" className="underline underline-offset-2" onClick={() => show('relays')}>
-                Manage relays
-              </button>
-            </p>
-          )}
-
-          <Button type="submit" variant="primary" wide className="h-[50px] text-15" disabled={!canSubmit} busy={requesting}>
+          <Button type="submit" variant="primary" wide className="h-control text-15" disabled={!canSubmit} busy={requesting}>
             {requesting ? 'Connecting to relays…' : 'Request quotes'}
             {!requesting && <Kbd className="border-btntx/25 text-btntx">↵</Kbd>}
           </Button>
@@ -278,7 +259,6 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
         </form>
       </Card>
 
-      <div className="flex flex-col gap-4">
         <Card className="flex flex-col gap-3.5">
           <h2 className="font-display font-semibold text-15">{pair.code} right now</h2>
           {snap.status === 'error' ? (
@@ -301,26 +281,7 @@ export function RequestScreen({ engine }: { engine: TradeEngine }) {
             A dealer can quote at most 20× their bond.
             {stats?.qualifying !== undefined && sizeUnits ? ` At this size, ${stats.qualifying} of ${stats.dealers} active dealers can quote.` : ''}
           </p>
-        </Card>
-        <Card className="flex flex-col gap-3">
-          <h2 className="font-display font-semibold text-15">What happens next</h2>
-          {[
-            ['Sealed', 'Dealers lock prices on-chain', '20–45 s'],
-            ['Compare', 'Prices open for you only', 'as each seals'],
-            ['Settle', 'One atomic swap', '17–24 s'],
-          ].map(([title, body, time]) => (
-            <div key={title} className="flex flex-wrap items-center justify-between gap-2 text-13.5">
-              <span className="flex items-center gap-2.5">
-                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-line" />
-                <b className="font-semibold w-[70px]">{title}</b>
-                <span className="text-mu">{body}</span>
-              </span>
-              <span className="font-mono text-12.5 text-mu">{time}</span>
-            </div>
-          ))}
-          <p className="text-12.5 text-mu">Measured on Preprod. No dealer answering is normal early on — <Link to="/deal" className="underline underline-offset-2 hover:text-tx">become one</Link>.</p>
-        </Card>
-      </div>
+        </Card>      </div>
     </div>
   );
 }

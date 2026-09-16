@@ -1068,6 +1068,28 @@ phone (30/30). It found two real defects, both fixed: the 404 page had no `<h1>`
 blocks scrolled sideways without being keyboard-focusable. These runs used the live indexer with no
 wallet or relays, so they check rendering and accessibility, not trading.
 
+**Trade flow + notification centre (2026-09-16, owner request).** A defect in the existing client came
+first: the trade loop lived in the `/trade` page, so **leaving `/trade` stopped the trade**. No quotes were
+collected and no reveals were opened, while the window kept running. The loop now runs in the shell
+(`app/TradeRuntime.tsx`) and the SDK still loads only once a trade is active or `/trade` is open.
+`features/trade/notify.ts` turns the trade state into notification-centre entries (the table is in
+`FRONTEND.md` "Notifications"). The transaction tray is merged into the same drawer. Compare asks for a
+wallet before settling instead of failing at the wallet stage. Owner decisions: one bell (tray merged);
+quote actions open Compare with the quote selected and **never settle directly**; in-app only, no OS
+notifications. Offline evidence: 25 files / 178 client tests (was 154), including every rule, the
+reconciling store, and a fixture trade that keeps running on `/activity`, toasts "ready to compare", and
+returns to Compare from the centre. Typecheck clean. **Not run against live relays or a live indexer.**
+
+**Landing page (2026-09-16, owner request).** The `landing-page` branch's Next.js page is ported into the
+client at `/`, outside the app shell; **Launch App** opens `/trade`, and Venue moves to `/venue`. Its CSS
+is scoped (`.pl`, root scale under `html.pl-html`) so the 1vw scale can't leak into the terminal, fonts
+are self-hosted, and the waitlist form, which had no backend but promised a reply, is replaced by Launch
+App. Evidence: typecheck and build clean, the landing chunk imports no SDK, and a component test checks
+the link to `/trade` and that the root scale is removed on arrival. `routes.spec.ts` gained the landing and a
+Launch App test, but **the Playwright e2e suite was not run** for this change. Found on the way: a local
+`client/.env.local` now sets `VITE_NETWORK=preview`, which fails 5 wallet-connecting component tests; with
+`VITE_NETWORK=preprod` the suite passes.
+
 ---
 
 ## M3 — Dealer Node + disclosure
@@ -1127,6 +1149,7 @@ DUST-generation/registration process.
 | **Web client scope** (owner, 2026-09-15) | Build all pages now, not gated on Phase 0; no hosted backend; live data only in the UI; contract circuits run from the browser wallet | `FRONTEND.md`, `client/` |
 | **Dealer key custody in the browser** (owner, 2026-09-15) | Encrypted in IndexedDB under a passphrase (PBKDF2-SHA256 600k, AES-GCM) with the quote journal; every action blocked until a backup is confirmed | `client/src/features/desk` |
 | **`/me` history key source** (owner, 2026-09-15) | Passphrase (same vault), not a wallet signature | `client/src/lib/crypto-store.ts` |
+| **Trade notifications** (owner, 2026-09-16) | One notification centre (transaction tray merged in); quote actions open Compare with the quote selected, never settle directly; in-app only, no OS notifications | `FRONTEND.md` "Notifications", `client/src/features/trade/notify.ts` |
 
 ## Decisions still open
 

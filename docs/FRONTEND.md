@@ -56,11 +56,12 @@ The UI makes sealed-ness *legible* rather than hiding it behind a trading-screen
 
 ---
 
-## Information architecture — 10 pages, 6 overlays
+## Information architecture — 11 pages, 6 overlays
 
 | Route | Page | Needs | Code |
 |---|---|---|---|
-| `/` | Venue: what the protocol is, live chain totals, recent events | nothing | `features/venue` |
+| `/` | Landing page: Pyron Finance marketing page; **Launch App** opens `/trade` | nothing | `features/landing` |
+| `/venue` | Venue: what the protocol is, live chain totals, recent events (was `/` until 2026-09-16) | nothing | `features/venue` |
 | `/activity` | Protocol events from the indexer: bonds, seals, settlements, releases, **slashes first-class**, notes. No price column | nothing | `features/activity` |
 | `/dealers` | Every dealer key: status, bond, largest quote (×20), settled, slashed, failures (unknown) | nothing | `features/dealers` |
 | `/dealers/:dealerCmt` | One dealer: stats, bond-over-time chart, recent quotes, evidence note | nothing | `features/dealers` |
@@ -72,27 +73,62 @@ The UI makes sealed-ness *legible* rather than hiding it behind a trading-screen
 | `/verify` (`?tab=check\|note`) | Check a signed reveal or evidence; open a disclosure note | nothing (wallet to submit a proof) | `features/verify` |
 
 Overlays (no route change; Esc closes; focus trapped and returned): Connect wallet · Wallet readiness ·
-Transaction tray (`T`, survives reloads) · Relays · Submit fraud proof · Attach disclosure note.
+Notification centre (`N` or `T`, survives reloads; the transaction tray merged into it 2026-09-16) · Relays ·
+Submit fraud proof · Attach disclosure note.
 
-Top bar: logo · Trade · Activity · Dealers · Desk · Verify · network · relays pill · tray pill · wallet ·
+Top bar: logo · Trade · Activity · Dealers · Desk · Verify · network · relays pill · notifications pill · wallet ·
 theme. Dev only: `/dev/settle-probe`, `/dev/circuits`.
 
 Public pages render without the SDK or its WASM; `/trade`, `/verify` and `/desk` load them lazily.
 
 ---
 
+## `/` — landing page
+
+Ported 2026-09-16 (owner request) from the `landing-page` branch of `anindhabiswas25/PyronFinance`, a
+Next.js page, into this app. It renders **outside the app shell**: no top bar, no data adapters, no SDK.
+Both **Launch App** buttons are router links to `/trade`; the app's logo links back to `/`.
+
+- **Scoped styles.** The page is built on `html { font-size: 1vw }`, and a CSS chunk stays loaded after
+  navigating away. `features/landing/landing.css` is therefore generated with every selector under `.pl`
+  and the root scale under `html.pl-html`, a class `LandingPage` sets only while mounted. Unscoped, it
+  would resize every rem-based size in the terminal and restyle Tailwind's `.container`.
+- **No third parties.** Inter and Plus Jakarta Sans are self-hosted through `@fontsource-variable` instead
+  of Google Fonts, and the Lottie player and artwork are served from `public/landing/`.
+- **No waitlist.** The original's form had no backend yet told visitors "someone will get in touch".
+  Both of its places now launch the app.
+- The footer's social links are still `#` placeholders from the original.
+
+---
+
 ## `/trade` — the swap card and what follows
 
 One route, one state machine (`state/rfq.ts`), persisted to `sessionStorage` so a reload in Sealed or
-Compare restores the screen with reveals intact. Stepper: Request · Sealed · Compare · Settle.
+Compare restores the screen with reveals intact. Stepper: Request · Sealed · Compare · Settle; a step the
+trade has already reached is a button back to it.
+
+**The trade runs in the shell, not the page** (2026-09-16). `app/TradeRuntime.tsx` attaches the stored
+trade, loads the engine (and the SDK with it) once a trade is active or `/trade` is open, and runs its
+loop on every page, so leaving `/trade` no longer stops quotes being collected or reveals opened. Public
+pages still load no SDK while no trade is active.
 
 **Request (swap card).** "You sell / You receive" or "You pay / You buy"; the ⇅ button flips the side
 and puts what the taker gives on top. The counter leg shows only a lock and "Price revealed after
 dealers seal": no estimate, no "≈", no spinner. Advanced: quote window (1/2/5 min), minimum dealer bond,
 disclosure note (off; attached later from the receipt). Readiness lists only what the connector can
 truthfully report: network, balance of the asset given, DUST, relays ≥ 2. Coin fragmentation surfaces at
-Settle, from the merged transaction's time-to-dismiss check. Side panel: dealers bonded, largest quotable
-size, median bond, all from the chain.
+Settle, from the merged transaction's time-to-dismiss check.
+
+Layout (2026-09-15, owner request): a **reference market chart** fills the left column; the right column
+stacks the swap card and the "*pair* right now" card (dealers bonded, largest quotable size, median bond,
+all from the chain). The "Before you request" readiness card was removed from this screen (owner request,
+2026-09-15); readiness stays reachable from the wallet readiness overlay, and the swap card still blocks
+on too few relays or an insufficient balance. The chart is TradingView's tv.js
+Advanced Chart embed for `MEXC:NIGHTUSDC` (`features/trade/chart/`), with the Kryon-style toolbar:
+timeframes, chart type, indicators, reset, fullscreen. It is an **external public market**, labelled
+"reference market · Not a quote", and does not relax the non-negotiables: nothing from the swap card, a
+relay or a reveal is ever passed to it, and no dealer price is drawn on it or estimated from it. Loading
+tv.js means TradingView sees that a visitor opened `/trade`, and nothing more.
 
 **Sealed.** Fixed countdown (never extended). One row per `quote_ref`: checking → on-chain with bond and
 record, or dropped with its reason. Reveals are fetched from each quote's signed `dealerEndpoint` mailbox
@@ -109,18 +145,37 @@ renders "—" (unknown), never a fake 0, until published evidence has a source.
 **Settle.** Real stages: offer coins unspent (skipped where the indexer can't answer) → wallet balances
 the sealed offer → the merged transaction passes the network's validation limit → submit → indexer
 confirmation. Outcomes: settled → receipt; inputs spent → "Save evidence" and take the next quote; wallet
-shape (would be code 168) → nothing submitted; node rejection → code and plain meaning; expired.
+shape (would be code 168) → nothing submitted; node rejection → code and plain meaning; expired. With no
+wallet connected, Compare's button reads "Connect a wallet to settle" and opens Connect wallet.
 
 **Receipt.** Public block from the chain; "Only on this device" block with price and amounts. The status
 reads **Resolved** from the chain alone and **Settled** only with a settlement transaction on this device,
 because the contract cannot tell a settled quote from a released one.
+
+**Notifications** (owner decisions 2026-09-16). `features/trade/notify.ts` derives, from the trade state
+alone, what needs the user and what happened; `state/notifications.ts` reconciles that set each second, so
+an entry updates in place and a "needs you" entry resolves once the state moves past it. The centre is one
+drawer behind the bell: **Needs you**, **Transactions** (the former tray, with real stages) and **Updates**.
+A toast appears only when the user is off `/trade`, where the screen already shows it; the entry stays in
+the centre either way.
+
+| Step | Needs you | Updates |
+|---|---|---|
+| Sealed | chain unreachable (quotes paused) · fewer than 2 relays after 5 s · seal mismatch → **Submit proof** (gone once the proof lands) · window closing in 15 s (off `/trade` only) · no dealer answered → Ask again / Become a dealer | request sent · N dealers bound · N quotes set aside |
+| Compare | N prices ready → **Review quotes** (hidden while Compare is on screen) · pick or best expires in 30 s → **Review & settle** · every quote expired → Ask again | — |
+| Settle | approve in your wallet · wallet disconnected → Reconnect · failed: spent coins → Save evidence / Review next best; wallet shape → Back to this quote; rejected (code) or expired → Review next best | settled → Open receipt / Attach disclosure note |
+
+Rules: **no entry settles.** A quote action opens Compare with that quote selected, so its cautions (slashes,
+small bond, weakest record) are on screen before Settle. **In-app only**: no browser or OS notifications,
+which keep a history outside the tab. An entry may carry a price, as the Compare screen does, on this
+device only.
 
 ---
 
 ## Contract actions from the browser
 
 `src/data/live/circuits.ts` + `@otc/sdk/browser` (`browser-contract.ts`) run every circuit from the
-connected wallet, with each stage in the transaction tray:
+connected wallet, with each stage under Transactions in the notification centre:
 
 1. **prepare** — the circuit runs on this device (midnight-js `createUnprovenCallTx`) against the
    indexer's latest contract and Zswap state, with witnesses held in memory for the one call;
@@ -202,7 +257,7 @@ nothing. Export JSON (unencrypted, and says so). Delete all behind a typed confi
 are bigint.
 
 **Storage.** `sessionStorage`: trade state (including the per-RFQ secret, wiped at a terminal state),
-reveals, receipts, the tray. `localStorage`: preferences and the relay list only. IndexedDB: encrypted
+reveals, receipts, the tray, notification-centre entries. `localStorage`: preferences and the relay list only. IndexedDB: encrypted
 dealer vault, encrypted trade history, and public event caches. Never a price or key in plaintext
 localStorage.
 
@@ -212,7 +267,7 @@ localStorage.
 **Empty states carry the cold-start message.** No dealer answering is the expected early condition; it
 links to `/deal`.
 
-**Accessibility.** Keyboard-complete (`/` pair, `Enter`, `1`–`9`, `Shift`+click, `T`, `Esc`); visible
+**Accessibility.** Keyboard-complete (`/` pair, `Enter`, `1`–`9`, `Shift`+click, `N`/`T`, `Esc`); visible
 focus; countdown announcements throttled to 10 s; charts have `role="img"` with every value in the label
 and a table alternative; tables become stacked rows below 768 px.
 
@@ -225,5 +280,7 @@ and a table alternative; tables become stacked rows below 768 px.
   quote.
 - Offer Files from the wallet's `makeIntent` (`/desk` manual quote): whether a wallet returns a sealed,
   settleable half is unverified.
+- The notification centre and the shell-run trade against live relays and a live indexer: tested on the
+  fixture scenarios only.
 
 See `docs/ROADMAP.md` for the open decisions this UI depends on.

@@ -100,6 +100,7 @@ export function SubmitFraudProofDialog({ open, onClose, quoteId, reveal: given }
           title: `Fraud proof against ${reveal.dealerCmt.slice(0, 8)}…`,
           kind: 'fraud-proof',
           href: `/dealers/${reveal.dealerCmt}`,
+          ref: quoteId,
           landed: async () => (await ports.chain.dealer(reveal.dealerCmt)).slashed > slashedBefore,
         },
       );

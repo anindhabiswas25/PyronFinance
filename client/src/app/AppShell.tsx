@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
-import { Outlet, ScrollRestoration } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { cx } from '../design/cx';
 import { Toaster } from '../design/primitives';
 import { TopBar } from './TopBar';
 import { AppErrorBoundary } from './ErrorBoundary';
@@ -8,8 +9,11 @@ import { DataProvider } from '../data/DataProvider';
 import { WalletWatcher } from '../data/useWallet';
 import { Overlays } from '../overlays/Overlays';
 import { TopBarActions } from './TopBarActions';
+import { TradeRuntime } from './TradeRuntime';
 
 export function AppShell() {
+  // The trade screen carries a chart beside the swap card, so it takes the full width with slim gutters.
+  const wide = useLocation().pathname.startsWith('/trade');
   return (
     <DataProvider>
     <div className="min-h-screen flex flex-col">
@@ -20,7 +24,11 @@ export function AppShell() {
         Skip to content
       </a>
       <TopBar right={<TopBarActions />} />
-      <main id="main" tabIndex={-1} className="flex-1 w-full max-w-content mx-auto px-4 md:px-gutter py-6 md:py-8 outline-none">
+      <main
+        id="main"
+        tabIndex={-1}
+        className={cx('flex-1 w-full mx-auto px-4 py-6 md:py-8 outline-none', wide ? 'max-w-[1920px] md:px-5' : 'max-w-content md:px-gutter')}
+      >
         <AppErrorBoundary>
           <Suspense fallback={<PageSkeleton />}>
             <Outlet />
@@ -30,7 +38,7 @@ export function AppShell() {
       <Toaster />
       <Overlays />
       <WalletWatcher />
-      <ScrollRestoration />
+      <TradeRuntime />
     </div>
     </DataProvider>
   );

@@ -1,53 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stepper, Chip } from '../../design/primitives';
 import { useData } from '../../data/DataProvider';
-import { useRelays } from '../../data/useRelays';
-import { useRfq, type TradeView } from '../../state/rfq';
+import { reachedViews, useRfq, type TradeView } from '../../state/rfq';
+import { useTradeRuntime } from '../../state/trade-runtime';
+import { VerifierSkeleton } from '../../app/PageSkeleton';
 import { formatUnits, parseUnits } from '../../lib/format';
-import { TradeEngine } from './engine';
 import { RequestScreen } from './RequestScreen';
 import { SealedScreen } from './SealedScreen';
 import { CompareScreen } from './CompareScreen';
 import { SettleScreen } from './SettleScreen';
 
 const STEPS = ['Request', 'Sealed', 'Compare', 'Settle'] as const;
-const STEP_OF: Record<TradeView, number> = { request: 0, sealed: 1, compare: 2, settle: 3 };
+const VIEWS: TradeView[] = ['request', 'sealed', 'compare', 'settle'];
 
+// The screens only. The trade itself (its engine, loop and notifications) runs in the shell
+// (app/TradeRuntime.tsx), so it keeps going when the user leaves this page.
 export default function TradeApp() {
   const ports = useData();
-  const relays = useRelays();
   const state = useRfq((s) => s.state);
-  const [attached, setAttached] = useState<unknown>(undefined);
-  const urlsRef = useRef(relays.urls);
-  urlsRef.current = relays.urls;
+  const dispatch = useRfq((s) => s.dispatch);
+  const engine = useTradeRuntime((s) => (s.ports === ports ? s.engine : undefined));
 
-  useEffect(() => {
-    useRfq.getState().attach(ports.storage.session, ports.network.pairs[0]?.code ?? '');
-    setAttached(ports);
-  }, [ports]);
-  const ready = attached === ports;
-
-  const engine = useMemo(() => new TradeEngine(ports, () => urlsRef.current), [ports]);
-
-  // After a reload mid-trade: reconnect relays and restart any scripted counterparties (tests).
-  useEffect(() => {
-    if (!ready) return;
-    const s = useRfq.getState().state;
-    if ((s.phase === 'sealed' || s.phase === 'revealed') && !ports.relays.status().some((r) => r.connected)) {
-      void ports.relays.connect(urlsRef.current).catch(() => undefined);
-    }
-    engine.resumeScenario();
-    return () => engine.dispose();
-  }, [engine, ready, ports]);
-
-  useEffect(() => {
-    if (!ready) return;
-    void engine.tick();
-    const id = setInterval(() => void engine.tick(), ports.pollMs ?? 2000);
-    return () => clearInterval(id);
-  }, [engine, ready, ports]);
-
-  if (!ready) return null;
+  if (!engine) return <VerifierSkeleton />;
 
   const pair = ports.network.pairs.find((p) => p.code === (state.rfq?.pair ?? state.form.pair)) ?? ports.network.pairs[0];
   const rfqChip = (() => {
@@ -64,7 +37,13 @@ export default function TradeApp() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Stepper steps={STEPS} current={STEP_OF[state.view]} label="Trade progress" />
+        <Stepper
+          steps={STEPS}
+          current={VIEWS.indexOf(state.view)}
+          label="Trade progress"
+          canSelect={(i) => reachedViews(state.phase).includes(VIEWS[i])}
+          onSelect={(i) => dispatch({ type: 'view', view: VIEWS[i] })}
+        />
         {rfqChip && state.view !== 'request' && (
           <Chip className="font-mono" title="Your request, as the relays saw it. No price was sent.">
             {rfqChip}

@@ -3,14 +3,16 @@ import { X } from 'lucide-react';
 import { cx } from '../cx';
 import { toneDot, type Tone } from '../tone';
 
-// Small confirmations only ("Copied", "Evidence saved"). Anything the user must act on — too few
-// relays, a failed settlement — is shown inline where it happened, never only as a toast.
+// Small confirmations ("Copied", "Evidence saved"), and a heads-up for a notification-centre entry
+// while the user is on another page. Anything the user must act on is shown inline where it happened
+// or kept in the notification centre, never only as a toast.
 
 export interface ToastItem {
   id: number;
   tone: Tone;
   title: string;
   body?: string;
+  action?: { label: string; onClick(): void };
 }
 
 interface ToastState {
@@ -48,6 +50,18 @@ export function Toaster() {
           <div className="flex-1 min-w-0">
             <p className="text-13.5 font-medium">{t.title}</p>
             {t.body && <p className="text-12.5 text-mu mt-0.5">{t.body}</p>}
+            {t.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  dismiss(t.id);
+                  t.action!.onClick();
+                }}
+                className="mt-1.5 text-12.5 font-medium text-tx underline underline-offset-2 hover:text-seal"
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
           <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="text-mu hover:text-tx">
             <X size={15} aria-hidden="true" />

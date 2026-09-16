@@ -23,6 +23,7 @@ import { nodeErrorMeaning } from '../../lib/node-errors';
 import { revealsKey, type StoredReveal } from '../../data/relay-util';
 import type { OfferCheck } from '../../lib/compare';
 import { recordTrade, type TradeHistoryEntry } from '../../data/history';
+import { downloadJson, evidenceFileName, type FailureEvidence } from '../../lib/evidence';
 
 const SETTLE_STAGES: Array<{ id: SettleStageId; label: string }> = [
   { id: 'inputs', label: 'Offer coins still unspent' },
@@ -436,6 +437,43 @@ export class TradeEngine {
       this.settling = false;
       void started;
     }
+  }
+
+  /** Downloads the failed settlement's evidence (the signed reveal and the Offer File), which anyone
+   *  can check on /verify. False when there is no failure to save. */
+  saveEvidence(): boolean {
+    const s = this.state;
+    const failure = s.failure;
+    const q = failure ? s.quotes[failure.quoteId] : undefined;
+    if (!failure || !q || !s.rfq) return false;
+    let offerInputs: FailureEvidence['offerInputs'] = [];
+    try {
+      if (q.offerFile) offerInputs = sdk.inputsOf(sdk.deserializeOffer(q.offerFile));
+    } catch {
+      // The file still carries the Offer File itself.
+    }
+    const evidence: FailureEvidence = {
+      kind: 'pyron-failure-evidence',
+      v: 1,
+      network: this.ports.network.id,
+      contract: this.ports.network.contractAddress,
+      quoteId: q.quoteId,
+      dealerCmt: q.dealerCmt,
+      rfqId: s.rfq.rfqId,
+      revealMessage: q.message,
+      dealerEncPk: q.dealerEncPk,
+      terms: q.terms,
+      nonce: q.nonce,
+      signature: q.signature,
+      offerFile: q.offerFile,
+      offerInputs,
+      validUntil: q.validUntil,
+      failure: { reason: failure.reason, detail: failure.detail, code: failure.code, spentBy: failure.spentBy, at: failure.at },
+      savedAt: this.now(),
+      sampleData: this.ports.source === 'fixture',
+    };
+    downloadJson(evidenceFileName(evidence), evidence);
+    return true;
   }
 
   /** 'unsupported' also when the indexer can't answer: a pre-check that couldn't run never blocks a

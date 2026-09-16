@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const ROUTES: Array<[string, string]> = [
-  ['/', 'Quotes a dealer can’t take back.'],
+  ['/', 'Private OTC on Midnight'],
+  ['/venue', 'Quotes a dealer can’t take back.'],
   ['/activity', 'Activity'],
   ['/dealers', 'Dealers'],
   [`/dealers/${'ab'.repeat(32)}`, `Dealer abab…ab`],
@@ -42,8 +43,17 @@ test('the swap card flips sides and never shows a price', async ({ page }) => {
   await expect(page.getByText('Price revealed after dealers seal')).toBeVisible();
 });
 
-test('the theme toggle stamps data-theme', async ({ page }) => {
+test('Launch App on the landing page opens the trading terminal', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('link', { name: /Launch App/ }).first().click();
+  await expect(page).toHaveURL(/\/trade$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Request quotes' })).toBeVisible();
+  // The landing's 1rem = 1vw scale must not follow the user into the terminal.
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe('16px');
+});
+
+test('the theme toggle stamps data-theme', async ({ page }) => {
+  await page.goto('/venue');
   // On narrow screens the theme and network controls live in the menu drawer.
   const menu = page.getByRole('button', { name: 'Open menu' });
   if (await menu.isVisible()) await menu.click();

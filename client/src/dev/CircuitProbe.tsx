@@ -34,7 +34,7 @@ export function CircuitProbe() {
 
   async function release(quoteId: string) {
     setBusy(quoteId);
-    show('tray');
+    show('notifications');
     const out = await runCircuit(
       ports,
       { circuit: 'releaseExpiredQuote', args: [hexToBytes(quoteId)] },
