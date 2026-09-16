@@ -13,7 +13,7 @@ export function readThemePref(): ThemePref {
   } catch {
     // Storage blocked (private window): fall back to the default.
   }
-  return 'dark';
+  return 'light';
 }
 
 export function writeThemePref(pref: ThemePref): void {

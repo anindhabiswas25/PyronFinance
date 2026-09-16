@@ -218,6 +218,9 @@ importers:
       '@midnight-ntwrk/midnight-js-utils':
         specifier: 4.0.2
         version: 4.0.2
+      '@midnight-ntwrk/wallet-sdk-address-format':
+        specifier: 3.1.2
+        version: 3.1.2
       '@midnight-ntwrk/wallet-sdk-dust-wallet':
         specifier: 4.2.0
         version: 4.2.0(ws@8.21.3)
