@@ -928,11 +928,15 @@ html.pl-html body, .pl {
 @media screen and (max-width: 991px) {
   .pl .launch-cta { gap: 1.6rem; }
   .pl .launch-cta.hero-s { height: 6.8rem; padding: 0 4.4rem; }
+  /* footer-s never got a mobile size here before: it kept the desktop height (3.8rem) while its
+     font-size (--body-b2) scaled up at this breakpoint, so the label overflowed a too-short pill. */
+  .pl .launch-cta.footer-s { height: 5.9rem; padding: 0 3.8rem; }
   .pl .launch-cta-arrow { width: 2rem; height: 2rem; }
 }
 
 @media screen and (max-width: 479px) {
   .pl .launch-cta { gap: 2.6rem; }
   .pl .launch-cta.hero-s { height: 12.4rem; padding: 0 7rem; border-radius: 7rem; }
+  .pl .launch-cta.footer-s { height: 10.8rem; padding: 0 6rem; border-radius: 7rem; }
   .pl .launch-cta-arrow { width: 3.4rem; height: 3.4rem; }
 }

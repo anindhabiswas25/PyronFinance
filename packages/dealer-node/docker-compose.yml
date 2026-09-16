@@ -1,0 +1,35 @@
+# Everything a dealer needs to quote, run locally: this node + the proof server it calls into.
+# Relays are usually other people's infrastructure (docs/RELAY.md — "not our hosted backend"); if
+# you're also running your own two relays for testing, bring them up from
+# packages/relay-node/docker-compose.yml first and point [relays].endpoints in dealer.toml at them
+# (e.g. ws://host.docker.internal:18787/gossip on macOS/Windows).
+#
+# Run from the repo root: docker compose -f packages/dealer-node/docker-compose.yml up --build -d
+
+services:
+  proof-server:
+    image: midnightntwrk/proof-server:8.1.0
+    command: midnight-proof-server -v
+    ports:
+      - "6300:6300"
+    restart: unless-stopped
+
+  dealer-node:
+    build:
+      context: ../..
+      dockerfile: packages/dealer-node/Dockerfile
+    depends_on:
+      - proof-server
+    env_file:
+      - ../../.env          # MN_WALLET_SEED, MN_PRIVATE_STATE_PASSWORD — never baked into the image
+    volumes:
+      - ./dealer.toml:/repo/packages/dealer-node/dealer.toml:ro
+      - ./secrets:/repo/packages/dealer-node/secrets
+      # journal_path in dealer.toml MUST point inside this mount (e.g. "./state/dealer-journal.log")
+      # or a container restart loses the crash-consistent quote journal — see DEALER-NODE.md §3.1.
+      - dealer-state:/repo/packages/dealer-node/state
+    command: ["start", "--config", "dealer.toml"]
+    restart: unless-stopped
+
+volumes:
+  dealer-state:

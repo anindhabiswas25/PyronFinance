@@ -1,0 +1,29 @@
+# Two peered relays, matching the ws://127.0.0.1:18787 / :18788 endpoints already referenced in
+# packages/dealer-node/dealer-preview.toml and dealer2-preview.toml.
+#
+# Run from the repo root: docker compose -f packages/relay-node/docker-compose.yml up --build
+
+services:
+  relay1:
+    build:
+      context: ../..
+      dockerfile: packages/relay-node/Dockerfile
+    ports:
+      - "18787:8787"
+    environment:
+      RELAY_PORT: "8787"
+      RELAY_PEERS: "ws://relay2:8787/gossip"
+      RELAY_ENABLE_MAILBOX: "true"
+    restart: unless-stopped
+
+  relay2:
+    build:
+      context: ../..
+      dockerfile: packages/relay-node/Dockerfile
+    ports:
+      - "18788:8787"
+    environment:
+      RELAY_PORT: "8787"
+      RELAY_PEERS: "ws://relay1:8787/gossip"
+      RELAY_ENABLE_MAILBOX: "true"
+    restart: unless-stopped

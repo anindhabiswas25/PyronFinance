@@ -49,6 +49,14 @@ describe('app shell', () => {
   it('cycles the theme and stamps data-theme', async () => {
     renderAt('/venue');
     const button = await screen.findAllByRole('button', { name: /^Theme:/ });
+    // Default pref is 'light'. NEXT_THEME takes it to 'system', which jsdom's matchMedia stub
+    // (always reports prefers-color-scheme: light as non-matching) resolves to 'dark'.
+    await userEvent.click(button[0]);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    // 'system' -> 'dark': same resolved theme, but a real pref change (verified via the label).
+    await userEvent.click(button[0]);
+    expect(await screen.findByRole('button', { name: /^Theme: Dark/ })).toBeTruthy();
+    // 'dark' -> 'light' completes the cycle back to the default.
     await userEvent.click(button[0]);
     expect(document.documentElement.dataset.theme).toBe('light');
   });
